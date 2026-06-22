@@ -1,0 +1,102 @@
+# Unreal Engine project files that should stay in Git:
+#   *.uproject
+#   Config/
+#   Content/
+#   Source/
+#   Plugins/ source and plugin descriptors
+#   Build/ project resources such as icons, splash screens, and platform files
+
+# Unreal generated folders
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# Plugin generated folders
+Plugins/**/Intermediate/
+Plugins/**/Saved/
+
+# If all plugins are source-built, these binaries can remain ignored.
+# Remove this rule or add per-plugin exceptions for binary-only marketplace plugins.
+Plugins/**/Binaries/
+
+# Local Unreal build and runtime artifacts
+*.target
+*.modules
+*.version
+*.receipt
+*.uatbuildrecord
+*.tmp
+*.log
+*.dmp
+*.crash
+*.nprof
+*.utrace
+*.ucas.tmp
+*.utoc.tmp
+
+# Generated project files
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.code-workspace
+*.xcodeproj/
+*.xcworkspace/
+
+# Visual Studio / MSBuild / Rider / ReSharper
+.vs/
+.idea/
+*.user
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+_ReSharper*/
+*.rsuser
+
+# VS Code local settings
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# C++ build outputs
+*.obj
+*.pch
+*.pdb
+*.ipdb
+*.iobj
+*.ilk
+*.lib
+*.exp
+*.dll
+*.exe
+*.app
+*.so
+*.dylib
+
+# C# / .NET helper build outputs used by Unreal tooling
+bin/
+obj/
+
+# Platform and editor clutter
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.key
+
+# Common packaged build output folders
+Builds/
+Packaged/
+StagedBuilds/
+Build/
