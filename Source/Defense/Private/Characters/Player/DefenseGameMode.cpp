@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "DefenseGameMode.h"
+#include "Characters/Player/DefenseGameMode.h"
 
 ADefenseGameMode::ADefenseGameMode()
 {
