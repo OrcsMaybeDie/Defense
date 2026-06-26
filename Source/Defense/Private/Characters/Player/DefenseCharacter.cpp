@@ -65,6 +65,9 @@ void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ADefenseCharacter::Look);
+		
+		// Attack
+		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Triggered, this, &ADefenseCharacter::Attack);
 	}
 	else
 	{
@@ -130,4 +133,85 @@ void ADefenseCharacter::DoJumpEnd()
 {
 	// signal the character to stop jumping
 	StopJumping();
+}
+
+void ADefenseCharacter::Attack()
+{
+	if (!DefaultWeaponData) return;
+	Server_Attack(DefaultWeaponData->Attack);
+}
+
+void ADefenseCharacter::AltAttack()
+{
+	if (!DefaultWeaponData) return;
+	Server_Attack(DefaultWeaponData->Attack);
+}
+
+void ADefenseCharacter::Server_Attack_Implementation(const FAttackData& AttackData)
+{
+	if (!HasAuthority()) return;
+	
+	switch (AttackData.Delivery)
+	{
+	case EAttackDelivery::Hitscan:
+		HitscanAttack(AttackData);
+		break;
+
+	case EAttackDelivery::Projectile:
+		break;
+
+	case EAttackDelivery::None:
+		// 이동스킬/직접 발동형
+		break;
+
+	default:
+		ensureMsgf(false, TEXT("Unhandled AttackDelivery"));
+		break;
+	}
+}
+
+void ADefenseCharacter::HitscanAttack(const FAttackData& AttackData)
+{
+	AController* OwningController = GetController();
+	if (!OwningController) return;
+
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	
+	// 시점 위치/회전 채움
+	OwningController->GetPlayerViewPoint(ViewLocation, ViewRotation); 
+	
+	// Trace Range
+	const FVector Start = ViewLocation;
+	const FVector End = Start + ViewRotation.Vector() * AttackData.Range;
+	
+	const float TraceRadius = FMath::Max(AttackData.Radius, 1.f);
+	
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(HitscanAttack), false, this);
+	Params.AddIgnoredActor(this);
+	
+	const bool bHit = GetWorld()->SweepSingleByChannel(
+		Hit,
+		Start,
+		End,
+		FQuat::Identity,
+		ECC_Visibility,
+		FCollisionShape::MakeSphere(TraceRadius),
+		Params
+	);
+	
+#if ENABLE_DRAW_DEBUG
+	const FColor DebugColor = bHit ? FColor::Red : FColor::Green;
+	DrawDebugLine(GetWorld(), Start, End, DebugColor, false, 1.0f, 0, 1.0f);
+	DrawDebugSphere(GetWorld(), bHit ? Hit.ImpactPoint : End, TraceRadius, 16, DebugColor, false, 1.0f);
+#endif
+
+	if (bHit)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("SphereTrace Hit: %s / Damage: %.1f"),
+			*GetNameSafe(Hit.GetActor()),
+			AttackData.Damage);
+	}
+	
 }

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Combat/WeaponData.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
 #include "DefenseCharacter.generated.h"
@@ -48,6 +49,9 @@ protected:
 	/** Mouse Look Input Action */
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* MouseLookAction;
+	
+	UPROPERTY(EditAnywhere, Category="Input")
+	UInputAction* AttackAction;
 
 public:
 
@@ -84,7 +88,12 @@ public:
 	/** Handles jump pressed inputs from either controls or UI interfaces */
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoJumpEnd();
-
+	
+	UFUNCTION(BlueprintCallable, Category="Input")
+	void Attack();	
+	UFUNCTION(BlueprintCallable, Category="Input")
+	void AltAttack();
+	
 public:
 
 	/** Returns CameraBoom subobject **/
@@ -92,5 +101,15 @@ public:
 
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+	
+	// test
+	UFUNCTION(Server, Reliable)
+	void Server_Attack(const FAttackData& AttackData);
+
+	void HitscanAttack(const FAttackData& AttackData);
+
+	// test
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapon")
+	TObjectPtr<UWeaponData> DefaultWeaponData;
 };
 
