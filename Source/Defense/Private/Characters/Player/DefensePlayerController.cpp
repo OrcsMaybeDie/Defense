@@ -8,8 +8,9 @@
 #include "Blueprint/UserWidget.h"
 #include "Defense.h"
 #include "EnhancedInputComponent.h"
-#include "Characters/Player/DefenseGameMode.h"
+
 #include "Characters/Player/DefensePlayerState.h"
+#include "GameManager/DefenseGameMode.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
 void ADefensePlayerController::BeginPlay()

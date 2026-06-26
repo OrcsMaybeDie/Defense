@@ -6,6 +6,15 @@
 #include "GameFramework/Character.h"
 #include "EnemyBase.generated.h"
 
+UENUM()
+enum EEnemyMode
+{
+	Preview,
+	Combat,
+	Inactive
+};
+
+
 UCLASS()
 class DEFENSE_API AEnemyBase : public ACharacter
 {
@@ -25,4 +34,5 @@ public:
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 };

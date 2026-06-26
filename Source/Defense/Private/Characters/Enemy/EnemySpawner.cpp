@@ -41,9 +41,9 @@ void AEnemySpawner::SpawnTest()
 		return;
 	}
 	
-	float RandomDelay = FMath::RandRange(2.0f, 5.0f);
+	//float RandomDelay = FMath::RandRange(2.0f, 5.0f);
 
-	FPlatformProcess::Sleep(RandomDelay);
+	//FPlatformProcess::Sleep(RandomDelay);
 	
 	if (EnemyFactory)
 	{
