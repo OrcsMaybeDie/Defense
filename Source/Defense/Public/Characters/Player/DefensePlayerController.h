@@ -49,4 +49,12 @@ protected:
 	/** Returns true if the player should use UMG touch controls */
 	bool ShouldUseTouchControls() const;
 
+	// Ready
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<class UInputAction> ReadyAction;
+	
+	void ToggleReady();
+	
+	UFUNCTION(Server, Reliable)
+	void ServerRPC_SetReady(bool bReady);
 };

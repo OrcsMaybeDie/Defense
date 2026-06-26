@@ -7,6 +7,9 @@
 #include "InputMappingContext.h"
 #include "Blueprint/UserWidget.h"
 #include "Defense.h"
+#include "EnhancedInputComponent.h"
+#include "Characters/Player/DefenseGameMode.h"
+#include "Characters/Player/DefensePlayerState.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
 void ADefensePlayerController::BeginPlay()
@@ -58,6 +61,16 @@ void ADefensePlayerController::SetupInputComponent()
 			}
 		}
 	}
+
+	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent))
+	{
+		EnhancedInputComponent->BindAction(
+			ReadyAction,
+			ETriggerEvent::Started,
+			this,
+			&ADefensePlayerController::ToggleReady
+		);
+	}
 }
 
 bool ADefensePlayerController::ShouldUseTouchControls() const
@@ -65,3 +78,27 @@ bool ADefensePlayerController::ShouldUseTouchControls() const
 	// are we on a mobile platform? Should we force touch?
 	return SVirtualJoystick::ShouldDisplayTouchInterface() || bForceTouchControls;
 }
+
+void ADefensePlayerController::ToggleReady()
+{
+	ADefensePlayerState* PS = GetPlayerState<ADefensePlayerState>();
+	if (PS)
+	{
+		ServerRPC_SetReady(!PS->IsReady());
+	}
+}
+
+void ADefensePlayerController::ServerRPC_SetReady_Implementation(bool bReady)
+{
+	ADefensePlayerState* PS = GetPlayerState<ADefensePlayerState>();
+	if (!PS) return;
+
+	PS->SetReady(bReady);
+	
+	if (ADefenseGameMode* GM = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+	{
+		GM->HandlePlayerReadyChanged();
+	}
+}
+
+
