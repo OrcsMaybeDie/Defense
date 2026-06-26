@@ -18,7 +18,12 @@ public:
 	
 	/** Constructor */
 	ADefenseGameMode();
+	
+	void HandlePlayerReadyChanged();
+
+protected:
+	bool AreAllPlayersReady() const;
+	
+	void StartWave();
 };
-
-
 
