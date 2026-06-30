@@ -13,9 +13,14 @@
 #include "Defense.h"
 #include "Characters/Player/StatusComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Traps/BuildGridSurface.h"
+#include "Traps/TrapBase.h"
+#include "Traps/TrapData.h"
 
 ADefenseCharacter::ADefenseCharacter ()
 {
+	PrimaryActorTick.bCanEverTick = true;
+
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 		
@@ -71,12 +76,34 @@ void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ADefenseCharacter::Look);
 		
-		// Attack
-		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ADefenseCharacter::Attack);
+		if (LClickAction)
+		{
+			EnhancedInputComponent->BindAction(LClickAction, ETriggerEvent::Started, this, &ADefenseCharacter::HandleLClick);
+		}
+
+		if (RClickAction)
+		{
+			EnhancedInputComponent->BindAction(RClickAction, ETriggerEvent::Started, this, &ADefenseCharacter::HandleRClick);
+		}
+
+		if (ModeAction)
+		{
+			EnhancedInputComponent->BindAction(ModeAction, ETriggerEvent::Started, this, &ADefenseCharacter::ToggleTrapPlacementMode);
+		}
 	}
 	else
 	{
 		UE_LOG(LogDefense, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
+	}
+}
+
+void ADefenseCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	if (IsLocallyControlled() && bTrapPlacementMode)
+	{
+		UpdateTrapPreview();
 	}
 }
 
@@ -140,6 +167,28 @@ void ADefenseCharacter::DoJumpEnd()
 	StopJumping();
 }
 
+void ADefenseCharacter::HandleLClick()
+{
+	if (bTrapPlacementMode)
+	{
+		PlaceTrap();
+		return;
+	}
+
+	Attack();
+}
+
+void ADefenseCharacter::HandleRClick()
+{
+	if (bTrapPlacementMode)
+	{
+		RecoverTrap();
+		return;
+	}
+
+	AltAttack();
+}
+
 void ADefenseCharacter::Attack()
 {
 	if (!DefaultWeaponData) return;
@@ -150,6 +199,70 @@ void ADefenseCharacter::AltAttack()
 {
 	if (!DefaultWeaponData) return;
 	ServerRPC_RequestAttack(EWeaponAttackType::AltAttack);
+}
+
+void ADefenseCharacter::ToggleTrapPlacementMode()
+{
+	bTrapPlacementMode = !bTrapPlacementMode;
+
+	if (!bTrapPlacementMode)
+	{
+		DestroyTrapPreview();
+	}
+}
+
+void ADefenseCharacter::PlaceTrap()
+{
+	if (!bTrapPlacementMode || !EquippedTrapData) return;
+
+	FHitResult Hit;
+	ABuildGridSurface* BuildSurface = nullptr;
+	if (!TraceTrapPlacement(Hit, BuildSurface) || !BuildSurface)
+	{
+		return;
+	}
+
+	const bool bCanPlace = BuildSurface->CanPlaceTrapAt(Hit.ImpactPoint);
+	if (!bCanPlace)
+	{
+		return;
+	}
+
+	BuildSurface->MarkSlotOccupiedLocally(Hit.ImpactPoint);
+	if (TrapPreviewActor)
+	{
+		TrapPreviewActor->SetActorHiddenInGame(true);
+	}
+
+	ServerRPC_RequestPlaceTrap(BuildSurface, Hit.ImpactPoint);
+}
+
+void ADefenseCharacter::RecoverTrap()
+{
+	if (!bTrapPlacementMode) return;
+
+	FHitResult Hit;
+	ABuildGridSurface* BuildSurface = nullptr;
+	if (!TraceTrapPlacement(Hit, BuildSurface) || !BuildSurface)
+	{
+		return;
+	}
+
+	BuildSurface->MarkSlotFreeLocally(Hit.ImpactPoint);
+	ServerRPC_RequestRecoverTrap(BuildSurface, Hit.ImpactPoint);
+}
+
+float ADefenseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator,
+	AActor* DamageCauser)
+{
+	if (!HasAuthority()) { return 0.f; }
+	if (!StatusComp) { return 0.f; }
+	
+	const float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	
+	if (ActualDamage <= 0) { return 0.f; }
+	
+	return StatusComp->ApplyDamage(ActualDamage, DamageCauser);
 }
 
 void ADefenseCharacter::ServerRPC_RequestAttack_Implementation(EWeaponAttackType AttackType)
@@ -216,6 +329,20 @@ void ADefenseCharacter::ServerRPC_RequestAttack_Implementation(EWeaponAttackType
 	}
 }
 
+void ADefenseCharacter::ServerRPC_RequestPlaceTrap_Implementation(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation)
+{
+	if (!HasAuthority() || !BuildSurface || !EquippedTrapData) return;
+
+	BuildSurface->TryPlaceTrap(EquippedTrapData, HitLocation, GetController());
+}
+
+void ADefenseCharacter::ServerRPC_RequestRecoverTrap_Implementation(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation)
+{
+	if (!HasAuthority() || !BuildSurface) return;
+
+	BuildSurface->TryRemoveTrap(HitLocation);
+}
+
 void ADefenseCharacter::HitscanAttack(const FAttackData& AttackData)
 {
 	AController* OwningController = GetController();
@@ -270,5 +397,113 @@ void ADefenseCharacter::HitscanAttack(const FAttackData& AttackData)
 		   this,
 		   UDamageType::StaticClass()
 	   );
+	}
+}
+
+bool ADefenseCharacter::TraceTrapPlacement(FHitResult& OutHit, ABuildGridSurface*& OutBuildSurface) const
+{
+	OutBuildSurface = nullptr;
+
+	AController* OwningController = GetController();
+	if (!OwningController || !GetWorld()) return false;
+
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	OwningController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+	const FVector Start = ViewLocation;
+	const FVector End = Start + ViewRotation.Vector() * TrapPlacementTraceRange;
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TrapPlacementTrace), false, this);
+	Params.AddIgnoredActor(this);
+	if (TrapPreviewActor)
+	{
+		Params.AddIgnoredActor(TrapPreviewActor);
+	}
+
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(OutHit, Start, End, ECC_Visibility, Params);
+	if (!bHit) return false;
+
+	OutBuildSurface = Cast<ABuildGridSurface>(OutHit.GetActor());
+	return true;
+}
+
+void ADefenseCharacter::UpdateTrapPreview()
+{
+	if (!EquippedTrapData || !EquippedTrapData->TrapClass || !GetWorld())
+	{
+		DestroyTrapPreview();
+		return;
+	}
+
+	if (!TrapPreviewActor)
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = this;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		TrapPreviewActor = GetWorld()->SpawnActor<ATrapBase>(
+			EquippedTrapData->TrapClass,
+			GetActorLocation(),
+			FRotator::ZeroRotator,
+			SpawnParams
+		);
+
+		if (TrapPreviewActor)
+		{
+			TrapPreviewActor->SetReplicates(false);
+			TrapPreviewActor->SetPreviewMode(true);
+			TrapPreviewActor->SetActorHiddenInGame(true);
+		}
+	}
+
+	if (!TrapPreviewActor) return;
+
+	FHitResult Hit;
+	ABuildGridSurface* BuildSurface = nullptr;
+	if (!TraceTrapPlacement(Hit, BuildSurface))
+	{
+		if (!TrapPreviewActor->IsHidden())
+		{
+			TrapPreviewActor->SetActorHiddenInGame(true);
+		}
+		return;
+	}
+
+	if (!BuildSurface)
+	{
+		if (!TrapPreviewActor->IsHidden())
+		{
+			TrapPreviewActor->SetActorHiddenInGame(true);
+		}
+		return;
+	}
+
+	FVector PreviewLocation = Hit.ImpactPoint;
+	const bool bCanPlace = BuildSurface->CanPlaceTrapAt(Hit.ImpactPoint, nullptr, &PreviewLocation);
+	if (!bCanPlace)
+	{
+		if (!TrapPreviewActor->IsHidden())
+		{
+			TrapPreviewActor->SetActorHiddenInGame(true);
+		}
+		return;
+	}
+
+	if (TrapPreviewActor->IsHidden())
+	{
+		TrapPreviewActor->SetActorHiddenInGame(false);
+	}
+
+	TrapPreviewActor->SetActorLocation(PreviewLocation);
+	TrapPreviewActor->SetActorRotation(BuildSurface->GetActorRotation());
+}
+
+void ADefenseCharacter::DestroyTrapPreview()
+{
+	if (TrapPreviewActor)
+	{
+		TrapPreviewActor->Destroy();
+		TrapPreviewActor = nullptr;
 	}
 }

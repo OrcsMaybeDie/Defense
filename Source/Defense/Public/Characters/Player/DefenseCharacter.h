@@ -12,6 +12,9 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
+class ABuildGridSurface;
+class ATrapBase;
+class UTrapData;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -57,7 +60,24 @@ protected:
 	UInputAction* MouseLookAction;
 	
 	UPROPERTY(EditAnywhere, Category="Input")
-	UInputAction* AttackAction;
+	TObjectPtr<UInputAction> LClickAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> RClickAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> ModeAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Trap")
+	TObjectPtr<UTrapData> EquippedTrapData;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Trap|Preview", meta=(ClampMin="1"))
+	float TrapPlacementTraceRange = 5000.f;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ATrapBase> TrapPreviewActor;
+
+	bool bTrapPlacementMode = false;
 
 public:
 
@@ -65,6 +85,8 @@ public:
 	ADefenseCharacter();	
 
 protected:
+
+	virtual void Tick(float DeltaSeconds) override;
 
 	/** Initialize input action bindings */
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
@@ -96,9 +118,24 @@ public:
 	virtual void DoJumpEnd();
 	
 	UFUNCTION(BlueprintCallable, Category="Input")
+	void HandleLClick();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
+	void HandleRClick();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
 	void Attack();	
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void AltAttack();
+
+	UFUNCTION(BlueprintCallable, Category="Trap")
+	void ToggleTrapPlacementMode();
+
+	UFUNCTION(BlueprintCallable, Category="Trap")
+	void PlaceTrap();
+
+	UFUNCTION(BlueprintCallable, Category="Trap")
+	void RecoverTrap();
 	
 public:
 
@@ -111,10 +148,22 @@ public:
 	FORCEINLINE class UStatusComponent* GetStatComp() const { return StatusComp; }
 	
 	// test
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+	
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_RequestAttack(EWeaponAttackType AttackType);
 
+	UFUNCTION(Server, Reliable)
+	void ServerRPC_RequestPlaceTrap(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRPC_RequestRecoverTrap(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation);
+
 	void HitscanAttack(const FAttackData& AttackData);
+
+	bool TraceTrapPlacement(FHitResult& OutHit, ABuildGridSurface*& OutBuildSurface) const;
+	void UpdateTrapPreview();
+	void DestroyTrapPreview();
 
 	float LastAttackServerTime = -BIG_NUMBER;
 	float LastAltAttackServerTime = -BIG_NUMBER;
