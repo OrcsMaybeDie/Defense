@@ -7,6 +7,7 @@
 #include "EnemyBaseTask.generated.h"
 
 class AEnemyBase;
+class AEnemyController;
 
 USTRUCT()
 struct FEnemyBaseTaskInstanceData
@@ -14,7 +15,7 @@ struct FEnemyBaseTaskInstanceData
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category = "Context")
-	TObjectPtr<AEnemyBase> AIEnemy = nullptr;
+	TObjectPtr<AEnemyController> AIController = nullptr;
 };
 
 USTRUCT(meta = (DisplayName = "Enemy Base Task", Category = "Enemy|AI"))
@@ -27,6 +28,7 @@ struct DEFENSE_API FEnemyBaseTask : public FStateTreeTaskCommonBase
 
 protected:
 	AEnemyBase* GetAIEnemy(FStateTreeExecutionContext& Context) const;
+	AEnemyController* GetAIController(FStateTreeExecutionContext& Context) const;
 
 #if WITH_EDITOR
 	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;

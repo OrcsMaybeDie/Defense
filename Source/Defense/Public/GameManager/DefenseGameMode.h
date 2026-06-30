@@ -20,8 +20,10 @@ public:
 	ADefenseGameMode();
 	
 	void HandlePlayerReadyChanged();
+	void DecreaseCurrentEnemyCount();
 	
 	virtual void BeginPlay() override;
+	virtual void StartPlay() override;
 
 protected:
 	bool AreAllPlayersReady() const;
@@ -32,7 +34,10 @@ protected:
 	// 모든 웨이브가 끝나고 입력 멈춤 + 캐릭터 댄스애니메이션 + 결과 화면 UI를 보여줌
 	void GameEnd();
 	
-	// 적들이 스폰됨
+	// Preview 적
+	void StartPreview();
+	
+	// Combat 적들이 스폰됨
 	void StartWave();
 	
 	// 
@@ -46,6 +51,12 @@ protected:
 	
 	UPROPERTY()
 	int32 MaxWave;
+
+	UPROPERTY()
+	int32 CurrentEnemyCount = 0;
+
+	UPROPERTY()
+	bool bIsWaveActive = false;
 
 public:
 	
