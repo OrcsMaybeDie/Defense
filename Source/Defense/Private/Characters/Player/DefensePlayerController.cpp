@@ -25,6 +25,8 @@ void ADefensePlayerController::BeginPlay()
 
 		if (MobileControlsWidget)
 		{
+			MobileControlsWidget->ClearFlags(RF_Transactional);
+
 			// add the controls to the player screen
 			MobileControlsWidget->AddToPlayerScreen(0);
 
@@ -33,8 +35,35 @@ void ADefensePlayerController::BeginPlay()
 			UE_LOG(LogDefense, Error, TEXT("Could not spawn mobile controls widget."));
 
 		}
-
 	}
+	
+	// 서버는 UI 없음
+	if (IsLocalPlayerController() && HUDWidgetClass)
+	{
+		HUDWidget = CreateWidget<UUserWidget>(this, HUDWidgetClass);
+		if (HUDWidget)
+		{
+			HUDWidget->ClearFlags(RF_Transactional);
+			HUDWidget->AddToPlayerScreen();
+		}
+	}
+}
+
+void ADefensePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (HUDWidget)
+	{
+		HUDWidget->RemoveFromParent();
+		HUDWidget = nullptr;
+	}
+
+	if (MobileControlsWidget)
+	{
+		MobileControlsWidget->RemoveFromParent();
+		MobileControlsWidget = nullptr;
+	}
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void ADefensePlayerController::SetupInputComponent()

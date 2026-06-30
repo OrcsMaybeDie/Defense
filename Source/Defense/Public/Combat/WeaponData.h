@@ -14,13 +14,10 @@ enum class EAttackDelivery : uint8
 };
 
 UENUM(BlueprintType)
-enum class EHitShape : uint8
+enum class EWeaponAttackType : uint8
 {
-	None,
-	Point,
-	Sphere,
-	// Cone,
-	// Box
+	Attack,
+	AltAttack
 };
 
 USTRUCT(BlueprintType)
@@ -30,9 +27,6 @@ struct FAttackData
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack")
 	EAttackDelivery Delivery = EAttackDelivery::Hitscan;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack")
-	EHitShape HitShape = EHitShape::Point;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack", meta=(ClampMin="1"))
 	int32 Count = 1;
@@ -47,7 +41,7 @@ struct FAttackData
 	float Cooldown = 0.5f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack", meta=(ClampMin="0"))
-	float EnergyCost = 0.f;
+	float ManaCost = 0.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Shape", meta=(ClampMin="0"))
 	float Radius = 0.f;

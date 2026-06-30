@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Characters/Player/StatusComponent.h"
 #include "Combat/WeaponData.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
@@ -31,6 +32,11 @@ class ADefenseCharacter : public ACharacter
 	/** Follow camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FollowCamera;
+	
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UStatusComponent> StatusComp;
+	
 	
 protected:
 
@@ -102,14 +108,20 @@ public:
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 	
+	FORCEINLINE class UStatusComponent* GetStatComp() const { return StatusComp; }
+	
 	// test
 	UFUNCTION(Server, Reliable)
-	void Server_Attack(const FAttackData& AttackData);
+	void ServerRPC_RequestAttack(EWeaponAttackType AttackType);
 
 	void HitscanAttack(const FAttackData& AttackData);
+
+	float LastAttackServerTime = -BIG_NUMBER;
+	float LastAltAttackServerTime = -BIG_NUMBER;
 
 	// test
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapon")
 	TObjectPtr<UWeaponData> DefaultWeaponData;
+
 };
 

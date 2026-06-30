@@ -11,8 +11,10 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "Defense.h"
+#include "Characters/Player/StatusComponent.h"
+#include "Kismet/GameplayStatics.h"
 
-ADefenseCharacter::ADefenseCharacter()
+ADefenseCharacter::ADefenseCharacter ()
 {
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
@@ -48,6 +50,9 @@ ADefenseCharacter::ADefenseCharacter()
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+	
+	StatusComp = CreateDefaultSubobject<UStatusComponent>(TEXT("StatusComp"));
+	
 }
 
 void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -67,7 +72,7 @@ void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ADefenseCharacter::Look);
 		
 		// Attack
-		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Triggered, this, &ADefenseCharacter::Attack);
+		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ADefenseCharacter::Attack);
 	}
 	else
 	{
@@ -138,23 +143,64 @@ void ADefenseCharacter::DoJumpEnd()
 void ADefenseCharacter::Attack()
 {
 	if (!DefaultWeaponData) return;
-	Server_Attack(DefaultWeaponData->Attack);
+	ServerRPC_RequestAttack(EWeaponAttackType::Attack);
 }
 
 void ADefenseCharacter::AltAttack()
 {
 	if (!DefaultWeaponData) return;
-	Server_Attack(DefaultWeaponData->Attack);
+	ServerRPC_RequestAttack(EWeaponAttackType::AltAttack);
 }
 
-void ADefenseCharacter::Server_Attack_Implementation(const FAttackData& AttackData)
+void ADefenseCharacter::ServerRPC_RequestAttack_Implementation(EWeaponAttackType AttackType)
 {
 	if (!HasAuthority()) return;
+	if (!DefaultWeaponData) return;
+
+	const FAttackData* AttackData = nullptr;
+	float* LastAttackTime = nullptr;
+
+	switch (AttackType)
+	{
+	case EWeaponAttackType::Attack:
+		AttackData = &DefaultWeaponData->Attack;
+		LastAttackTime = &LastAttackServerTime;
+		break;
+
+	case EWeaponAttackType::AltAttack:
+		AttackData = &DefaultWeaponData->AltAttack;
+		LastAttackTime = &LastAltAttackServerTime;
+		break;
+
+	default:
+		ensureMsgf(false, TEXT("Unhandled WeaponAttackType"));
+		return;
+	}
+
+	if (!AttackData || !LastAttackTime) return;
+
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime - *LastAttackTime < AttackData->Cooldown)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("Attack rejected by server cooldown. Remaining: %.2f"),
+			AttackData->Cooldown - (CurrentTime - *LastAttackTime));
+		return;
+	}
+
+	if (StatusComp && !StatusComp->TrySpendMana(AttackData->ManaCost))
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("Attack rejected by server mana. Cost: %.1f / Mana: %.1f"),
+			AttackData->ManaCost,
+			StatusComp->Mana);
+		return;
+	}
+
+	*LastAttackTime = CurrentTime;
 	
-	switch (AttackData.Delivery)
+	switch (AttackData->Delivery)
 	{
 	case EAttackDelivery::Hitscan:
-		HitscanAttack(AttackData);
+		HitscanAttack(*AttackData);
 		break;
 
 	case EAttackDelivery::Projectile:
@@ -209,9 +255,20 @@ void ADefenseCharacter::HitscanAttack(const FAttackData& AttackData)
 
 	if (bHit)
 	{
+		AActor* HitActor = Hit.GetActor();
+
 		UE_LOG(LogTemp, Warning, TEXT("SphereTrace Hit: %s / Damage: %.1f"),
-			*GetNameSafe(Hit.GetActor()),
+			*GetNameSafe(HitActor),
 			AttackData.Damage);
+
+		if (Cast<ADefenseCharacter>(HitActor)) return;
+		
+		UGameplayStatics::ApplyDamage(
+		   HitActor,
+		   AttackData.Damage,
+		   GetController(),
+		   this,
+		   UDamageType::StaticClass()
+	   );
 	}
-	
 }
