@@ -3,10 +3,33 @@
 #include "Characters/Enemy/AI/EnemyDamageTask.h"
 
 #include "StateTreeExecutionContext.h"
+#include "Characters/Enemy/EnemyBase.h"
 
 EStateTreeRunStatus FEnemyDamageTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	return GetAIEnemy(Context) ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Failed;
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	InstanceData.ElapsedTime = 0.f;
+
+	AEnemyBase* AIEnemy = GetAIEnemy(Context);
+	if (!AIEnemy)
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+	
+	AIEnemy->EnemyState = EEnemyState::Damage;
+	AIEnemy->MulticastRPC_DamageMotion();
+	return EStateTreeRunStatus::Running;
+}
+
+EStateTreeRunStatus FEnemyDamageTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
+{
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	InstanceData.ElapsedTime += DeltaTime;
+
+	return InstanceData.ElapsedTime >= InstanceData.DamageDuration
+		? EStateTreeRunStatus::Succeeded
+		: EStateTreeRunStatus::Running;
+	
 }
 
 #if WITH_EDITOR

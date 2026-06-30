@@ -3,12 +3,20 @@
 #include "Characters/Enemy/AI/EnemyBaseTask.h"
 
 #include "Characters/Enemy/EnemyBase.h"
+#include "Characters/Enemy/AI/EnemyController.h"
 #include "StateTreeExecutionContext.h"
 
 AEnemyBase* FEnemyBaseTask::GetAIEnemy(FStateTreeExecutionContext& Context) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	return InstanceData.AIEnemy;
+	AEnemyController* EnemyController = InstanceData.AIController;
+	return EnemyController ? Cast<AEnemyBase>(EnemyController->GetPawn()) : nullptr;
+}
+
+AEnemyController* FEnemyBaseTask::GetAIController(FStateTreeExecutionContext& Context) const
+{
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	return InstanceData.AIController;
 }
 
 #if WITH_EDITOR

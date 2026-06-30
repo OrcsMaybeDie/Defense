@@ -2,11 +2,45 @@
 
 #include "Characters/Enemy/AI/EnemyAttackTask.h"
 
+#include "Characters/Enemy/EnemyBase.h"
 #include "StateTreeExecutionContext.h"
 
 EStateTreeRunStatus FEnemyAttackTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	return GetAIEnemy(Context) ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Failed;
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	InstanceData.ElapsedTime = 0.f;
+
+	AEnemyBase* AIEnemy = GetAIEnemy(Context);
+	if (!AIEnemy)
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+
+	if (AIEnemy->EnemyMode != EEnemyMode::Combat)
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+	
+	AIEnemy->EnemyState = EEnemyState::Attack;
+	AIEnemy->MulticastRPC_AttackMotion();
+	return EStateTreeRunStatus::Running;
+}
+
+// 공격 애니메이션 길이 만큼 딜레이
+EStateTreeRunStatus FEnemyAttackTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
+{
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	const AEnemyBase* AIEnemy = GetAIEnemy(Context);
+	if (!AIEnemy || AIEnemy->EnemyMode != EEnemyMode::Combat)
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+
+	InstanceData.ElapsedTime += DeltaTime;
+
+	return InstanceData.ElapsedTime >= InstanceData.AttackDuration
+		? EStateTreeRunStatus::Succeeded
+		: EStateTreeRunStatus::Running;
 }
 
 #if WITH_EDITOR

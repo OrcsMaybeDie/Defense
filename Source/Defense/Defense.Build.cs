@@ -19,7 +19,8 @@ public class Defense : ModuleRules
 			"GameplayStateTreeModule",
 			"UMG",
 			"Slate",
-			"Niagara"
+			"Niagara",
+			"GameplayTags"
 		});
 
 		PublicIncludePaths.AddRange(new string[] {
