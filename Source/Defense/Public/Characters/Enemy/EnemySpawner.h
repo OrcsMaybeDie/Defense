@@ -78,6 +78,7 @@ public:
 	void StartPreviewSpawn();
 	void StopPreviewSpawn();
 	void StartCombatSpawn();
+	void EndWave();
 	void SetEnemyPool(class UEnemyPoolSubsystem* InEnemyPool);
 	void RemoveActiveEnemy(class AEnemyBase* Enemy);
 

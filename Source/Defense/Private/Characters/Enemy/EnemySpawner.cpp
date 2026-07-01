@@ -50,7 +50,7 @@ void AEnemySpawner::BeginPlay()
 			//EnemyRoutes.Num());
 		
 		BoxComp->SetGenerateOverlapEvents(true);
-		BoxComp->OnComponentBeginOverlap.AddDynamic(
+		BoxComp->OnComponentBeginOverlap.AddUniqueDynamic(
 		this,
 		&AEnemySpawner::OnBoxBeginOverlap
 		);
@@ -207,6 +207,20 @@ void AEnemySpawner::StartCombatSpawn()
 	SpawnCombatBatch();
 }
 
+void AEnemySpawner::EndWave()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
+	ReturnActiveEnemiesToPool();
+	CombatSpawnedCount = 0;
+	CombatSpawnTargetCount = 0;
+	CurrentCombatBatchRemaining = 0;
+}
+
 // 일정시간 간격으로 한마리씩 스폰하되, 배치 크기는 2~4개로 랜덤하게 정함.
 void AEnemySpawner::SpawnCombatBatch()
 {
@@ -301,6 +315,7 @@ void AEnemySpawner::ReturnActiveEnemiesToPool()
 	ActiveEnemies.Empty();
 }
 
+// 맵에 스폰된 적 배열에 추가 / 자신이 스폰된 스포너를 저장.
 void AEnemySpawner::AddActiveEnemy(AEnemyBase* Enemy)
 {
 	if (!Enemy)
@@ -363,15 +378,9 @@ bool AEnemySpawner::ApplySpawnPlanToEnemy(AEnemyBase* Enemy, int32 SpawnPlanInde
 			//*GetNameSafe(Enemy));
 		Enemy->SpawnDefaultController();
 		EnemyController = Cast<AEnemyController>(Enemy->GetController());
-	}
-
-	if (!EnemyController)
-	{
-		//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner ApplySpawnPlan failed | Controller still null | Enemy=%s"),
-			//*GetNameSafe(Enemy));
 		return false;
 	}
-
+	
 	const FEnemySpawnPlan& SpawnPlan = CurrentWaveSpawnPlans[SpawnPlanIndex];
 	EnemyController->EnemyRoute = SpawnPlan.Route;
 
@@ -400,15 +409,9 @@ void AEnemySpawner::AssignRandomRouteToEnemy(AEnemyBase* Enemy) const
 			//*GetNameSafe(Enemy));
 		Enemy->SpawnDefaultController();
 		EnemyController = Cast<AEnemyController>(Enemy->GetController());
-	}
-
-	if (!EnemyController)
-	{
-		//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner AssignRoute failed | Controller still null | Enemy=%s"),
-			//*GetNameSafe(Enemy));
 		return;
 	}
-
+	
 	const int32 RouteIndex = FMath::RandRange(0, EnemyRoutes.Num() - 1);
 	EnemyController->EnemyRoute = EnemyRoutes[RouteIndex];
 	const int32 WaypointCount = EnemyController->EnemyRoute ? EnemyController->EnemyRoute->Waypoints.Num() : 0;
@@ -436,28 +439,15 @@ void AEnemySpawner::RestartEnemyLogic(AEnemyBase* Enemy) const
 			//*GetNameSafe(Enemy));
 		Enemy->SpawnDefaultController();
 		EnemyController = Cast<AEnemyController>(Enemy->GetController());
-	}
-
-	if (!EnemyController)
-	{
-		//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner RestartLogic failed | Controller still null | Enemy=%s"),
-			//*GetNameSafe(Enemy));
 		return;
 	}
-
+	
 	if (!EnemyController->EnemyRoute)
 	{
 		AssignRandomRouteToEnemy(Enemy);
-	}
-
-	if (!EnemyController->EnemyRoute)
-	{
-		//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner RestartLogic failed | EnemyRoute null | Enemy=%s Controller=%s"),
-			//*GetNameSafe(Enemy),
-			//*GetNameSafe(EnemyController));
 		return;
 	}
-
+	
 	if (EnemyController->StateTreeAIComp)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner RestartLogic | Enemy=%s Controller=%s"),
@@ -475,7 +465,7 @@ void AEnemySpawner::RestartEnemyLogic(AEnemyBase* Enemy) const
 void AEnemySpawner::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
 	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!HasAuthority())
+	if (!HasAuthority() || !Cast<ADefenseCharacter>(OtherActor))
 	{
 		return;
 	}
@@ -485,11 +475,6 @@ void AEnemySpawner::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComponent, 
 		//*GetNameSafe(OtherActor),
 		//*GetNameSafe(OtherComp),
 		//EnemyRoutes.Num());
-	
-	if (!Cast<ADefenseCharacter>(OtherActor))
-	{
-		return;
-	}
 	
 	if (OtherActor && OtherActor != this && EnemyPool)
 	{
