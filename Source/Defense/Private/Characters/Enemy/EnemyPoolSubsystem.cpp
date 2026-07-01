@@ -129,6 +129,7 @@ void UEnemyPoolSubsystem::ReturnToPool(TObjectPtr<AEnemyBase> enemy)
 	
 	enemy->SetActorLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
 	enemy->MulticastRPC_StopAllMontages();
+	enemy->bHpUIVisible = false;
 	enemy->EnemyMode = EEnemyMode::Inactive;
 	enemy->OwningSpawner = nullptr;
 	if (AEnemyController* EnemyController = Cast<AEnemyController>(enemy->GetController()))

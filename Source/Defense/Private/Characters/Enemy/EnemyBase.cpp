@@ -438,6 +438,11 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	{
 		return 0.f;
 	}
+
+	if (EnemyState == EEnemyState::Die)
+	{
+		return 0.f;
+	}
 	
 	const float ActualDamage = Super::TakeDamage(
 		DamageAmount,

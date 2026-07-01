@@ -7,6 +7,7 @@
 #include "Engine/StaticMesh.h"
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
+#include "Characters/Player/DefenseCharacter.h"
 #include "Kismet/GameplayStatics.h"
 
 ADefenseArrowProjectile::ADefenseArrowProjectile()
@@ -205,10 +206,11 @@ void ADefenseArrowProjectile::DamageAndDestroy(AActor* OtherActor)
 		});
 
 	if (!HasAuthority()
-		|| !OtherActor
-		|| OtherActor == GetOwner()
-		|| OtherActor == GetInstigator()
-		|| bIgnoredActor)
+			|| !OtherActor
+			|| OtherActor == GetOwner()
+			|| OtherActor == GetInstigator()
+			|| Cast<ADefenseCharacter>(OtherActor)
+			|| bIgnoredActor)
 	{
 		return;
 	}
