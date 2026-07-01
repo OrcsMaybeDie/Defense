@@ -91,6 +91,7 @@ TObjectPtr<AEnemyBase> UEnemyPoolSubsystem::SpawnFromPool(TSubclassOf<AEnemyBase
 	}
 	enemy->SetActorLocationAndRotation(location, rotation);
 	enemy->CurHP = enemy->MaxHP;
+	enemy->EnemyState = EEnemyState::Idle;
 	enemy->Target = nullptr;
 	enemy->EnemyMode = EEnemyMode::Preview;
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPool SpawnFromPool set mode | Enemy=%s EnemyMode=Preview HasAuthority=%d"),
@@ -127,6 +128,7 @@ void UEnemyPoolSubsystem::ReturnToPool(TObjectPtr<AEnemyBase> enemy)
 	FPooledEnemyArray& Pool = EnemyPools.FindOrAdd(enemy->GetClass());
 	
 	enemy->SetActorLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
+	enemy->MulticastRPC_StopAllMontages();
 	enemy->EnemyMode = EEnemyMode::Inactive;
 	enemy->OwningSpawner = nullptr;
 	if (AEnemyController* EnemyController = Cast<AEnemyController>(enemy->GetController()))

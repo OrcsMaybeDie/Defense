@@ -102,6 +102,9 @@ public:
 	
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastRPC_DieMotion();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastRPC_StopAllMontages();
 	
 	// UI 업데이트
 	UFUNCTION()

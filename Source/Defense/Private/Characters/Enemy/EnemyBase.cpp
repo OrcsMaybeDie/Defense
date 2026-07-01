@@ -291,6 +291,10 @@ void AEnemyBase::SetInactive()
 			EnemyController->StateTreeAIComp->StopLogic(TEXT("EnemyMode : Inactive"));
 		}
 	}
+	else
+	{
+		
+	}
 	
 	// 틱 처리
 	SetActorTickEnabled(false);
@@ -391,6 +395,20 @@ void AEnemyBase::MulticastRPC_DieMotion_Implementation()
 		return;
 	}
 	AnimInst->PlayDieMotion();
+}
+
+void AEnemyBase::MulticastRPC_StopAllMontages_Implementation()
+{
+	// 데디 서버에서는 리턴
+	if (IsRunningDedicatedServer())
+	{
+		return;
+	}
+
+	if (AnimInst)
+	{
+		AnimInst->Montage_Stop(0.f);
+	}
 }
 
 // 체력 UI 업데이트
