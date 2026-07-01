@@ -48,7 +48,9 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
-
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="Components")
+	TObjectPtr<class UWidgetComponent> HpComp;
 
 	// State Tree 상태
 	UPROPERTY(Replicated)
@@ -72,6 +74,7 @@ public:
 	UPROPERTY()
 	TObjectPtr<class UMeshComponent> EnemyMesh;
 	
+	// Quinn 메시로 테스트 중이라 머티리얼 개수 동일하게 함. 추후 수정 예정
 	UPROPERTY(editAnywhere, BlueprintReadWrite)
 	TObjectPtr<class UMaterialInterface> PreviewMaterial0;
 	UPROPERTY(editAnywhere, BlueprintReadWrite)
@@ -104,6 +107,12 @@ public:
 	UFUNCTION()
 	void OnRep_UpdateUI();
 	
+	UPROPERTY()
+	TObjectPtr<class UEnemyHPUI> HPUI;
+	
+	// 처음엔 HPBar가 안 보이고 맞으면 보이게 함
+	bool bHpUIVisible = false;
+	
 	// 플레이어가 한 공격 받기
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
@@ -115,12 +124,9 @@ public:
 	UPROPERTY()
 	TObjectPtr<class AEnemyController> EnemyController;
 	
-	// 시야로 적 감지 (일정 거리 이내) -> TODO : 시야도 1~2초 정도 타겟이 지속되게 하기
+	// 시야로 적 감지 (일정 거리 이내)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<class UAISenseConfig_Sight> SightConfig;
-	
-	// TODO : 공격 받으면 감지 추가하기 
-	// -> 시야보다 공격한 타겟을 우선순위로 두고 3~5초 후 잊게 함. 
 	
 	UFUNCTION()
 	void OnTargetPerceptionUpdated(AActor* Actor, struct FAIStimulus Stimulus);

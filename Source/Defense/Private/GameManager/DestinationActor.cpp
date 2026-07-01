@@ -30,12 +30,12 @@ ADestinationActor::ADestinationActor()
 void ADestinationActor::BeginPlay()
 {
 	Super::BeginPlay();
-	EnemySensor->OnComponentBeginOverlap.AddDynamic(
+	EnemySensor->OnComponentBeginOverlap.AddUniqueDynamic(
 		this,
 		&ADestinationActor::OnEnemySensorBeginOverlap
 		);
 	
-	PlayerSensor->OnComponentBeginOverlap.AddDynamic(
+	PlayerSensor->OnComponentBeginOverlap.AddUniqueDynamic(
 		this,
 		&ADestinationActor::OnPlayerSensorBeginOverlap
 		);
@@ -64,15 +64,18 @@ void ADestinationActor::OnEnemySensorBeginOverlap(UPrimitiveComponent* Overlappe
 		{
 			Spawner->RemoveActiveEnemy(enemy);
 		}
-		EnemyPool->ReturnToPool(enemy);
+		if (EnemyPool)
+		{
+			EnemyPool->ReturnToPool(enemy);
+		}
 		if (bWasCombatEnemy)
 		{
 			if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
 			{
 				GameMode->DecreaseCurrentEnemyCount();
+				GameMode->ApplyDestinationDamage(1);
 			}
 		}
-		DestScore -= 1;
 	}
 }
 

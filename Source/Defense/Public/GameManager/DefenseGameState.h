@@ -18,6 +18,8 @@ enum class EGamePhase : uint8
 	WaveEnded
 };
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDestScoreChanged, int32, NewDestScore);
+
 UCLASS()
 class DEFENSE_API ADefenseGameState : public AGameStateBase
 {
@@ -36,5 +38,17 @@ public:
 	
 	UPROPERTY(Replicated)
 	int32 AlivePlayerCount;
+
+	UPROPERTY(ReplicatedUsing=OnRep_DestScore, BlueprintReadOnly)
+	int32 DestScore = 20;
+
+	// DestinationUI에서 이 델리게이트에 UIupdate 함수 등록함.
+	UPROPERTY(BlueprintAssignable)
+	FOnDestScoreChanged OnDestScoreChanged;
+
+	UFUNCTION()
+	void OnRep_DestScore();
+
+	void SetDestScore(int32 NewDestScore);
 	
 };

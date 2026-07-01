@@ -6,6 +6,7 @@
 #include "Characters/Enemy/EnemySpawner.h"
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
 #include "Characters/Player/DefensePlayerState.h"
+#include "GameManager/DefenseGameState.h"
 #include "GameFramework/GameStateBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -13,6 +14,7 @@
 ADefenseGameMode::ADefenseGameMode()
 {
 	PlayerStateClass = ADefensePlayerState::StaticClass();
+	GameStateClass = ADefenseGameState::StaticClass();
 }
 
 void ADefenseGameMode::BeginPlay()
@@ -26,6 +28,12 @@ void ADefenseGameMode::BeginPlay()
 void ADefenseGameMode::StartPlay()
 {
 	Super::StartPlay();
+
+	DefenseGameState = GetGameState<ADefenseGameState>();
+	if (DefenseGameState)
+	{
+		DefenseGameState->SetDestScore(InitialDestScore);
+	}
 
 	UEnemyPoolSubsystem* EnemyPool = GetWorld()->GetSubsystem<UEnemyPoolSubsystem>();
 	if (!EnemyPool)
@@ -144,6 +152,14 @@ void ADefenseGameMode::EndWave()
 {
 	bIsWaveActive = false;
 
+	for (AEnemySpawner* Spawner : EnemySpawners)
+	{
+		if (Spawner)
+		{
+			Spawner->EndWave();
+		}
+	}
+
 	const FString Message = TEXT("Wave End");
 	//UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
 	UKismetSystemLibrary::PrintString(this, Message, true, true, FLinearColor::Green, 3.0f);
@@ -157,6 +173,27 @@ void ADefenseGameMode::DecreaseCurrentEnemyCount()
 	//UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode EnemyCount decreased | CurrentEnemyCount=%d"), CurrentEnemyCount);
 
 	if (CurrentEnemyCount == 0)
+	{
+		EndWave();
+	}
+}
+
+void ADefenseGameMode::ApplyDestinationDamage(int32 DamageAmount)
+{
+	if (!DefenseGameState)
+	{
+		DefenseGameState = GetGameState<ADefenseGameState>();
+	}
+
+	if (!DefenseGameState)
+	{
+		return;
+	}
+
+	const int32 NewDestScore = FMath::Max(0, DefenseGameState->DestScore - DamageAmount);
+	DefenseGameState->SetDestScore(NewDestScore);
+
+	if (NewDestScore <= 0)
 	{
 		EndWave();
 	}
