@@ -18,6 +18,7 @@
 #include "Combat/DefenseArrowProjectile.h"
 #include "DrawDebugHelpers.h"
 #include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
 #include "Traps/BuildGridSurface.h"
 #include "Traps/TrapBase.h"
 #include "Traps/TrapData.h"
@@ -263,17 +264,53 @@ float ADefenseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent cons
 {
 	if (!HasAuthority()) { return 0.f; }
 	if (!StatusComp) { return 0.f; }
+	if (bIsDead) { return 0.f; }
 	
 	const float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 	
 	if (ActualDamage <= 0) { return 0.f; }
 	
-	return StatusComp->ApplyDamage(ActualDamage, DamageCauser);
+	const float AppliedDamage = StatusComp->ApplyDamage(ActualDamage, DamageCauser);
+	if (AppliedDamage > 0.f && StatusComp->Health <= 0.f)
+	{
+		bIsDead = true;
+		MulticastRPC_PlayDeath();
+	}
+
+	return AppliedDamage;
+}
+
+void ADefenseCharacter::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(ADefenseCharacter, bIsDead);
+}
+
+void ADefenseCharacter::MulticastRPC_PlayDeath_Implementation()
+{
+	bIsDead = true;
+
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->DisableMovement();
+	}
+
+	if (!DeathMontage || !GetMesh())
+	{
+		return;
+	}
+
+	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+	{
+		AnimInstance->Montage_Play(DeathMontage);
+	}
 }
 
 void ADefenseCharacter::ServerRPC_RequestAttack_Implementation(EWeaponAttackType AttackType)
 {
 	if (!HasAuthority()) return;
+	if (bIsDead) return;
 	if (!DefaultWeaponData) return;
 
 	const FAttackData* AttackData = nullptr;

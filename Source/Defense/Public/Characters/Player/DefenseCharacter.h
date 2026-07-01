@@ -12,6 +12,7 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
+class UAnimMontage;
 class ABuildGridSurface;
 class ADefenseArrowProjectile;
 class ATrapBase;
@@ -150,6 +151,16 @@ public:
 	
 	// test
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Death")
+	TObjectPtr<UAnimMontage> DeathMontage;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Death")
+	bool bIsDead = false;
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRPC_PlayDeath();
 	
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_RequestAttack(EWeaponAttackType AttackType);

@@ -4,6 +4,7 @@
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
+#include "Engine/StaticMesh.h"
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
@@ -32,6 +33,13 @@ ADefenseArrowProjectile::ADefenseArrowProjectile()
 	MeshComponent->SetIsReplicated(false);
 	MeshComponent->SetHiddenInGame(false);
 	MeshComponent->SetVisibility(true, true);
+	if (!MeshComponent->GetStaticMesh())
+	{
+		if (UStaticMesh* DefaultArrowMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/_Defense/Combat/Weapons/Arrow/SM_Arrow.SM_Arrow")))
+		{
+			MeshComponent->SetStaticMesh(DefaultArrowMesh);
+		}
+	}
 
 	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
 	ProjectileMovement->UpdatedComponent = CollisionComponent;
@@ -47,6 +55,13 @@ void ADefenseArrowProjectile::BeginPlay()
 	Super::BeginPlay();
 	LastDebugLocation = GetActorLocation();
 	bDrawDebugTrail = bDrawDebugTrailByDefault;
+	if (MeshComponent && !MeshComponent->GetStaticMesh())
+	{
+		if (UStaticMesh* DefaultArrowMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/_Defense/Combat/Weapons/Arrow/SM_Arrow.SM_Arrow")))
+		{
+			MeshComponent->SetStaticMesh(DefaultArrowMesh);
+		}
+	}
 }
 
 void ADefenseArrowProjectile::Tick(float DeltaSeconds)
