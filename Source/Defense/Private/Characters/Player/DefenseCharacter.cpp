@@ -4,6 +4,8 @@
 #include "Engine/LocalPlayer.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/MeshComponent.h"
+#include "Components/PrimitiveComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/Controller.h"
@@ -11,7 +13,10 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "Defense.h"
+#include "Animation/AnimInstance.h"
 #include "Characters/Player/StatusComponent.h"
+#include "Combat/DefenseArrowProjectile.h"
+#include "DrawDebugHelpers.h"
 #include "Kismet/GameplayStatics.h"
 #include "Traps/BuildGridSurface.h"
 #include "Traps/TrapBase.h"
@@ -26,11 +31,11 @@ ADefenseCharacter::ADefenseCharacter ()
 		
 	// Don't rotate when the controller rotates. Let that just affect the camera.
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = false;
+	bUseControllerRotationYaw = true;
 	bUseControllerRotationRoll = false;
 
 	// Configure character movement
-	GetCharacterMovement()->bOrientRotationToMovement = true;
+	GetCharacterMovement()->bOrientRotationToMovement = false;
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
 
 	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
@@ -45,7 +50,8 @@ ADefenseCharacter::ADefenseCharacter ()
 	// Create a camera boom (pulls in towards the player if there is a collision)
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 400.0f;
+	CameraBoom->TargetArmLength = 450.0f;
+	CameraBoom->SocketOffset = FVector(0.f, 85.f, 55.f);
 	CameraBoom->bUsePawnControlRotation = true;
 
 	// Create a follow camera
@@ -309,7 +315,14 @@ void ADefenseCharacter::ServerRPC_RequestAttack_Implementation(EWeaponAttackType
 	}
 
 	*LastAttackTime = CurrentTime;
+	MulticastRPC_PlayAttack(AttackType);
 	
+	if (AttackData->ProjectileClass || AttackData->Delivery == EAttackDelivery::Projectile)
+	{
+		ProjectileAttack(*AttackData);
+		return;
+	}
+
 	switch (AttackData->Delivery)
 	{
 	case EAttackDelivery::Hitscan:
@@ -317,6 +330,7 @@ void ADefenseCharacter::ServerRPC_RequestAttack_Implementation(EWeaponAttackType
 		break;
 
 	case EAttackDelivery::Projectile:
+		ProjectileAttack(*AttackData);
 		break;
 
 	case EAttackDelivery::None:
@@ -327,6 +341,114 @@ void ADefenseCharacter::ServerRPC_RequestAttack_Implementation(EWeaponAttackType
 		ensureMsgf(false, TEXT("Unhandled AttackDelivery"));
 		break;
 	}
+}
+
+void ADefenseCharacter::MulticastRPC_PlayAttack_Implementation(EWeaponAttackType AttackType)
+{
+	const FAttackData* AttackData = nullptr;
+
+	switch (AttackType)
+	{
+	case EWeaponAttackType::Attack:
+		AttackData = DefaultWeaponData ? &DefaultWeaponData->Attack : nullptr;
+		break;
+
+	case EWeaponAttackType::AltAttack:
+		AttackData = DefaultWeaponData ? &DefaultWeaponData->AltAttack : nullptr;
+		break;
+
+	default:
+		break;
+	}
+
+	if (AttackData && AttackData->Animation && GetMesh())
+	{
+		if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+		{
+			AnimInstance->PlaySlotAnimationAsDynamicMontage(
+				AttackData->Animation,
+				AttackData->AnimationSlotName
+			);
+		}
+	}
+
+	OnAttackAccepted(AttackType);
+}
+
+void ADefenseCharacter::MulticastRPC_SpawnArrowVisual_Implementation(TSubclassOf<ADefenseArrowProjectile> ProjectileClass, FVector SpawnLocation, FRotator SpawnRotation, FVector LaunchVelocity)
+{
+	if (GetNetMode() == NM_DedicatedServer || !GetWorld() || !ProjectileClass || LaunchVelocity.IsNearlyZero())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.Instigator = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	ADefenseArrowProjectile* VisualProjectile = GetWorld()->SpawnActor<ADefenseArrowProjectile>(
+		ProjectileClass,
+		SpawnLocation,
+		SpawnRotation,
+		SpawnParams
+	);
+
+	if (!VisualProjectile)
+	{
+		return;
+	}
+
+	VisualProjectile->SetCosmeticOnly(true);
+	VisualProjectile->SetDebugTrailEnabled(false);
+	VisualProjectile->IgnoreActor(this);
+
+	TArray<AActor*> AttachedActorsToIgnore;
+	GetAttachedActors(AttachedActorsToIgnore);
+	for (AActor* AttachedActor : AttachedActorsToIgnore)
+	{
+		VisualProjectile->IgnoreActor(AttachedActor);
+	}
+
+	VisualProjectile->Launch(LaunchVelocity, 0.f);
+}
+
+void ADefenseCharacter::MulticastRPC_SpawnArrowTrail_Implementation(FVector SpawnLocation, FRotator SpawnRotation, FVector LaunchVelocity)
+{
+	if (GetNetMode() == NM_DedicatedServer || !GetWorld() || LaunchVelocity.IsNearlyZero())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.Instigator = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	ADefenseArrowProjectile* TrailProjectile = GetWorld()->SpawnActor<ADefenseArrowProjectile>(
+		ADefenseArrowProjectile::StaticClass(),
+		SpawnLocation,
+		SpawnRotation,
+		SpawnParams
+	);
+
+	if (!TrailProjectile)
+	{
+		return;
+	}
+
+	TrailProjectile->SetCosmeticOnly(true);
+	TrailProjectile->SetDebugTrailEnabled(true);
+	TrailProjectile->IgnoreActor(this);
+
+	TArray<AActor*> AttachedActorsToIgnore;
+	GetAttachedActors(AttachedActorsToIgnore);
+	for (AActor* AttachedActor : AttachedActorsToIgnore)
+	{
+		TrailProjectile->IgnoreActor(AttachedActor);
+	}
+
+	TrailProjectile->Launch(LaunchVelocity, 0.f);
 }
 
 void ADefenseCharacter::ServerRPC_RequestPlaceTrap_Implementation(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation)
@@ -398,6 +520,167 @@ void ADefenseCharacter::HitscanAttack(const FAttackData& AttackData)
 		   UDamageType::StaticClass()
 	   );
 	}
+}
+
+void ADefenseCharacter::ProjectileAttack(const FAttackData& AttackData)
+{
+	if (!GetWorld())
+	{
+		UE_LOG(LogDefense, Warning, TEXT("ProjectileAttack failed: World is missing."));
+		return;
+	}
+
+	AController* OwningController = GetController();
+	if (!OwningController)
+	{
+		UE_LOG(LogDefense, Warning, TEXT("ProjectileAttack failed: Controller is missing."));
+		return;
+	}
+
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	OwningController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+	const FVector ViewForward = ViewRotation.Vector();
+	FVector SpawnLocation = ViewLocation;
+	FName UsedSocketName = NAME_None;
+
+	FName SpawnSocketName = AttackData.ProjectileSpawnSocketName;
+	if (SpawnSocketName.IsNone())
+	{
+		SpawnSocketName = TEXT("Arrow");
+	}
+
+	auto TryUseSocket = [&SpawnLocation, &UsedSocketName](const UMeshComponent* MeshComponent, FName SocketName)
+	{
+		if (MeshComponent && MeshComponent->DoesSocketExist(SocketName))
+		{
+			SpawnLocation = MeshComponent->GetSocketLocation(SocketName);
+			UsedSocketName = SocketName;
+			return true;
+		}
+
+		return false;
+	};
+
+	if (GetMesh())
+	{
+		TryUseSocket(GetMesh(), SpawnSocketName)
+			|| TryUseSocket(GetMesh(), TEXT("arrow"))
+			|| TryUseSocket(GetMesh(), TEXT("bow"));
+	}
+
+	if (UsedSocketName.IsNone())
+	{
+		TArray<AActor*> AttachedActors;
+		GetAttachedActors(AttachedActors);
+
+		for (AActor* AttachedActor : AttachedActors)
+		{
+			if (!AttachedActor) continue;
+
+			TArray<UMeshComponent*> AttachedMeshComponents;
+			AttachedActor->GetComponents<UMeshComponent>(AttachedMeshComponents);
+
+			for (UMeshComponent* AttachedMeshComponent : AttachedMeshComponents)
+			{
+				if (TryUseSocket(AttachedMeshComponent, SpawnSocketName)
+					|| TryUseSocket(AttachedMeshComponent, TEXT("arrow"))
+					|| TryUseSocket(AttachedMeshComponent, TEXT("Arrow")))
+				{
+					break;
+				}
+			}
+
+			if (!UsedSocketName.IsNone())
+			{
+				break;
+			}
+		}
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.Instigator = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	FVector AimTarget = ViewLocation + ViewForward * AttackData.Range;
+	FCollisionQueryParams AimParams(SCENE_QUERY_STAT(DefenseProjectileAim), false, this);
+	AimParams.AddIgnoredActor(this);
+
+	TArray<AActor*> AttachedActorsToIgnore;
+	GetAttachedActors(AttachedActorsToIgnore);
+	for (AActor* AttachedActor : AttachedActorsToIgnore)
+	{
+		if (AttachedActor)
+		{
+			AimParams.AddIgnoredActor(AttachedActor);
+		}
+	}
+
+	FHitResult AimHit;
+	if (GetWorld()->LineTraceSingleByChannel(AimHit, ViewLocation, AimTarget, ECC_Visibility, AimParams))
+	{
+		AimTarget = AimHit.ImpactPoint;
+	}
+
+	FVector LaunchDirection = AimTarget - SpawnLocation;
+	if (!LaunchDirection.Normalize())
+	{
+		LaunchDirection = ViewForward;
+	}
+
+	const FRotator LaunchRotation = LaunchDirection.Rotation();
+	const FVector LaunchVelocity = LaunchDirection * AttackData.ProjectileSpeed;
+	TSubclassOf<ADefenseArrowProjectile> ProjectileClass = AttackData.ProjectileClass;
+	if (!ProjectileClass)
+	{
+		ProjectileClass = ADefenseArrowProjectile::StaticClass();
+	}
+
+	SetActorRotation(FRotator(0.f, LaunchRotation.Yaw, 0.f));
+
+	ADefenseArrowProjectile* Projectile = GetWorld()->SpawnActor<ADefenseArrowProjectile>(
+		ProjectileClass,
+		SpawnLocation,
+		LaunchRotation,
+		SpawnParams
+	);
+
+	if (!Projectile)
+	{
+		UE_LOG(LogDefense, Warning, TEXT("ProjectileAttack failed: native arrow SpawnActor returned null."));
+		return;
+	}
+
+	Projectile->SetActorHiddenInGame(true);
+	Projectile->SetDebugTrailEnabled(false);
+	Projectile->IgnoreActor(this);
+
+	for (AActor* AttachedActor : AttachedActorsToIgnore)
+	{
+		Projectile->IgnoreActor(AttachedActor);
+	}
+
+	TArray<UPrimitiveComponent*> ProjectilePrimitiveComponents;
+	Projectile->GetComponents<UPrimitiveComponent>(ProjectilePrimitiveComponents);
+	for (UPrimitiveComponent* PrimitiveComponent : ProjectilePrimitiveComponents)
+	{
+		if (PrimitiveComponent)
+		{
+			PrimitiveComponent->IgnoreActorWhenMoving(this, true);
+		}
+	}
+
+	GetCapsuleComponent()->IgnoreActorWhenMoving(Projectile, true);
+	if (GetMesh())
+	{
+		GetMesh()->IgnoreActorWhenMoving(Projectile, true);
+	}
+
+	Projectile->Launch(LaunchVelocity, AttackData.Damage);
+	MulticastRPC_SpawnArrowVisual(ProjectileClass, SpawnLocation, LaunchRotation, LaunchVelocity);
+	MulticastRPC_SpawnArrowTrail(SpawnLocation, LaunchRotation, LaunchVelocity);
 }
 
 bool ADefenseCharacter::TraceTrapPlacement(FHitResult& OutHit, ABuildGridSurface*& OutBuildSurface) const

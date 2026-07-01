@@ -5,6 +5,9 @@
 #include "Engine/DataAsset.h"
 #include "WeaponData.generated.h"
 
+class UAnimSequenceBase;
+class ADefenseArrowProjectile;
+
 UENUM(BlueprintType)
 enum class EAttackDelivery : uint8
 {
@@ -47,7 +50,19 @@ struct FAttackData
 	float Radius = 0.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Projectile")
-	TSubclassOf<AActor> ProjectileClass;
+	TSubclassOf<ADefenseArrowProjectile> ProjectileClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Projectile", meta=(ClampMin="0"))
+	float ProjectileSpeed = 3000.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Projectile")
+	FName ProjectileSpawnSocketName = TEXT("arrow");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Animation")
+	TObjectPtr<UAnimSequenceBase> Animation;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Animation")
+	FName AnimationSlotName = TEXT("DefaultSlot");
 };
 
 

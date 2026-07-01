@@ -13,6 +13,7 @@ class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
 class ABuildGridSurface;
+class ADefenseArrowProjectile;
 class ATrapBase;
 class UTrapData;
 struct FInputActionValue;
@@ -153,6 +154,18 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_RequestAttack(EWeaponAttackType AttackType);
 
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRPC_PlayAttack(EWeaponAttackType AttackType);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRPC_SpawnArrowVisual(TSubclassOf<ADefenseArrowProjectile> ProjectileClass, FVector SpawnLocation, FRotator SpawnRotation, FVector LaunchVelocity);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRPC_SpawnArrowTrail(FVector SpawnLocation, FRotator SpawnRotation, FVector LaunchVelocity);
+
+	UFUNCTION(BlueprintImplementableEvent, Category="Weapon")
+	void OnAttackAccepted(EWeaponAttackType AttackType);
+
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_RequestPlaceTrap(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation);
 
@@ -160,6 +173,8 @@ public:
 	void ServerRPC_RequestRecoverTrap(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation);
 
 	void HitscanAttack(const FAttackData& AttackData);
+
+	void ProjectileAttack(const FAttackData& AttackData);
 
 	bool TraceTrapPlacement(FHitResult& OutHit, ABuildGridSurface*& OutBuildSurface) const;
 	void UpdateTrapPreview();
