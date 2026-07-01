@@ -99,13 +99,6 @@ float UStatusComponent::ApplyDamage(float Amount, AActor* DamageCauser)
 	{
 		// Server-side broadcast keeps listen-server tests and any server-side listeners on the same change path as clients.
 		OnHealthChanged.Broadcast(Health, MaxHealth);
-
-		UE_LOG(LogTemp, Warning, TEXT("%s took %.1f damage from %s. HP: %.1f / %.1f"),
-			*GetNameSafe(GetOwner()),
-			ActualDamage,
-			*GetNameSafe(DamageCauser),
-			Health,
-			MaxHealth);
 	}
 
 	return ActualDamage;
