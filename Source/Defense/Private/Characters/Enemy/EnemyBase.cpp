@@ -9,12 +9,16 @@
 #include "Characters/Player/DefenseCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/OverlapResult.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Components/StateTreeAIComponent.h"
+#include "Components/WidgetComponent.h"
+#include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 #include "Perception/AIPerceptionComponent.h"
 #include "Perception/AISenseConfig_Sight.h"
 #include "Perception/AISense_Sight.h"
+#include "UI/EnemyHPUI.h"
 
 namespace
 {
@@ -55,17 +59,31 @@ AEnemyBase::AEnemyBase()
 
 	AIComp->ConfigureSense(*SightConfig);
 	AIComp->SetDominantSense(SightConfig->GetSenseImplementation());
+	HpComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("HpComp"));
+	HpComp->SetupAttachment(RootComponent);
 }
 
 // Called when the game starts or when spawned
 void AEnemyBase::BeginPlay()
 {
 	Super::BeginPlay();
+	HpComp->SetVisibility(false);
 	EnemyController = Cast<AEnemyController>(GetController());
 	AnimInst = Cast<UEnemyAnim>(GetMesh()->GetAnimInstance());
 	EnemyMesh = GetMesh();
 	CurHP = MaxHP;
 	
+	// 서버에서만 AIPerception이 동작하도록 / 클라이언트에서는 비활성화하고 HPUI 정의
+	if (!HasAuthority())
+	{
+		if (AIComp)
+		{
+			AIComp->Deactivate();
+			AIComp->SetComponentTickEnabled(false);
+			HPUI = Cast<UEnemyHPUI>(HpComp->GetWidget());
+		}
+		return;
+	}
 	if (AIComp)
 	{
 		AIComp->OnTargetPerceptionUpdated.AddDynamic(
@@ -79,6 +97,23 @@ void AEnemyBase::BeginPlay()
 void AEnemyBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// 서버에서는 UI가 클라이언트 방향으로 회전하는 것 제외
+	if (GetNetMode() == NM_DedicatedServer || !HpComp || !bHpUIVisible)
+	{
+		return;
+	}
+
+	const APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
+	if (!PlayerController || !PlayerController->IsLocalController() || !PlayerController->PlayerCameraManager)
+	{
+		return;
+	}
+
+	const FVector CamLoc = PlayerController->PlayerCameraManager->GetCameraLocation();
+	const FVector Dir = CamLoc - HpComp->GetComponentLocation();
+
+	HpComp->SetWorldRotation(Dir.ToOrientationRotator());
 }
 
 // Called to bind functionality to input
@@ -273,6 +308,11 @@ void AEnemyBase::SetInactive()
 // AIPerception으로 감지 후 업데이트
 void AEnemyBase::OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+	
 	if (EnemyMode != EEnemyMode::Combat)
 	{
 		return;
@@ -356,7 +396,17 @@ void AEnemyBase::MulticastRPC_DieMotion_Implementation()
 // 체력 UI 업데이트
 void AEnemyBase::OnRep_UpdateUI()
 {
+	if (IsRunningDedicatedServer() || nullptr == HPUI)
+	{
+		return;
+	}
+	if (!bHpUIVisible)
+	{
+		bHpUIVisible = true;
+		HpComp->SetVisibility(true);
+	}
 	
+	HPUI->UpdateHPBar(CurHP, MaxHP);
 }
 
 float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser)
@@ -385,7 +435,7 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 
 	CurHP -= ActualDamage;
 
-	ADefenseCharacter* AttackingCharacter = Cast<ADefenseCharacter>(DamageCauser);
+	/*ADefenseCharacter* AttackingCharacter = Cast<ADefenseCharacter>(DamageCauser);
 	if (!AttackingCharacter && EventInstigator)
 	{
 		AttackingCharacter = Cast<ADefenseCharacter>(EventInstigator->GetPawn());
@@ -394,7 +444,7 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	if (AttackingCharacter)
 	{
 		Target = AttackingCharacter;
-	}
+	}*/
 	
 	if (CurHP <= 0.0f)
 	{

@@ -27,6 +27,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<class USplineComponent> SplineComp;
 	
+	// SampleInterval 간격으로 Waypoint를 저장
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float SampleInterval = 300.f;
 	

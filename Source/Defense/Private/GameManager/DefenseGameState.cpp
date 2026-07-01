@@ -11,4 +11,16 @@ void ADefenseGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(ADefenseGameState, GamePhase);
 	DOREPLIFETIME(ADefenseGameState, CurrentWave);
 	DOREPLIFETIME(ADefenseGameState, AlivePlayerCount);
+	DOREPLIFETIME(ADefenseGameState, DestScore);
+}
+
+void ADefenseGameState::OnRep_DestScore()
+{
+	OnDestScoreChanged.Broadcast(DestScore);
+}
+
+void ADefenseGameState::SetDestScore(int32 NewDestScore)
+{
+	DestScore = NewDestScore;
+	OnRep_DestScore();
 }

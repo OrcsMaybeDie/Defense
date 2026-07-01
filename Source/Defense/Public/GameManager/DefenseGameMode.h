@@ -21,6 +21,7 @@ public:
 	
 	void HandlePlayerReadyChanged();
 	void DecreaseCurrentEnemyCount();
+	void ApplyDestinationDamage(int32 DamageAmount);
 	
 	virtual void BeginPlay() override;
 	virtual void StartPlay() override;
@@ -60,6 +61,9 @@ protected:
 
 public:
 	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 InitialDestScore = 20;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TArray<class AEnemySpawner*> EnemySpawners;
 	

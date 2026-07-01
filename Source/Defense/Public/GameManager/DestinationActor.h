@@ -24,9 +24,6 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float DestScore = 20;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<class UStaticMeshComponent> MeshComp;
 	
 	// 적이 닿으면 DestScore 감소, Enemy 이동 및 비활성화
