@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Characters/Player/StatusComponent.h"
-#include "Combat/WeaponData.h"
+#include "Characters/Player/WeaponComponent.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
 #include "DefenseCharacter.generated.h"
@@ -12,14 +12,12 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
-class UAnimMontage;
-class ABuildGridSurface;
-class ADefenseArrowProjectile;
-class ATrapBase;
-class UTrapData;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
+
+class ULoadoutComponent;
+class UBuildComponent;
 
 /**
  *  A simple player-controllable third person character
@@ -38,11 +36,18 @@ class ADefenseCharacter : public ACharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FollowCamera;
 	
-	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UStatusComponent> StatusComp;
 	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UWeaponComponent> WeaponComp;
 	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<ULoadoutComponent> LoadoutComp;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UBuildComponent> BuildComp;
+
 protected:
 
 	/** Jump Input Action */
@@ -70,16 +75,8 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputAction> ModeAction;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Trap")
-	TObjectPtr<UTrapData> EquippedTrapData;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Trap|Preview", meta=(ClampMin="1"))
-	float TrapPlacementTraceRange = 5000.f;
-
-	UPROPERTY(Transient)
-	TObjectPtr<ATrapBase> TrapPreviewActor;
-
-	bool bTrapPlacementMode = false;
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> SellAction;
 
 public:
 
@@ -130,14 +127,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void AltAttack();
 
-	UFUNCTION(BlueprintCallable, Category="Trap")
-	void ToggleTrapPlacementMode();
+	UFUNCTION(BlueprintCallable, Category="Build")
+	void ToggleBuildMode();
 
-	UFUNCTION(BlueprintCallable, Category="Trap")
-	void PlaceTrap();
+	UFUNCTION(BlueprintCallable, Category="Build")
+	void BuildTrap();
 
-	UFUNCTION(BlueprintCallable, Category="Trap")
-	void RecoverTrap();
+	UFUNCTION(BlueprintCallable, Category="Build")
+	void SellTrap();
 	
 public:
 
@@ -148,55 +145,13 @@ public:
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 	
 	FORCEINLINE class UStatusComponent* GetStatComp() const { return StatusComp; }
+	FORCEINLINE class ULoadoutComponent* GetLoadoutComp() const { return LoadoutComp; }
+	FORCEINLINE class UBuildComponent* GetBuildComp() const { return BuildComp; }
 	
 	// test
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
-	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Death")
-	TObjectPtr<UAnimMontage> DeathMontage;
-
-	UPROPERTY(Replicated, BlueprintReadOnly, Category="Death")
-	bool bIsDead = false;
-
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastRPC_PlayDeath();
 	
-	UFUNCTION(Server, Reliable)
-	void ServerRPC_RequestAttack(EWeaponAttackType AttackType);
-
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastRPC_PlayAttack(EWeaponAttackType AttackType);
-
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastRPC_SpawnArrowVisual(TSubclassOf<ADefenseArrowProjectile> ProjectileClass, FVector SpawnLocation, FRotator SpawnRotation, FVector LaunchVelocity);
-
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastRPC_SpawnArrowTrail(FVector SpawnLocation, FRotator SpawnRotation, FVector LaunchVelocity);
-
 	UFUNCTION(BlueprintImplementableEvent, Category="Weapon")
 	void OnAttackAccepted(EWeaponAttackType AttackType);
-
-	UFUNCTION(Server, Reliable)
-	void ServerRPC_RequestPlaceTrap(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation);
-
-	UFUNCTION(Server, Reliable)
-	void ServerRPC_RequestRecoverTrap(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation);
-
-	void HitscanAttack(const FAttackData& AttackData);
-
-	void ProjectileAttack(const FAttackData& AttackData);
-
-	bool TraceTrapPlacement(FHitResult& OutHit, ABuildGridSurface*& OutBuildSurface) const;
-	void UpdateTrapPreview();
-	void DestroyTrapPreview();
-
-	float LastAttackServerTime = -BIG_NUMBER;
-	float LastAltAttackServerTime = -BIG_NUMBER;
-
-	// test
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapon")
-	TObjectPtr<UWeaponData> DefaultWeaponData;
-
 };
 

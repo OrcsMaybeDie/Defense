@@ -19,7 +19,6 @@ public class Defense : ModuleRules
 			"GameplayStateTreeModule",
 			"UMG",
 			"Slate",
-			"Niagara",
 			"GameplayTags"
 		});
 
