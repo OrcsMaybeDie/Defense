@@ -59,6 +59,7 @@ void ADestinationActor::OnEnemySensorBeginOverlap(UPrimitiveComponent* Overlappe
 	if (AEnemyBase* enemy = Cast<AEnemyBase>(OtherActor))
 	{
 		const bool bWasCombatEnemy = enemy->EnemyMode == EEnemyMode::Combat;
+		const bool bAlive = enemy->EnemyState != EEnemyState::Die;
 
 		if (AEnemySpawner* Spawner = enemy->OwningSpawner)
 		{
@@ -68,7 +69,7 @@ void ADestinationActor::OnEnemySensorBeginOverlap(UPrimitiveComponent* Overlappe
 		{
 			EnemyPool->ReturnToPool(enemy);
 		}
-		if (bWasCombatEnemy)
+		if (bWasCombatEnemy && bAlive)
 		{
 			if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
 			{

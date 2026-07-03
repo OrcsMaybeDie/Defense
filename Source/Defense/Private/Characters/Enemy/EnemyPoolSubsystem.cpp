@@ -30,7 +30,7 @@ void UEnemyPoolSubsystem::InitPool(TSubclassOf<AEnemyBase> factory, int32 initSi
 	
 	for (int32 i = 0; i < initSize; i++)
 	{
-		if(AEnemyBase* enemy = World->SpawnActor<AEnemyBase>(factory, FVector::ZeroVector, FRotator::ZeroRotator))
+		if(AEnemyBase* enemy = World->SpawnActor<AEnemyBase>(factory, FVector(0,0, -1000), FRotator::ZeroRotator))
 		{
 			//UE_LOG(LogTemp, Warning, TEXT("EnemyPool InitPool spawned | Enemy=%s Index=%d"),
 				//*GetNameSafe(enemy),
@@ -127,7 +127,7 @@ void UEnemyPoolSubsystem::ReturnToPool(TObjectPtr<AEnemyBase> enemy)
 
 	FPooledEnemyArray& Pool = EnemyPools.FindOrAdd(enemy->GetClass());
 	
-	enemy->SetActorLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
+	enemy->SetActorLocationAndRotation(FVector(0,0,-1000), FRotator::ZeroRotator);
 	enemy->MulticastRPC_StopAllMontages();
 	enemy->bHpUIVisible = false;
 	enemy->EnemyMode = EEnemyMode::Inactive;

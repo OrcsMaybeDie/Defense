@@ -118,7 +118,7 @@ void AEnemySpawner::StartPreviewSpawn()
 
 	PreviewSpawnedCount = 0;
 	GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
-	BuildCurrentWaveSpawnPlans();
+	BuildCurrentWaveSpawnPlans(); // 적이 진행할 랜덤 루트 배열
 	if (CurrentWaveSpawnPlans.Num() == 0)
 	{
 		return;
@@ -327,6 +327,7 @@ void AEnemySpawner::AddActiveEnemy(AEnemyBase* Enemy)
 	ActiveEnemies.AddUnique(Enemy);
 }
 
+// 랜덤하게 갈 루트 순서 배열
 void AEnemySpawner::BuildCurrentWaveSpawnPlans()
 {
 	CurrentWaveSpawnPlans.Empty();
@@ -353,6 +354,7 @@ void AEnemySpawner::BuildCurrentWaveSpawnPlans()
 		//CurrentWaveSpawnPlans.Num());
 }
 
+// 랜덤한 루트 선정
 AEnemyRoute* AEnemySpawner::GetRandomRoute() const
 {
 	if (EnemyRoutes.Num() == 0)
@@ -364,6 +366,7 @@ AEnemyRoute* AEnemySpawner::GetRandomRoute() const
 	return EnemyRoutes[RouteIndex];
 }
 
+// 적에게 루트 플랜에 해당하는 루트 참조시킴
 bool AEnemySpawner::ApplySpawnPlanToEnemy(AEnemyBase* Enemy, int32 SpawnPlanIndex) const
 {
 	if (!Enemy || !CurrentWaveSpawnPlans.IsValidIndex(SpawnPlanIndex))
@@ -392,6 +395,7 @@ bool AEnemySpawner::ApplySpawnPlanToEnemy(AEnemyBase* Enemy, int32 SpawnPlanInde
 	return EnemyController->EnemyRoute != nullptr;
 }
 
+// 플랜이 비어있을 때 직접 랜덤하게 루트 적용
 void AEnemySpawner::AssignRandomRouteToEnemy(AEnemyBase* Enemy) const
 {
 	if (!Enemy || EnemyRoutes.Num() == 0)
@@ -424,6 +428,7 @@ void AEnemySpawner::AssignRandomRouteToEnemy(AEnemyBase* Enemy) const
 		//WaypointCount);
 }
 
+// 적의 StateTree 재시작
 void AEnemySpawner::RestartEnemyLogic(AEnemyBase* Enemy) const
 {
 	if (!Enemy)

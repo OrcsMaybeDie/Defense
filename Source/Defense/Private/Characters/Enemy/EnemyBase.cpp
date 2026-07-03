@@ -99,7 +99,7 @@ void AEnemyBase::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// 서버에서는 UI가 클라이언트 방향으로 회전하는 것 제외
-	if (GetNetMode() == NM_DedicatedServer || !HpComp || !bHpUIVisible)
+	/*if (GetNetMode() == NM_DedicatedServer || !HpComp || !bHpUIVisible)
 	{
 		return;
 	}
@@ -113,7 +113,7 @@ void AEnemyBase::Tick(float DeltaTime)
 	const FVector CamLoc = PlayerController->PlayerCameraManager->GetCameraLocation();
 	const FVector Dir = CamLoc - HpComp->GetComponentLocation();
 
-	HpComp->SetWorldRotation(Dir.ToOrientationRotator());
+	HpComp->SetWorldRotation(Dir.ToOrientationRotator());*/
 }
 
 // Called to bind functionality to input
@@ -202,13 +202,10 @@ void AEnemyBase::SetPreview()
 	{
 		if (EnemyMesh)
 		{
-			if (PreviewMaterial0)
+			if (PreviewMaterial)
 			{
-				EnemyMesh->SetMaterial(0, PreviewMaterial0);
-			}
-			if (PreviewMaterial1)
-			{
-				EnemyMesh->SetMaterial(1, PreviewMaterial1);
+				EnemyMesh->SetMaterial(0, PreviewMaterial);
+				EnemyMesh->SetMaterial(1, PreviewMaterial);
 			}
 		}
 	}
@@ -242,13 +239,10 @@ void AEnemyBase::SetCombat()
 	{
 		if (EnemyMesh)
 		{
-			if (CombatMaterial0)
+			if (CombatMaterial)
 			{
-				EnemyMesh->SetMaterial(0, CombatMaterial0);
-			}
-			if (CombatMaterial1)
-			{
-				EnemyMesh->SetMaterial(1, CombatMaterial1);
+				EnemyMesh->SetMaterial(0, CombatMaterial);
+				EnemyMesh->SetMaterial(1, CombatMaterial);
 			}
 		}
 		else
@@ -306,6 +300,11 @@ void AEnemyBase::SetInactive()
 	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
 	{
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+	}
+	if (HpComp)
+	{
+		bHpUIVisible = false;
+		HpComp->SetVisibility(false);
 	}
 }
 
@@ -418,7 +417,7 @@ void AEnemyBase::OnRep_UpdateUI()
 	{
 		return;
 	}
-	if (!bHpUIVisible)
+	if (!bHpUIVisible && EnemyMode == EEnemyMode::Combat)
 	{
 		bHpUIVisible = true;
 		HpComp->SetVisibility(true);

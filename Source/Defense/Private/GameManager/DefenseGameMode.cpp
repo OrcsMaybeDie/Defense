@@ -33,6 +33,9 @@ void ADefenseGameMode::StartPlay()
 	if (DefenseGameState)
 	{
 		DefenseGameState->SetDestScore(InitialDestScore);
+		DefenseGameState->CurrentWave = CurrentWave;
+		DefenseGameState->MaxWave = MaxWave;
+		DefenseGameState->CountdownRemaining = 0;
 	}
 
 	UEnemyPoolSubsystem* EnemyPool = GetWorld()->GetSubsystem<UEnemyPoolSubsystem>();
@@ -61,7 +64,7 @@ void ADefenseGameMode::StartPlay()
 		}
 	}
 
-	StartPreview();
+	SetGamePhase(EGamePhase::GameStart);
 }
 
 bool ADefenseGameMode::AreAllPlayersReady() const
@@ -82,24 +85,119 @@ bool ADefenseGameMode::AreAllPlayersReady() const
 	return true;
 }
 
-// 플레이어가 G키(준비)를 누르면 호출됨 -> 모든 플레이어가 준비됐는지 확인하고 StartWave를 함.
-void ADefenseGameMode::HandlePlayerReadyChanged()
+void ADefenseGameMode::ResetAllPlayersReady()
 {
-	if (AreAllPlayersReady())
+	AGameStateBase* GS = GameState;
+	if (!GS) return;
+
+	for (APlayerState* PlayerState : GS->PlayerArray)
 	{
-		StartWave();
+		if (ADefensePlayerState* PS = Cast<ADefensePlayerState>(PlayerState))
+		{
+			PS->SetReady(false);
+		}
 	}
 }
 
-// Preview 상태의 적들 호출
-void ADefenseGameMode::StartPreview()
+void ADefenseGameMode::GameStart()
 {
+	SetGamePhase(EGamePhase::Preparation);
+}
+
+void ADefenseGameMode::GameEnd()
+{
+	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+	bIsWaveActive = false;
+
+	if (DefenseGameState)
+	{
+		DefenseGameState->CountdownRemaining = 0;
+		
+		// TODO : UI만 갱신되면 여기선 필요 X
+		DefenseGameState->OnRep_CountdownRemaining();
+	}
+	WaveEnd();
+	const FString Message = TEXT("Game End");
+	UKismetSystemLibrary::PrintString(this, Message, true, true, FLinearColor::Green, 3.0f);
+}
+
+// 플레이어가 G키(준비)를 누르면 호출됨 -> 모든 플레이어가 준비됐는지 확인하고 StartWave를 함.
+void ADefenseGameMode::HandlePlayerReadyChanged()
+{
+	if (!DefenseGameState)
+	{
+		DefenseGameState = GetGameState<ADefenseGameState>();
+	}
+
+	if (!DefenseGameState || DefenseGameState->GamePhase != EGamePhase::Preparation || IsAutoStartWave(CurrentWave))
+	{
+		return;
+	}
+
+	if (AreAllPlayersReady())
+	{
+		SetGamePhase(EGamePhase::WaveStart);
+	}
+}
+
+void ADefenseGameMode::SetGamePhase(EGamePhase NewPhase)
+{
+	if (!DefenseGameState)
+	{
+		DefenseGameState = GetGameState<ADefenseGameState>();
+	}
+
+	if (!DefenseGameState)
+	{
+		return;
+	}
+
+	DefenseGameState->GamePhase = NewPhase;
+	DefenseGameState->OnRep_GamePhase(); // 클라이언트에서 UI 갱신
+
+	switch (NewPhase)
+	{
+	case EGamePhase::GameStart:
+		GameStart();
+		break;
+	case EGamePhase::Preparation:
+		Preparation();
+		break;
+	case EGamePhase::WaveStart:
+		WaveStart();
+		break;
+	case EGamePhase::WaveEnded:
+		WaveEnd();
+		break;
+	case EGamePhase::GameEnded:
+		GameEnd();
+	default:
+		break;
+	}
+}
+
+void ADefenseGameMode::Preparation()
+{
+	bIsWaveActive = false;
+	CurrentEnemyCount = 0; // 맵에 남은 적 수 초기화
+	ResetAllPlayersReady(); // 플레이어의 준비 초기화
+	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+
+	if (DefenseGameState)
+	{
+		DefenseGameState->CurrentWave = CurrentWave;
+		DefenseGameState->OnRep_CurrentWave();
+		DefenseGameState->MaxWave = MaxWave;
+		DefenseGameState->CountdownRemaining = 0;
+		DefenseGameState->OnRep_CountdownRemaining();
+	}
+
 	if (EnemySpawners.Num() == 0)
 	{
 		return;
 	}
 
-	//UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode StartPreview | Spawners=%d"), EnemySpawners.Num());
+	//UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode Preparation | Spawners=%d"), EnemySpawners.Num());
 
 	for (AEnemySpawner* Spawner : EnemySpawners)
 	{
@@ -112,7 +210,7 @@ void ADefenseGameMode::StartPreview()
 
 
 // Combat 상태의 적들 호출 
-void ADefenseGameMode::StartWave()
+void ADefenseGameMode::WaveStart()
 {
 	if (bIsWaveActive)
 	{
@@ -120,13 +218,20 @@ void ADefenseGameMode::StartWave()
 	}
 
 	bIsWaveActive = true;
+	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
 
-	const FString Message = TEXT("All players ready. Start wave.");
-	
-	//UE_LOG(LogTemp, Warning, TEXT("%s"), *Message); // console
-	
-	UKismetSystemLibrary::PrintString(this, Message, true, true, FLinearColor::Green, 3.0f);
+	if (DefenseGameState)
+	{
+		DefenseGameState->CurrentWave = CurrentWave;
+		DefenseGameState->CountdownRemaining = 0;
+		
+		// TODO : UI 갱신만 하면 서버에서 필요없음.
+		DefenseGameState->OnRep_CurrentWave();
+		DefenseGameState->OnRep_CountdownRemaining();
+		//-------------------------------------------
+	}
 
+	// 스폰 되어야할 총 적의 수
 	CurrentEnemyCount = 0;
 	for (const AEnemySpawner* Spawner : EnemySpawners)
 	{
@@ -136,7 +241,20 @@ void ADefenseGameMode::StartWave()
 		}
 	}
 
-	//UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode StartWave | CurrentEnemyCount=%d"), CurrentEnemyCount);
+	const FString Message = FString::Printf(
+		TEXT("All players ready. Start wave. | Wave=%d/%d RemainingEnemies=%d"),
+		CurrentWave,
+		MaxWave,
+		CurrentEnemyCount
+	);
+	
+	UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode WaveStart | Wave=%d/%d RemainingEnemies=%d"),
+		CurrentWave,
+		MaxWave,
+		CurrentEnemyCount
+	);
+	
+	UKismetSystemLibrary::PrintString(this, Message, true, true, FLinearColor::Green, 3.0f);
 	
 	if (EnemySpawners.Num() != 0)
 	{
@@ -148,9 +266,15 @@ void ADefenseGameMode::StartWave()
 	
 }
 
-void ADefenseGameMode::EndWave()
+void ADefenseGameMode::WaveEnd()
 {
+	if (!bIsWaveActive)
+	{
+		return;
+	}
+
 	bIsWaveActive = false;
+	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
 
 	for (AEnemySpawner* Spawner : EnemySpawners)
 	{
@@ -159,10 +283,24 @@ void ADefenseGameMode::EndWave()
 			Spawner->EndWave();
 		}
 	}
-
-	const FString Message = TEXT("Wave End");
-	//UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
+	
+	// 게임오버시 리턴
+	if (DefenseGameState->GamePhase == EGamePhase::GameEnded)
+		return;
+	const FString Message = FString::Printf(
+		TEXT("Wave End | Wave=%d/%d RemainingEnemies=%d"),
+		CurrentWave,
+		MaxWave,
+		CurrentEnemyCount
+	);
+	UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode WaveEnd | Wave=%d/%d RemainingEnemies=%d"),
+		CurrentWave,
+		MaxWave,
+		CurrentEnemyCount
+	);
 	UKismetSystemLibrary::PrintString(this, Message, true, true, FLinearColor::Green, 3.0f);
+
+	AdvanceToNextWave();
 }
 
 // 적의 수 감소 -> Destination에 overlap했을 때, 적이 처치됐을 때 호출
@@ -170,11 +308,15 @@ void ADefenseGameMode::DecreaseCurrentEnemyCount()
 {
 	CurrentEnemyCount = FMath::Max(0, CurrentEnemyCount - 1);
 
-	//UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode EnemyCount decreased | CurrentEnemyCount=%d"), CurrentEnemyCount);
+	UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode EnemyCount decreased | Wave=%d/%d RemainingEnemies=%d"),
+		CurrentWave,
+		MaxWave,
+		CurrentEnemyCount
+	);
 
 	if (CurrentEnemyCount == 0)
 	{
-		EndWave();
+		SetGamePhase(EGamePhase::WaveEnded);
 	}
 }
 
@@ -195,13 +337,100 @@ void ADefenseGameMode::ApplyDestinationDamage(int32 DamageAmount)
 
 	if (NewDestScore <= 0)
 	{
-		EndWave();
+		SetGamePhase(EGamePhase::GameEnded);
 	}
 }
 
-void ADefenseGameMode::AddWave()
+void ADefenseGameMode::AdvanceToNextWave()
 {
-	CurrentWave++;
+	if (CurrentWave >= MaxWave)
+	{
+		GameEnd();
+		return;
+	}
+
+	++CurrentWave;
+
+	if (DefenseGameState)
+	{
+		DefenseGameState->CurrentWave = CurrentWave;
+		DefenseGameState->OnRep_CurrentWave();
+	}
+
+	if (IsAutoStartWave(CurrentWave))
+	{
+		SetGamePhase(EGamePhase::Preparation);
+		StartAutoWaveCountdown();
+		return;
+	}
+
+	SetGamePhase(EGamePhase::Preparation);
+}
+
+bool ADefenseGameMode::IsAutoStartWave(int32 WaveNumber) const
+{
+	return AutoStartWaves.Contains(WaveNumber);
+}
+
+void ADefenseGameMode::StartAutoWaveCountdown()
+{
+	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+	ResetAllPlayersReady();
+
+	if (AutoStartCountdownSeconds <= 0)
+	{
+		HandleAutoWaveCountdownFinished();
+		return;
+	}
+
+	if (DefenseGameState)
+	{
+		DefenseGameState->CountdownRemaining = AutoStartCountdownSeconds;
+		DefenseGameState->OnRep_CountdownRemaining();
+	}
+
+	GetWorldTimerManager().SetTimer(
+		AutoWaveCountdownTimerHandle,
+		this,
+		&ADefenseGameMode::HandleAutoWaveCountdownTick,
+		1.0f,
+		true
+	);
+}
+
+void ADefenseGameMode::HandleAutoWaveCountdownTick()
+{
+	if (!DefenseGameState)
+	{
+		DefenseGameState = GetGameState<ADefenseGameState>();
+	}
+
+	if (!DefenseGameState)
+	{
+		GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+		return;
+	}
+
+	DefenseGameState->CountdownRemaining = FMath::Max(0, DefenseGameState->CountdownRemaining - 1);
+	DefenseGameState->OnRep_CountdownRemaining();
+
+	if (DefenseGameState->CountdownRemaining <= 0)
+	{
+		HandleAutoWaveCountdownFinished();
+	}
+}
+
+void ADefenseGameMode::HandleAutoWaveCountdownFinished()
+{
+	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+
+	if (DefenseGameState)
+	{
+		DefenseGameState->CountdownRemaining = 0;
+		DefenseGameState->OnRep_CountdownRemaining();
+	}
+
+	SetGamePhase(EGamePhase::WaveStart);
 }
 
 int32 ADefenseGameMode::GetCurrentWave()

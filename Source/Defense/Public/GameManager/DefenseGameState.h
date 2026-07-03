@@ -13,9 +13,11 @@
 UENUM()
 enum class EGamePhase : uint8
 {
+	GameStart,
 	Preparation,
 	WaveStart,
-	WaveEnded
+	WaveEnded,
+	GameEnded,
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDestScoreChanged, int32, NewDestScore);
@@ -28,13 +30,17 @@ class DEFENSE_API ADefenseGameState : public AGameStateBase
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
-	UPROPERTY(Replicated)
-	EGamePhase GamePhase;
+	UPROPERTY(ReplicatedUsing=OnRep_GamePhase)
+	EGamePhase GamePhase = EGamePhase::Preparation;
+	
+	UPROPERTY(ReplicatedUsing=OnRep_CurrentWave)
+	int32 CurrentWave = 1;
 	
 	UPROPERTY(Replicated)
-	int32 CurrentWave;
-	
-	int32 MaxWave;
+	int32 MaxWave = 6;
+
+	UPROPERTY(ReplicatedUsing=OnRep_CountdownRemaining)
+	int32 CountdownRemaining = 0;
 	
 	UPROPERTY(Replicated)
 	int32 AlivePlayerCount;
@@ -48,6 +54,15 @@ public:
 
 	UFUNCTION()
 	void OnRep_DestScore();
+
+	UFUNCTION()
+	void OnRep_GamePhase();
+
+	UFUNCTION()
+	void OnRep_CurrentWave();
+
+	UFUNCTION()
+	void OnRep_CountdownRemaining();
 
 	void SetDestScore(int32 NewDestScore);
 	
