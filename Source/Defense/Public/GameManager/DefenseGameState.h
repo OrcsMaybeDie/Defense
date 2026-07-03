@@ -14,7 +14,7 @@ UENUM()
 enum class EGamePhase : uint8
 {
 	Preparation,
-	WaveActive,
+	WaveStart,
 	WaveEnded
 };
 
