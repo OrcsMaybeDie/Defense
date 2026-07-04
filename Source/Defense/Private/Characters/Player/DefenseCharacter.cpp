@@ -82,8 +82,6 @@ void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 
 		EnhancedInputComponent->BindAction(RClickAction, ETriggerEvent::Started, this, &ADefenseCharacter::HandleRClick);
 
-		EnhancedInputComponent->BindAction(ModeAction, ETriggerEvent::Started, this, &ADefenseCharacter::ToggleBuildMode);
-
 		EnhancedInputComponent->BindAction(SellAction, ETriggerEvent::Started, this, &ADefenseCharacter::SellTrap);
 	}
 	else
@@ -159,7 +157,7 @@ void ADefenseCharacter::DoJumpEnd()
 
 void ADefenseCharacter::HandleLClick()
 {
-	if (BuildComp && BuildComp->IsBuildMode())
+	if (BuildComp && BuildComp->HasSelectedTrap())
 	{
 		BuildComp->BuildTrap();
 		return;
@@ -170,7 +168,7 @@ void ADefenseCharacter::HandleLClick()
 
 void ADefenseCharacter::HandleRClick()
 {
-	if (BuildComp->IsBuildMode()) return;
+	if (BuildComp && BuildComp->HasSelectedTrap()) return;
 
 	AltAttack();
 }
@@ -188,22 +186,6 @@ void ADefenseCharacter::AltAttack()
 	if (WeaponComp)
 	{
 		WeaponComp->Attack(EWeaponAttackType::AltAttack);
-	}
-}
-
-void ADefenseCharacter::ToggleBuildMode()
-{
-	if (BuildComp)
-	{
-		BuildComp->ToggleBuildMode();
-	}
-}
-
-void ADefenseCharacter::BuildTrap()
-{
-	if (BuildComp)
-	{
-		BuildComp->BuildTrap();
 	}
 }
 

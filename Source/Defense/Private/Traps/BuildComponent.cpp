@@ -18,9 +18,13 @@ void UBuildComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	APawn* OwnerPawn = GetOwnerPawn();
-	if (OwnerPawn && OwnerPawn->IsLocallyControlled() && bBuildMode)
+	if (OwnerPawn && OwnerPawn->IsLocallyControlled() && HasSelectedTrap())
 	{
 		UpdateTrapPreview();
+	}
+	else
+	{
+		DestroyTrapPreview();
 	}
 }
 
@@ -31,20 +35,10 @@ void UBuildComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void UBuildComponent::ToggleBuildMode()
-{
-	bBuildMode = !bBuildMode;
-
-	if (!bBuildMode)
-	{
-		DestroyTrapPreview();
-	}
-}
-
 void UBuildComponent::BuildTrap()
 {
 	UTrapData* TrapData = GetSelectedTrapData();
-	if (!bBuildMode || !TrapData) return;
+	if (!TrapData) return;
 
 	FHitResult Hit;
 	ABuildGridSurface* BuildSurface = nullptr;
@@ -70,7 +64,7 @@ void UBuildComponent::BuildTrap()
 
 void UBuildComponent::SellTrap()
 {
-	if (!bBuildMode) return;
+	if (!HasSelectedTrap()) return;
 
 	FHitResult Hit;
 	ABuildGridSurface* BuildSurface = nullptr;
@@ -220,7 +214,8 @@ void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(ABuildGridSurfac
 
 void UBuildComponent::ServerRPC_RequestSellTrap_Implementation(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation)
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !BuildSurface) return;
+	UTrapData* TrapData = GetSelectedTrapData();
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !BuildSurface || !TrapData) return;
 
 	BuildSurface->TryRemoveTrap(HitLocation);
 }

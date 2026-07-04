@@ -19,11 +19,8 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-	UFUNCTION(BlueprintCallable, Category="Trap")
-	bool IsBuildMode() const { return bBuildMode; }
-
-	UFUNCTION(BlueprintCallable, Category="Trap")
-	void ToggleBuildMode();
+	UFUNCTION(BlueprintPure, Category="Build")
+	bool HasSelectedTrap() const { return GetSelectedTrapData() != nullptr; }
 
 	UFUNCTION(BlueprintCallable, Category="Build")
 	void BuildTrap();
@@ -37,8 +34,6 @@ protected:
 
 	UPROPERTY(Transient)
 	TObjectPtr<ATrapBase> TrapPreviewActor;
-
-	bool bBuildMode = false;
 
 	UTrapData* GetSelectedTrapData() const;
 	APawn* GetOwnerPawn() const;

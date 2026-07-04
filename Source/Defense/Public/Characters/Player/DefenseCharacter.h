@@ -73,9 +73,6 @@ protected:
 	TObjectPtr<UInputAction> RClickAction;
 
 	UPROPERTY(EditAnywhere, Category="Input")
-	TObjectPtr<UInputAction> ModeAction;
-
-	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputAction> SellAction;
 
 public:
@@ -126,12 +123,6 @@ public:
 	void Attack();	
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void AltAttack();
-
-	UFUNCTION(BlueprintCallable, Category="Build")
-	void ToggleBuildMode();
-
-	UFUNCTION(BlueprintCallable, Category="Build")
-	void BuildTrap();
 
 	UFUNCTION(BlueprintCallable, Category="Build")
 	void SellTrap();

@@ -1,32 +1,35 @@
 ﻿#include "Equipment/LoadoutComponent.h"
 
 
+#include "Equipment/EquipmentData.h"
+#include "Equipment/ItemData.h"
+#include "Equipment/WeaponData.h"
+#include "Traps/TrapData.h"
+
 ULoadoutComponent::ULoadoutComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-UWeaponData* ULoadoutComponent::GetCurWeapon() const
+UEquipmentData* ULoadoutComponent::GetCurEquipment() const
 {
 	if (!EquippedSlots.IsValidIndex(SelectedSlotIdx)) return nullptr;
 
-	const FLoadoutSlot& Slot = EquippedSlots[SelectedSlotIdx];
-	return Slot.SlotType == ELoadoutSlotType::Weapon ? Slot.WeaponData : nullptr;
+	return EquippedSlots[SelectedSlotIdx].EquipmentData;
+}
+
+UWeaponData* ULoadoutComponent::GetCurWeapon() const
+{
+	return Cast<UWeaponData>(GetCurEquipment());
 }
 
 UTrapData* ULoadoutComponent::GetCurTrap() const
 {
-	if (!EquippedSlots.IsValidIndex(SelectedSlotIdx)) return nullptr;
-
-	const FLoadoutSlot& Slot = EquippedSlots[SelectedSlotIdx];
-	return Slot.SlotType == ELoadoutSlotType::Trap ? Slot.TrapData : nullptr;
+	return Cast<UTrapData>(GetCurEquipment());
 }
 
 UItemData* ULoadoutComponent::GetCurItem() const
 {
-	if (!EquippedSlots.IsValidIndex(SelectedSlotIdx)) return nullptr;
-
-	const FLoadoutSlot& Slot = EquippedSlots[SelectedSlotIdx];
-	return Slot.SlotType == ELoadoutSlotType::Item ? Slot.ItemData : nullptr;
+	return Cast<UItemData>(GetCurEquipment());
 }
 

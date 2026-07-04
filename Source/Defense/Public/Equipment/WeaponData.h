@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DataAsset.h"
+#include "Equipment/EquipmentData.h"
 #include "WeaponData.generated.h"
 
 class UAnimSequenceBase;
@@ -44,14 +44,11 @@ struct FAttackData
 
 
 UCLASS(BlueprintType)
-class DEFENSE_API UWeaponData : public UPrimaryDataAsset
+class DEFENSE_API UWeaponData : public UEquipmentData
 {
 	GENERATED_BODY()
 	
 public:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapon")
-	FText DisplayName;
-	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapon|Attack")
 	FAttackData Attack;
 

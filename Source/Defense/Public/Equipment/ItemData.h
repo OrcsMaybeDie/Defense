@@ -1,11 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DataAsset.h"
+#include "Equipment/EquipmentData.h"
 #include "ItemData.generated.h"
 
 UCLASS()
-class DEFENSE_API UItemData : public UPrimaryDataAsset
+class DEFENSE_API UItemData : public UEquipmentData
 {
 	GENERATED_BODY()
 };
