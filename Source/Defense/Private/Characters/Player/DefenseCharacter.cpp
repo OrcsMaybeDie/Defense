@@ -62,6 +62,11 @@ ADefenseCharacter::ADefenseCharacter ()
 	BuildComp = CreateDefaultSubobject<UBuildComponent>(TEXT("BuildComp"));
 }
 
+void ADefenseCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+}
+
 void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	// Set up action bindings
@@ -78,21 +83,18 @@ void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ADefenseCharacter::Look);
 		
-		EnhancedInputComponent->BindAction(LClickAction, ETriggerEvent::Started, this, &ADefenseCharacter::HandleLClick);
+		EnhancedInputComponent->BindAction(IA_LClick, ETriggerEvent::Started, this, &ADefenseCharacter::HandleLClick);
 
-		EnhancedInputComponent->BindAction(RClickAction, ETriggerEvent::Started, this, &ADefenseCharacter::HandleRClick);
+		EnhancedInputComponent->BindAction(IA_RClick, ETriggerEvent::Started, this, &ADefenseCharacter::HandleRClick);
 
-		EnhancedInputComponent->BindAction(SellAction, ETriggerEvent::Started, this, &ADefenseCharacter::SellTrap);
+		EnhancedInputComponent->BindAction(IA_Sell, ETriggerEvent::Started, this, &ADefenseCharacter::SellTrap);
+		
+		EnhancedInputComponent->BindAction(IA_LoadoutIdx, ETriggerEvent::Started, this, &ADefenseCharacter::SelectLoadoutIdx);
 	}
 	else
 	{
 		UE_LOG(LogDefense, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
 	}
-}
-
-void ADefenseCharacter::Tick(float DeltaSeconds)
-{
-	Super::Tick(DeltaSeconds);
 }
 
 void ADefenseCharacter::Move(const FInputActionValue& Value)
@@ -111,6 +113,25 @@ void ADefenseCharacter::Look(const FInputActionValue& Value)
 
 	// route the input
 	DoLook(LookAxisVector.X, LookAxisVector.Y);
+}
+
+void ADefenseCharacter::SelectLoadoutIdx(const FInputActionValue& Value)
+{
+	const float RawInputValue = Value.Get<float>();
+	const int32 SlotNumber = FMath::RoundToInt(RawInputValue);
+	const int32 SlotIdx = SlotNumber - 1;
+	
+	// UE_LOG(LogDefense, Log, TEXT("Loadout input | Character=%s Raw=%.2f SlotNumber=%d SlotIdx=%d HasAuthority=%d LocallyControlled=%d"),
+	// 	*GetNameSafe(this),
+	// 	RawInputValue,
+	// 	SlotNumber,
+	// 	SlotIdx,
+	// 	HasAuthority() ? 1 : 0,
+	// 	IsLocallyControlled() ? 1 : 0);
+	
+	if (!LoadoutComp) return;
+
+	LoadoutComp->SelectSlot(SlotIdx);
 }
 
 void ADefenseCharacter::DoMove(float Right, float Forward)
@@ -198,7 +219,7 @@ void ADefenseCharacter::SellTrap()
 }
 
 float ADefenseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator,
-	AActor* DamageCauser)
+                                    AActor* DamageCauser)
 {
 	if (!HasAuthority()) { return 0.f; }
 	if (!StatusComp) { return 0.f; }
