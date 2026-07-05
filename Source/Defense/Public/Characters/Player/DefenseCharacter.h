@@ -28,6 +28,7 @@ class ADefenseCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
+private:
 	/** Camera boom positioning the camera behind the character */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	USpringArmComponent* CameraBoom;
@@ -49,7 +50,6 @@ class ADefenseCharacter : public ACharacter
 	TObjectPtr<UBuildComponent> BuildComp;
 
 protected:
-
 	/** Jump Input Action */
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* JumpAction;
@@ -67,36 +67,36 @@ protected:
 	UInputAction* MouseLookAction;
 	
 	UPROPERTY(EditAnywhere, Category="Input")
-	TObjectPtr<UInputAction> LClickAction;
+	TObjectPtr<UInputAction> IA_LClick;
 
 	UPROPERTY(EditAnywhere, Category="Input")
-	TObjectPtr<UInputAction> RClickAction;
+	TObjectPtr<UInputAction> IA_RClick;
 
 	UPROPERTY(EditAnywhere, Category="Input")
-	TObjectPtr<UInputAction> SellAction;
+	TObjectPtr<UInputAction> IA_Sell;
+	
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> IA_LoadoutIdx;
 
 public:
-
 	/** Constructor */
 	ADefenseCharacter();	
 
 protected:
-
 	virtual void Tick(float DeltaSeconds) override;
 
 	/** Initialize input action bindings */
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
-protected:
 
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
 
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
+	
+	void SelectLoadoutIdx(const FInputActionValue& Value);
 
 public:
-
 	/** Handles move inputs from either controls or UI interfaces */
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoMove(float Right, float Forward);
@@ -124,11 +124,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void AltAttack();
 
-	UFUNCTION(BlueprintCallable, Category="Build")
+	UFUNCTION(BlueprintCallable, Category="Input")
 	void SellTrap();
 	
 public:
-
 	/** Returns CameraBoom subobject **/
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 
