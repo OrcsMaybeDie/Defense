@@ -1,21 +1,10 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "NiagaraSystem.h"
-#include "Engine/DataAsset.h"
+#include "Equipment/EquipmentData.h"
 #include "WeaponData.generated.h"
 
 class UAnimSequenceBase;
-class ADefenseArrowProjectile;
-
-UENUM(BlueprintType)
-enum class EAttackDelivery : uint8
-{
-	None,
-	Hitscan,
-	Projectile
-};
-
 UENUM(BlueprintType)
 enum class EWeaponAttackType : uint8
 {
@@ -27,9 +16,6 @@ USTRUCT(BlueprintType)
 struct FAttackData
 {
 	GENERATED_BODY()
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack")
-	EAttackDelivery Delivery = EAttackDelivery::Hitscan;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack", meta=(ClampMin="1"))
 	int32 Count = 1;
@@ -49,15 +35,6 @@ struct FAttackData
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Shape", meta=(ClampMin="0"))
 	float Radius = 0.f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Projectile")
-	TSubclassOf<ADefenseArrowProjectile> ProjectileClass;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Projectile", meta=(ClampMin="0"))
-	float ProjectileSpeed = 3000.f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Projectile")
-	FName ProjectileSpawnSocketName = TEXT("arrow");
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attack|Animation")
 	TObjectPtr<UAnimSequenceBase> Animation;
 
@@ -67,14 +44,11 @@ struct FAttackData
 
 
 UCLASS(BlueprintType)
-class DEFENSE_API UWeaponData : public UPrimaryDataAsset
+class DEFENSE_API UWeaponData : public UEquipmentData
 {
 	GENERATED_BODY()
 	
 public:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapon")
-	FText DisplayName;
-	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapon|Attack")
 	FAttackData Attack;
 

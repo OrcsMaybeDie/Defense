@@ -1,24 +1,24 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DataAsset.h"
+#include "Equipment/EquipmentData.h"
 #include "TrapData.generated.h"
 
 class ATrapBase;
 UENUM(BlueprintType)
 enum class ETrapGridSurface : uint8
 {
-	Floor
+	Floor,
+	Wall,
+	Ceiling
 };
 
 UCLASS(BlueprintType)
-class DEFENSE_API UTrapData : public UPrimaryDataAsset
+class DEFENSE_API UTrapData : public UEquipmentData
 {
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Trap")
-	FText DisplayName;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Trap")
 	TSubclassOf<ATrapBase> TrapClass;
