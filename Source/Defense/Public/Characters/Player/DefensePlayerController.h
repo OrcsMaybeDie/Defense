@@ -43,6 +43,9 @@ protected:
 	/** Gameplay initialization */
 	virtual void BeginPlay() override;
 
+	/** Gameplay cleanup */
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 	/** Input mapping context setup */
 	virtual void SetupInputComponent() override;
 
@@ -57,4 +60,11 @@ protected:
 	
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_SetReady(bool bReady);
+	
+	// UI
+	UPROPERTY(EditDefaultsOnly, Category="UI")
+	TSubclassOf<UUserWidget> HUDWidgetClass;
+	
+	UPROPERTY()
+	TObjectPtr<UUserWidget> HUDWidget;
 };

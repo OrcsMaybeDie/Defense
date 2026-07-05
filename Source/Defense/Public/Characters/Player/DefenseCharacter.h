@@ -3,7 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Combat/WeaponData.h"
+#include "Characters/Player/StatusComponent.h"
+#include "Characters/Player/WeaponComponent.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
 #include "DefenseCharacter.generated.h"
@@ -14,6 +15,9 @@ class UInputAction;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
+
+class ULoadoutComponent;
+class UBuildComponent;
 
 /**
  *  A simple player-controllable third person character
@@ -32,6 +36,18 @@ class ADefenseCharacter : public ACharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FollowCamera;
 	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UStatusComponent> StatusComp;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UWeaponComponent> WeaponComp;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<ULoadoutComponent> LoadoutComp;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UBuildComponent> BuildComp;
+
 protected:
 
 	/** Jump Input Action */
@@ -51,7 +67,13 @@ protected:
 	UInputAction* MouseLookAction;
 	
 	UPROPERTY(EditAnywhere, Category="Input")
-	UInputAction* AttackAction;
+	TObjectPtr<UInputAction> LClickAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> RClickAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> SellAction;
 
 public:
 
@@ -59,6 +81,8 @@ public:
 	ADefenseCharacter();	
 
 protected:
+
+	virtual void Tick(float DeltaSeconds) override;
 
 	/** Initialize input action bindings */
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
@@ -90,9 +114,18 @@ public:
 	virtual void DoJumpEnd();
 	
 	UFUNCTION(BlueprintCallable, Category="Input")
+	void HandleLClick();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
+	void HandleRClick();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
 	void Attack();	
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void AltAttack();
+
+	UFUNCTION(BlueprintCallable, Category="Build")
+	void SellTrap();
 	
 public:
 
@@ -102,14 +135,14 @@ public:
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 	
+	FORCEINLINE class UStatusComponent* GetStatComp() const { return StatusComp; }
+	FORCEINLINE class ULoadoutComponent* GetLoadoutComp() const { return LoadoutComp; }
+	FORCEINLINE class UBuildComponent* GetBuildComp() const { return BuildComp; }
+	
 	// test
-	UFUNCTION(Server, Reliable)
-	void Server_Attack(const FAttackData& AttackData);
-
-	void HitscanAttack(const FAttackData& AttackData);
-
-	// test
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapon")
-	TObjectPtr<UWeaponData> DefaultWeaponData;
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="Weapon")
+	void OnAttackAccepted(EWeaponAttackType AttackType);
 };
 

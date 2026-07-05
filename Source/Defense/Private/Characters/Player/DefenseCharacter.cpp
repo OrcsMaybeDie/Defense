@@ -11,19 +11,25 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "Defense.h"
+#include "Characters/Player/StatusComponent.h"
+#include "Characters/Player/WeaponComponent.h"
+#include "Equipment/LoadoutComponent.h"
+#include "Traps/BuildComponent.h"
 
-ADefenseCharacter::ADefenseCharacter()
+ADefenseCharacter::ADefenseCharacter ()
 {
+	PrimaryActorTick.bCanEverTick = true;
+
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 		
 	// Don't rotate when the controller rotates. Let that just affect the camera.
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = false;
+	bUseControllerRotationYaw = true;
 	bUseControllerRotationRoll = false;
 
 	// Configure character movement
-	GetCharacterMovement()->bOrientRotationToMovement = true;
+	GetCharacterMovement()->bOrientRotationToMovement = false;
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
 
 	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
@@ -38,7 +44,8 @@ ADefenseCharacter::ADefenseCharacter()
 	// Create a camera boom (pulls in towards the player if there is a collision)
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 400.0f;
+	CameraBoom->TargetArmLength = 450.0f;
+	CameraBoom->SocketOffset = FVector(0.f, 85.f, 55.f);
 	CameraBoom->bUsePawnControlRotation = true;
 
 	// Create a follow camera
@@ -48,6 +55,11 @@ ADefenseCharacter::ADefenseCharacter()
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+	
+	StatusComp = CreateDefaultSubobject<UStatusComponent>(TEXT("StatusComp"));
+	WeaponComp = CreateDefaultSubobject<UWeaponComponent>(TEXT("WeaponComp"));
+	LoadoutComp = CreateDefaultSubobject<ULoadoutComponent>(TEXT("LoadoutComp"));
+	BuildComp = CreateDefaultSubobject<UBuildComponent>(TEXT("BuildComp"));
 }
 
 void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -66,13 +78,21 @@ void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ADefenseCharacter::Look);
 		
-		// Attack
-		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Triggered, this, &ADefenseCharacter::Attack);
+		EnhancedInputComponent->BindAction(LClickAction, ETriggerEvent::Started, this, &ADefenseCharacter::HandleLClick);
+
+		EnhancedInputComponent->BindAction(RClickAction, ETriggerEvent::Started, this, &ADefenseCharacter::HandleRClick);
+
+		EnhancedInputComponent->BindAction(SellAction, ETriggerEvent::Started, this, &ADefenseCharacter::SellTrap);
 	}
 	else
 	{
 		UE_LOG(LogDefense, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
 	}
+}
+
+void ADefenseCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
 }
 
 void ADefenseCharacter::Move(const FInputActionValue& Value)
@@ -135,83 +155,57 @@ void ADefenseCharacter::DoJumpEnd()
 	StopJumping();
 }
 
+void ADefenseCharacter::HandleLClick()
+{
+	if (BuildComp && BuildComp->HasSelectedTrap())
+	{
+		BuildComp->BuildTrap();
+		return;
+	}
+
+	Attack();
+}
+
+void ADefenseCharacter::HandleRClick()
+{
+	if (BuildComp && BuildComp->HasSelectedTrap()) return;
+
+	AltAttack();
+}
+
 void ADefenseCharacter::Attack()
 {
-	if (!DefaultWeaponData) return;
-	Server_Attack(DefaultWeaponData->Attack);
+	if (WeaponComp)
+	{
+		WeaponComp->Attack(EWeaponAttackType::Attack);
+	}
 }
 
 void ADefenseCharacter::AltAttack()
 {
-	if (!DefaultWeaponData) return;
-	Server_Attack(DefaultWeaponData->Attack);
-}
-
-void ADefenseCharacter::Server_Attack_Implementation(const FAttackData& AttackData)
-{
-	if (!HasAuthority()) return;
-	
-	switch (AttackData.Delivery)
+	if (WeaponComp)
 	{
-	case EAttackDelivery::Hitscan:
-		HitscanAttack(AttackData);
-		break;
-
-	case EAttackDelivery::Projectile:
-		break;
-
-	case EAttackDelivery::None:
-		// 이동스킬/직접 발동형
-		break;
-
-	default:
-		ensureMsgf(false, TEXT("Unhandled AttackDelivery"));
-		break;
+		WeaponComp->Attack(EWeaponAttackType::AltAttack);
 	}
 }
 
-void ADefenseCharacter::HitscanAttack(const FAttackData& AttackData)
+void ADefenseCharacter::SellTrap()
 {
-	AController* OwningController = GetController();
-	if (!OwningController) return;
-
-	FVector ViewLocation;
-	FRotator ViewRotation;
-	
-	// 시점 위치/회전 채움
-	OwningController->GetPlayerViewPoint(ViewLocation, ViewRotation); 
-	
-	// Trace Range
-	const FVector Start = ViewLocation;
-	const FVector End = Start + ViewRotation.Vector() * AttackData.Range;
-	
-	const float TraceRadius = FMath::Max(AttackData.Radius, 1.f);
-	
-	FHitResult Hit;
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(HitscanAttack), false, this);
-	Params.AddIgnoredActor(this);
-	
-	const bool bHit = GetWorld()->SweepSingleByChannel(
-		Hit,
-		Start,
-		End,
-		FQuat::Identity,
-		ECC_Visibility,
-		FCollisionShape::MakeSphere(TraceRadius),
-		Params
-	);
-	
-#if ENABLE_DRAW_DEBUG
-	const FColor DebugColor = bHit ? FColor::Red : FColor::Green;
-	DrawDebugLine(GetWorld(), Start, End, DebugColor, false, 1.0f, 0, 1.0f);
-	DrawDebugSphere(GetWorld(), bHit ? Hit.ImpactPoint : End, TraceRadius, 16, DebugColor, false, 1.0f);
-#endif
-
-	if (bHit)
+	if (BuildComp)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("SphereTrace Hit: %s / Damage: %.1f"),
-			*GetNameSafe(Hit.GetActor()),
-			AttackData.Damage);
+		BuildComp->SellTrap();
 	}
+}
+
+float ADefenseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator,
+	AActor* DamageCauser)
+{
+	if (!HasAuthority()) { return 0.f; }
+	if (!StatusComp) { return 0.f; }
 	
+	const float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	
+	if (ActualDamage <= 0) { return 0.f; }
+	
+	return StatusComp->ApplyDamage(ActualDamage, DamageCauser);
 }
