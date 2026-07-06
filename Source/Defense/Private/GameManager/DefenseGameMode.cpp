@@ -3,6 +3,7 @@
 
 #include "GameManager/DefenseGameMode.h"
 
+#include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Enemy/EnemySpawner.h"
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
 #include "Characters/Player/DefensePlayerState.h"
@@ -10,6 +11,28 @@
 #include "GameFramework/GameStateBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+
+namespace
+{
+	const TCHAR* LexToString(const EEnemyRemoveReason Reason)
+	{
+		switch (Reason)
+		{
+		case EEnemyRemoveReason::Killed:
+			return TEXT("Killed");
+		case EEnemyRemoveReason::ReachedDestination:
+			return TEXT("ReachedDestination");
+		case EEnemyRemoveReason::InvalidState:
+			return TEXT("InvalidState");
+		case EEnemyRemoveReason::OutOfBounds:
+			return TEXT("OutOfBounds");
+		case EEnemyRemoveReason::ForcedCleanup:
+			return TEXT("ForcedCleanup");
+		default:
+			return TEXT("Unknown");
+		}
+	}
+}
 
 ADefenseGameMode::ADefenseGameMode()
 {
@@ -106,8 +129,7 @@ void ADefenseGameMode::GameStart()
 
 void ADefenseGameMode::GameEnd()
 {
-	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
-	bIsWaveActive = false;
+	CleanupCurrentWave();
 
 	if (DefenseGameState)
 	{
@@ -116,7 +138,7 @@ void ADefenseGameMode::GameEnd()
 		// TODO : UI만 갱신되면 여기선 필요 X
 		DefenseGameState->OnRep_CountdownRemaining();
 	}
-	WaveEnd();
+
 	const FString Message = TEXT("Game End");
 	UKismetSystemLibrary::PrintString(this, Message, true, true, FLinearColor::Green, 3.0f);
 }
@@ -134,9 +156,9 @@ void ADefenseGameMode::HandlePlayerReadyChanged()
 		return;
 	}
 
-	if (AreAllPlayersReady())
+	if (AreAllPlayersReady() && !GetWorldTimerManager().IsTimerActive(ReadyWaveCountdownTimerHandle))
 	{
-		SetGamePhase(EGamePhase::WaveStart);
+		StartReadyWaveCountdown();
 	}
 }
 
@@ -171,6 +193,7 @@ void ADefenseGameMode::SetGamePhase(EGamePhase NewPhase)
 		break;
 	case EGamePhase::GameEnded:
 		GameEnd();
+		break;
 	default:
 		break;
 	}
@@ -180,8 +203,13 @@ void ADefenseGameMode::Preparation()
 {
 	bIsWaveActive = false;
 	CurrentEnemyCount = 0; // 맵에 남은 적 수 초기화
+	ActiveWaveEnemies.Empty();
+	ParticipatingSpawners.Empty();
+	FinishedSpawners.Empty();
 	ResetAllPlayersReady(); // 플레이어의 준비 초기화
 	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(ReadyWaveCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(EnemyCleanupTimerHandle);
 
 	if (DefenseGameState)
 	{
@@ -197,13 +225,18 @@ void ADefenseGameMode::Preparation()
 		return;
 	}
 
+	if (IsAutoStartWave(CurrentWave))
+	{
+		return;
+	}
+
 	//UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode Preparation | Spawners=%d"), EnemySpawners.Num());
 
 	for (AEnemySpawner* Spawner : EnemySpawners)
 	{
 		if (Spawner)
 		{
-			Spawner->StartPreviewSpawn();
+			Spawner->StartPreviewSpawn(CurrentWave);
 		}
 	}
 }
@@ -219,6 +252,11 @@ void ADefenseGameMode::WaveStart()
 
 	bIsWaveActive = true;
 	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(ReadyWaveCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(EnemyCleanupTimerHandle);
+	ActiveWaveEnemies.Empty();
+	ParticipatingSpawners.Empty();
+	FinishedSpawners.Empty();
 
 	if (DefenseGameState)
 	{
@@ -231,38 +269,60 @@ void ADefenseGameMode::WaveStart()
 		//-------------------------------------------
 	}
 
-	// 스폰 되어야할 총 적의 수
-	CurrentEnemyCount = 0;
-	for (const AEnemySpawner* Spawner : EnemySpawners)
+	int32 PlannedEnemyCount = 0;
+	for (AEnemySpawner* Spawner : EnemySpawners)
 	{
 		if (Spawner)
 		{
-			CurrentEnemyCount += Spawner->EnemyCount;
+			const int32 SpawnerPlanCount = Spawner->PrepareCombatSpawnPlans(CurrentWave);
+			if (SpawnerPlanCount > 0)
+			{
+				ParticipatingSpawners.Add(Spawner);
+				PlannedEnemyCount += SpawnerPlanCount;
+			}
 		}
 	}
+	CurrentEnemyCount = 0;
 
 	const FString Message = FString::Printf(
-		TEXT("All players ready. Start wave. | Wave=%d/%d RemainingEnemies=%d"),
+		TEXT("All players ready. Start wave. | Wave=%d/%d ActiveEnemies=%d PlannedEnemies=%d Spawners=%d"),
 		CurrentWave,
 		MaxWave,
-		CurrentEnemyCount
+		CurrentEnemyCount,
+		PlannedEnemyCount,
+		ParticipatingSpawners.Num()
 	);
 	
-	UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode WaveStart | Wave=%d/%d RemainingEnemies=%d"),
+	UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode WaveStart | Wave=%d/%d ActiveEnemies=%d PlannedEnemies=%d ParticipatingSpawners=%d"),
 		CurrentWave,
 		MaxWave,
-		CurrentEnemyCount
+		CurrentEnemyCount,
+		PlannedEnemyCount,
+		ParticipatingSpawners.Num()
 	);
 	
 	UKismetSystemLibrary::PrintString(this, Message, true, true, FLinearColor::Green, 3.0f);
 	
-	if (EnemySpawners.Num() != 0)
+	for (AEnemySpawner* Spawner : ParticipatingSpawners)
 	{
-		for (auto* spawner : EnemySpawners)
+		if (Spawner)
 		{
-			spawner->StartCombatSpawn();
+			Spawner->StartCombatSpawn(CurrentWave);
 		}
 	}
+
+	if (bEnableInvalidEnemyCleanup && InvalidEnemyCleanupInterval > 0.0f)
+	{
+		GetWorldTimerManager().SetTimer(
+			EnemyCleanupTimerHandle,
+			this,
+			&ADefenseGameMode::CleanupInvalidActiveEnemies,
+			InvalidEnemyCleanupInterval,
+			true
+		);
+	}
+
+	TryFinishWave();
 	
 }
 
@@ -273,16 +333,7 @@ void ADefenseGameMode::WaveEnd()
 		return;
 	}
 
-	bIsWaveActive = false;
-	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
-
-	for (AEnemySpawner* Spawner : EnemySpawners)
-	{
-		if (Spawner)
-		{
-			Spawner->EndWave();
-		}
-	}
+	CleanupCurrentWave();
 	
 	// 게임오버시 리턴
 	if (DefenseGameState->GamePhase == EGamePhase::GameEnded)
@@ -303,21 +354,137 @@ void ADefenseGameMode::WaveEnd()
 	AdvanceToNextWave();
 }
 
+void ADefenseGameMode::CleanupCurrentWave()
+{
+	bIsWaveActive = false;
+	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(ReadyWaveCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(EnemyCleanupTimerHandle);
+
+	for (AEnemySpawner* Spawner : EnemySpawners)
+	{
+		if (Spawner)
+		{
+			Spawner->EndWave();
+		}
+	}
+
+	ActiveWaveEnemies.Empty();
+	ParticipatingSpawners.Empty();
+	FinishedSpawners.Empty();
+	CurrentEnemyCount = 0;
+}
+
 // 적의 수 감소 -> Destination에 overlap했을 때, 적이 처치됐을 때 호출
 void ADefenseGameMode::DecreaseCurrentEnemyCount()
 {
 	CurrentEnemyCount = FMath::Max(0, CurrentEnemyCount - 1);
 
-	UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode EnemyCount decreased | Wave=%d/%d RemainingEnemies=%d"),
+	UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode DecreaseCurrentEnemyCount fallback | Wave=%d/%d RemainingEnemies=%d ActiveEnemies=%d"),
 		CurrentWave,
 		MaxWave,
-		CurrentEnemyCount
+		CurrentEnemyCount,
+		ActiveWaveEnemies.Num()
 	);
 
-	if (CurrentEnemyCount == 0)
+	TryFinishWave();
+}
+
+void ADefenseGameMode::NotifyEnemyActivated(AEnemyBase* Enemy)
+{
+	if (!bIsWaveActive || !IsValid(Enemy) || Enemy->EnemyMode != EEnemyMode::Combat)
 	{
-		SetGamePhase(EGamePhase::WaveEnded);
+		return;
 	}
+
+	ActiveWaveEnemies.Add(Enemy);
+	CurrentEnemyCount = ActiveWaveEnemies.Num();
+
+	/*UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode EnemyActivated | Wave=%d/%d ActiveEnemies=%d Enemy=%s Spawner=%s Location=%s"),
+		CurrentWave,
+		MaxWave,
+		CurrentEnemyCount,
+		*GetNameSafe(Enemy),
+		*GetNameSafe(Enemy->OwningSpawner),
+		*Enemy->GetActorLocation().ToString()
+	);*/
+}
+
+void ADefenseGameMode::NotifyEnemyRemoved(AEnemyBase* Enemy, EEnemyRemoveReason Reason)
+{
+	if (!Enemy)
+	{
+		return;
+	}
+
+	AEnemySpawner* OwningSpawner = Enemy->OwningSpawner;
+	const int32 RemovedCount = ActiveWaveEnemies.Remove(Enemy);
+	if (OwningSpawner)
+	{
+		OwningSpawner->RemoveActiveEnemy(Enemy);
+	}
+
+	CurrentEnemyCount = ActiveWaveEnemies.Num();
+
+	/*UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode EnemyRemoved | Wave=%d/%d ActiveEnemies=%d Removed=%d Reason=%s Enemy=%s Spawner=%s Location=%s"),
+		CurrentWave,
+		MaxWave,
+		CurrentEnemyCount,
+		RemovedCount,
+		LexToString(Reason),
+		*GetNameSafe(Enemy),
+		*GetNameSafe(OwningSpawner),
+		*Enemy->GetActorLocation().ToString()
+	);*/
+
+	TryFinishWave();
+}
+
+void ADefenseGameMode::NotifySpawnerFinished(AEnemySpawner* Spawner)
+{
+	if (!bIsWaveActive || !Spawner)
+	{
+		return;
+	}
+
+	if (!ParticipatingSpawners.Contains(Spawner))
+	{
+		return;
+	}
+
+	FinishedSpawners.Add(Spawner);
+
+	/*UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode SpawnerFinished | Wave=%d/%d FinishedSpawners=%d/%d ActiveEnemies=%d Spawner=%s"),
+		CurrentWave,
+		MaxWave,
+		FinishedSpawners.Num(),
+		ParticipatingSpawners.Num(),
+		ActiveWaveEnemies.Num(),
+		*GetNameSafe(Spawner)
+	);*/
+
+	TryFinishWave();
+}
+
+void ADefenseGameMode::TryFinishWave()
+{
+	if (!bIsWaveActive)
+	{
+		return;
+	}
+
+	if (FinishedSpawners.Num() < ParticipatingSpawners.Num())
+	{
+		return;
+	}
+
+	if (ActiveWaveEnemies.Num() > 0)
+	{
+		LogActiveWaveEnemies();
+		return;
+	}
+
+	SetGamePhase(EGamePhase::WaveEnded);
 }
 
 void ADefenseGameMode::ApplyDestinationDamage(int32 DamageAmount)
@@ -372,9 +539,79 @@ bool ADefenseGameMode::IsAutoStartWave(int32 WaveNumber) const
 	return AutoStartWaves.Contains(WaveNumber);
 }
 
+void ADefenseGameMode::StartReadyWaveCountdown()
+{
+	GetWorldTimerManager().ClearTimer(ReadyWaveCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+
+	for (AEnemySpawner* Spawner : EnemySpawners)
+	{
+		if (Spawner)
+		{
+			Spawner->ClearPreviewEnemies();
+		}
+	}
+
+	if (ReadyStartCountdownSeconds <= 0)
+	{
+		HandleReadyWaveCountdownFinished();
+		return;
+	}
+
+	if (DefenseGameState)
+	{
+		DefenseGameState->CountdownRemaining = ReadyStartCountdownSeconds;
+		DefenseGameState->OnRep_CountdownRemaining();
+	}
+
+	GetWorldTimerManager().SetTimer(
+		ReadyWaveCountdownTimerHandle,
+		this,
+		&ADefenseGameMode::HandleReadyWaveCountdownTick,
+		1.0f,
+		true
+	);
+}
+
+void ADefenseGameMode::HandleReadyWaveCountdownTick()
+{
+	if (!DefenseGameState)
+	{
+		DefenseGameState = GetGameState<ADefenseGameState>();
+	}
+
+	if (!DefenseGameState)
+	{
+		GetWorldTimerManager().ClearTimer(ReadyWaveCountdownTimerHandle);
+		return;
+	}
+
+	DefenseGameState->CountdownRemaining = FMath::Max(0, DefenseGameState->CountdownRemaining - 1);
+	DefenseGameState->OnRep_CountdownRemaining();
+
+	if (DefenseGameState->CountdownRemaining <= 0)
+	{
+		HandleReadyWaveCountdownFinished();
+	}
+}
+
+void ADefenseGameMode::HandleReadyWaveCountdownFinished()
+{
+	GetWorldTimerManager().ClearTimer(ReadyWaveCountdownTimerHandle);
+
+	if (DefenseGameState)
+	{
+		DefenseGameState->CountdownRemaining = 0;
+		DefenseGameState->OnRep_CountdownRemaining();
+	}
+
+	SetGamePhase(EGamePhase::WaveStart);
+}
+
 void ADefenseGameMode::StartAutoWaveCountdown()
 {
 	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(ReadyWaveCountdownTimerHandle);
 	ResetAllPlayersReady();
 
 	if (AutoStartCountdownSeconds <= 0)
@@ -431,6 +668,101 @@ void ADefenseGameMode::HandleAutoWaveCountdownFinished()
 	}
 
 	SetGamePhase(EGamePhase::WaveStart);
+}
+
+void ADefenseGameMode::CleanupInvalidActiveEnemies()
+{
+	if (!bIsWaveActive)
+	{
+		GetWorldTimerManager().ClearTimer(EnemyCleanupTimerHandle);
+		return;
+	}
+
+	TArray<TObjectPtr<AEnemyBase>> EnemiesToRemove;
+	TArray<EEnemyRemoveReason> RemoveReasons;
+
+	for (AEnemyBase* Enemy : ActiveWaveEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			EnemiesToRemove.Add(Enemy);
+			RemoveReasons.Add(EEnemyRemoveReason::InvalidState);
+			continue;
+		}
+
+		if (Enemy->EnemyMode != EEnemyMode::Combat)
+		{
+			EnemiesToRemove.Add(Enemy);
+			RemoveReasons.Add(EEnemyRemoveReason::InvalidState);
+			continue;
+		}
+
+		const FVector EnemyLocation = Enemy->GetActorLocation();
+		if (EnemyLocation.Z <= InvalidEnemyKillZ)
+		{
+			EnemiesToRemove.Add(Enemy);
+			RemoveReasons.Add(EEnemyRemoveReason::OutOfBounds);
+			continue;
+		}
+
+		if (MaxDistanceFromOwningSpawner > 0.0f && Enemy->OwningSpawner)
+		{
+			const float MaxDistanceSq = FMath::Square(MaxDistanceFromOwningSpawner);
+			if (FVector::DistSquared(EnemyLocation, Enemy->OwningSpawner->GetActorLocation()) > MaxDistanceSq)
+			{
+				EnemiesToRemove.Add(Enemy);
+				RemoveReasons.Add(EEnemyRemoveReason::ForcedCleanup);
+			}
+		}
+	}
+
+	UEnemyPoolSubsystem* EnemyPool = GetWorld() ? GetWorld()->GetSubsystem<UEnemyPoolSubsystem>() : nullptr;
+	for (int32 Index = 0; Index < EnemiesToRemove.Num(); ++Index)
+	{
+		AEnemyBase* Enemy = EnemiesToRemove[Index];
+		if (!Enemy)
+		{
+			continue;
+		}
+
+		const EEnemyRemoveReason Reason = RemoveReasons.IsValidIndex(Index)
+			? RemoveReasons[Index]
+			: EEnemyRemoveReason::ForcedCleanup;
+		NotifyEnemyRemoved(Enemy, Reason);
+
+		if (EnemyPool)
+		{
+			EnemyPool->ReturnToPool(Enemy);
+		}
+	}
+}
+
+void ADefenseGameMode::LogActiveWaveEnemies() const
+{
+	/*UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode Wave still active | Wave=%d/%d ActiveEnemies=%d FinishedSpawners=%d/%d"),
+		CurrentWave,
+		MaxWave,
+		ActiveWaveEnemies.Num(),
+		FinishedSpawners.Num(),
+		ParticipatingSpawners.Num()
+	);*/
+
+	for (const AEnemyBase* Enemy : ActiveWaveEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			//UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode RemainingEnemy | Invalid enemy reference"));
+			continue;
+		}
+
+		/*UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode RemainingEnemy | Enemy=%s State=%d Mode=%d Spawner=%s Location=%s"),
+			*GetNameSafe(Enemy),
+			static_cast<int32>(Enemy->EnemyState),
+			static_cast<int32>(Enemy->EnemyMode),
+			*GetNameSafe(Enemy->OwningSpawner),
+			*Enemy->GetActorLocation().ToString()
+		);*/
+	}
 }
 
 int32 ADefenseGameMode::GetCurrentWave()

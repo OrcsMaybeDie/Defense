@@ -38,6 +38,27 @@ namespace
 			return TEXT("Unknown");
 		}
 	}
+
+	const TCHAR* LexToString(const EEnemyState State)
+	{
+		switch (State)
+		{
+		case EEnemyState::Idle:
+			return TEXT("Idle");
+		case EEnemyState::Patrol:
+			return TEXT("Patrol");
+		case EEnemyState::Chase:
+			return TEXT("Chase");
+		case EEnemyState::Damage:
+			return TEXT("Damage");
+		case EEnemyState::Attack:
+			return TEXT("Attack");
+		case EEnemyState::Die:
+			return TEXT("Die");
+		default:
+			return TEXT("Unknown");
+		}
+	}
 }
 
 // Sets default values
@@ -99,7 +120,7 @@ void AEnemyBase::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// 서버에서는 UI가 클라이언트 방향으로 회전하는 것 제외
-	/*if (GetNetMode() == NM_DedicatedServer || !HpComp || !bHpUIVisible)
+	if (GetNetMode() == NM_DedicatedServer || !HpComp || !bHpUIVisible)
 	{
 		return;
 	}
@@ -111,9 +132,9 @@ void AEnemyBase::Tick(float DeltaTime)
 	}
 
 	const FVector CamLoc = PlayerController->PlayerCameraManager->GetCameraLocation();
-	const FVector Dir = CamLoc - HpComp->GetComponentLocation();
-
-	HpComp->SetWorldRotation(Dir.ToOrientationRotator());*/
+	FVector Dir = CamLoc - HpComp->GetComponentLocation();
+	Dir.Z = 0;
+	HpComp->SetWorldRotation(Dir.GetSafeNormal().ToOrientationRotator());
 }
 
 // Called to bind functionality to input
@@ -209,7 +230,8 @@ void AEnemyBase::SetPreview()
 			}
 		}
 	}
-	else
+	
+	if (HasAuthority())
 	{
 		if (EnemyController && EnemyController->StateTreeAIComp)
 		{
@@ -245,13 +267,14 @@ void AEnemyBase::SetCombat()
 				EnemyMesh->SetMaterial(1, CombatMaterial);
 			}
 		}
-		else
+	}
+	
+	if (HasAuthority())
+	{
+		if (EnemyController && EnemyController->StateTreeAIComp)
 		{
-			if (EnemyController && EnemyController->StateTreeAIComp)
-			{
-				EnemyController->StateTreeAIComp->StartLogic();
-				EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
-			}
+			EnemyController->StateTreeAIComp->StartLogic();
+			EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
 		}
 	}
 
@@ -315,41 +338,91 @@ void AEnemyBase::OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 	{
 		return;
 	}
+
+	if (!OwningSpawner || IsHidden() || EnemyMode == EEnemyMode::Inactive || EnemyMode == EEnemyMode::ReturningToPool)
+	{
+		return;
+	}
+
+	if (Actor == this || (Actor && Actor->IsA(AEnemyBase::StaticClass())))
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Updated | Enemy=%s Actor=%s Sensed=%d EnemyMode=%s EnemyState=%s CurrentTarget=%s Distance=%.1f Strength=%.2f"),
+		*GetNameSafe(this),
+		*GetNameSafe(Actor),
+		Stimulus.WasSuccessfullySensed() ? 1 : 0,
+		LexToString(EnemyMode),
+		LexToString(EnemyState),
+		*GetNameSafe(Target),
+		Actor ? GetDistanceTo(Actor) : -1.0f,
+		Stimulus.Strength
+	);
 	
 	if (EnemyMode != EEnemyMode::Combat)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Ignored | Enemy=%s Reason=NotCombat EnemyMode=%s EnemyState=%s Actor=%s"),
+			*GetNameSafe(this),
+			LexToString(EnemyMode),
+			LexToString(EnemyState),
+			*GetNameSafe(Actor)
+		);
 		return;
 	}
 
 	ADefenseCharacter* PerceivedCharacter = Cast<ADefenseCharacter>(Actor);
 	if (!PerceivedCharacter)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Ignored | Enemy=%s Reason=ActorNotDefenseCharacter EnemyMode=%s EnemyState=%s Actor=%s"),
+			*GetNameSafe(this),
+			LexToString(EnemyMode),
+			LexToString(EnemyState),
+			*GetNameSafe(Actor)
+		);
 		return;
 	}
-
-	//UE_LOG(LogTemp, Warning, TEXT("Enemy Perception | Enemy=%s Actor=%s Sensed=%d Distance=%.1f State=%d"),
-		//*GetNameSafe(this),
-		//*GetNameSafe(Actor),
-		//Stimulus.WasSuccessfullySensed() ? 1 : 0,
-		//GetDistanceTo(Actor),
-		//static_cast<int32>(EnemyState));
 
 	if (Stimulus.WasSuccessfullySensed())
 	{
 		if (EnemyState == EEnemyState::Patrol)
 		{
 			Target = PerceivedCharacter;
+			UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Target Updated | Enemy=%s NewTarget=%s EnemyState=%s Event=TargetFind"),
+				*GetNameSafe(this),
+				*GetNameSafe(Target),
+				LexToString(EnemyState)
+			);
 			SendStateTreeEvent(FName("AI.Event.TargetFind"));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Sensed But Not Tracking | Enemy=%s Actor=%s EnemyState=%s RequiredState=Patrol CurrentTarget=%s"),
+				*GetNameSafe(this),
+				*GetNameSafe(Actor),
+				LexToString(EnemyState),
+				*GetNameSafe(Target)
+			);
 		}
 	}
 	else
 	{
 		if (Target != PerceivedCharacter)
 		{
+			UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Lost Ignored | Enemy=%s LostActor=%s CurrentTarget=%s EnemyState=%s"),
+				*GetNameSafe(this),
+				*GetNameSafe(PerceivedCharacter),
+				*GetNameSafe(Target),
+				LexToString(EnemyState)
+			);
 			return;
 		}
 		
 		Target = nullptr;
+		UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Target Updated | Enemy=%s NewTarget=None EnemyState=%s Event=TargetLost"),
+			*GetNameSafe(this),
+			LexToString(EnemyState)
+		);
 		SendStateTreeEvent(TEXT("AI.Event.TargetLost"));
 	}
 }
@@ -417,7 +490,7 @@ void AEnemyBase::OnRep_UpdateUI()
 	{
 		return;
 	}
-	if (!bHpUIVisible && EnemyMode == EEnemyMode::Combat)
+	if (!bHpUIVisible && EnemyMode == EEnemyMode::Combat && EnemyState != EEnemyState::Die)
 	{
 		bHpUIVisible = true;
 		HpComp->SetVisibility(true);
@@ -471,6 +544,8 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	if (CurHP <= 0.0f)
 	{
 		SendStateTreeEvent(FName("AI.Event.Die"));
+		HpComp->SetVisibility(false);
+		bHpUIVisible = false;
 	}
 	else
 	{

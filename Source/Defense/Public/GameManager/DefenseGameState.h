@@ -21,6 +21,8 @@ enum class EGamePhase : uint8
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDestScoreChanged, int32, NewDestScore);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCountdownChanged, int32, NewCountdownRemaining);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCurrentWaveChanged, int32, NewCurrentWave);
 
 UCLASS()
 class DEFENSE_API ADefenseGameState : public AGameStateBase
@@ -51,6 +53,12 @@ public:
 	// DestinationUI에서 이 델리게이트에 UIupdate 함수 등록함.
 	UPROPERTY(BlueprintAssignable)
 	FOnDestScoreChanged OnDestScoreChanged;
+
+	UPROPERTY(BlueprintAssignable)
+	FOnCountdownChanged OnCountdownChanged;
+
+	UPROPERTY(BlueprintAssignable)
+	FOnCurrentWaveChanged OnCurrentWaveChanged;
 
 	UFUNCTION()
 	void OnRep_DestScore();

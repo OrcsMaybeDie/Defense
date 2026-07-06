@@ -41,16 +41,11 @@ EStateTreeRunStatus FEnemyDieTask::Tick(FStateTreeExecutionContext& Context, con
 
 		if (AEnemyBase* AIEnemy = GetAIEnemy(Context))
 		{
-			if (AEnemySpawner* Spawner = AIEnemy->OwningSpawner)
-			{
-				Spawner->RemoveActiveEnemy(AIEnemy);
-			}
-
 			if (UWorld* World = AIEnemy->GetWorld())
 			{
 				if (ADefenseGameMode* GameMode = World->GetAuthGameMode<ADefenseGameMode>())
 				{
-					GameMode->DecreaseCurrentEnemyCount();
+					GameMode->NotifyEnemyRemoved(AIEnemy, EEnemyRemoveReason::Killed);
 				}
 
 				if (UEnemyPoolSubsystem* EnemyPool = World->GetSubsystem<UEnemyPoolSubsystem>())

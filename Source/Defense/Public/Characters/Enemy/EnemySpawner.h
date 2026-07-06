@@ -42,6 +42,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MyVar")
 	int32 EnemyCount = 25;
 
+	// 비어 있으면 모든 웨이브에서 스폰. 값이 있으면 지정한 웨이브에서만 스폰.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wave")
+	TArray<int32> SpawnWaves;
+
 	// 프리뷰 스폰시 시간 간격
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MyVar")
 	float PreviewSpawnInterval = 5.f;
@@ -75,12 +79,16 @@ public:
 	UFUNCTION()
 	void SpawnTest();
 
-	void StartPreviewSpawn();
+	void StartPreviewSpawn(int32 WaveNumber);
 	void StopPreviewSpawn();
-	void StartCombatSpawn();
+	void ClearPreviewEnemies();
+	void StartCombatSpawn(int32 WaveNumber);
 	void EndWave();
+	int32 PrepareCombatSpawnPlans(int32 WaveNumber);
+	int32 GetCurrentWaveSpawnPlanCount() const;
 	void SetEnemyPool(class UEnemyPoolSubsystem* InEnemyPool);
 	void RemoveActiveEnemy(class AEnemyBase* Enemy);
+	bool ShouldSpawnInWave(int32 WaveNumber) const;
 
 	void AssignRandomRouteToEnemy(class AEnemyBase* Enemy) const;
 	void RestartEnemyLogic(class AEnemyBase* Enemy) const;
@@ -99,6 +107,8 @@ private:
 	int32 CombatSpawnedCount = 0;
 	int32 CombatSpawnTargetCount = 0;
 	int32 CurrentCombatBatchRemaining = 0;
+	int32 CombatInitializedCount = 0;
+	int32 CombatInitializationFailedCount = 0;
 	
 public:
 	UFUNCTION()

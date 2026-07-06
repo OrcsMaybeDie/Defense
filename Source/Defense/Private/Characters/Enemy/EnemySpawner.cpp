@@ -11,6 +11,7 @@
 #include "Components/StateTreeAIComponent.h"
 #include "Components/BoxComponent.h"
 #include "Engine/World.h"
+#include "GameManager/DefenseGameMode.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 
@@ -19,7 +20,7 @@
 AEnemySpawner::AEnemySpawner()
 {
 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 	
 	BoxComp = CreateDefaultSubobject<UBoxComponent>(FName("BoxComp"));
 	SetRootComponent(BoxComp);
@@ -109,7 +110,7 @@ void AEnemySpawner::RemoveActiveEnemy(AEnemyBase* Enemy)
 	}
 }
 
-void AEnemySpawner::StartPreviewSpawn()
+void AEnemySpawner::StartPreviewSpawn(int32 WaveNumber)
 {
 	if (!HasAuthority() || !EnemyFactory || !EnemyPool)
 	{
@@ -118,7 +119,7 @@ void AEnemySpawner::StartPreviewSpawn()
 
 	PreviewSpawnedCount = 0;
 	GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
-	BuildCurrentWaveSpawnPlans(); // 적이 진행할 랜덤 루트 배열
+	PrepareCombatSpawnPlans(WaveNumber); // 적이 진행할 랜덤 루트 배열
 	if (CurrentWaveSpawnPlans.Num() == 0)
 	{
 		return;
@@ -143,6 +144,17 @@ void AEnemySpawner::StopPreviewSpawn()
 	}
 
 	GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
+}
+
+void AEnemySpawner::ClearPreviewEnemies()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
+	ReturnActiveEnemiesToPool();
 }
 
 void AEnemySpawner::SpawnPreviewEnemy()
@@ -182,10 +194,14 @@ void AEnemySpawner::SpawnPreviewEnemy()
 }
 
 // Preview상태의 적들을 Pool로 되돌리고 Combat상태의 적들 스폰
-void AEnemySpawner::StartCombatSpawn()
+void AEnemySpawner::StartCombatSpawn(int32 WaveNumber)
 {
 	if (!HasAuthority() || !EnemyFactory || !EnemyPool)
 	{
+		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+		{
+			GameMode->NotifySpawnerFinished(this);
+		}
 		return;
 	}
 
@@ -194,15 +210,22 @@ void AEnemySpawner::StartCombatSpawn()
 
 	CombatSpawnedCount = 0;
 	CurrentCombatBatchRemaining = 0;
-	if (CurrentWaveSpawnPlans.Num() != EnemyCount)
-	{
-		BuildCurrentWaveSpawnPlans();
-	}
-	CombatSpawnTargetCount = CurrentWaveSpawnPlans.Num();
+	CombatInitializedCount = 0;
+	CombatInitializationFailedCount = 0;
+	CombatSpawnTargetCount = PrepareCombatSpawnPlans(WaveNumber);
 
 	//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner StartCombatSpawn | Spawner=%s TargetCount=%d"),
 		//*GetNameSafe(this),
 		//CombatSpawnTargetCount);
+
+	if (CombatSpawnTargetCount <= 0)
+	{
+		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+		{
+			GameMode->NotifySpawnerFinished(this);
+		}
+		return;
+	}
 
 	SpawnCombatBatch();
 }
@@ -219,6 +242,8 @@ void AEnemySpawner::EndWave()
 	CombatSpawnedCount = 0;
 	CombatSpawnTargetCount = 0;
 	CurrentCombatBatchRemaining = 0;
+	CombatInitializedCount = 0;
+	CombatInitializationFailedCount = 0;
 }
 
 // 일정시간 간격으로 한마리씩 스폰하되, 배치 크기는 2~4개로 랜덤하게 정함.
@@ -227,12 +252,27 @@ void AEnemySpawner::SpawnCombatBatch()
 	if (!HasAuthority() || !EnemyFactory || !EnemyPool)
 	{
 		GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
+		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+		{
+			GameMode->NotifySpawnerFinished(this);
+		}
 		return;
 	}
 
 	if (CombatSpawnedCount >= CombatSpawnTargetCount)
 	{
 		GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
+		UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit Summary | Spawner=%s Initialized=%d Failed=%d Spawned=%d Target=%d"),
+			*GetNameSafe(this),
+			CombatInitializedCount,
+			CombatInitializationFailedCount,
+			CombatSpawnedCount,
+			CombatSpawnTargetCount
+		);
+		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+		{
+			GameMode->NotifySpawnerFinished(this);
+		}
 		return;
 	}
 
@@ -252,6 +292,10 @@ void AEnemySpawner::SpawnCombatBatch()
 	if (!CurrentWaveSpawnPlans.IsValidIndex(CombatSpawnedCount))
 	{
 		GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
+		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+		{
+			GameMode->NotifySpawnerFinished(this);
+		}
 		return;
 	}
 
@@ -264,20 +308,73 @@ void AEnemySpawner::SpawnCombatBatch()
 			//*GetNameSafe(this),
 			//CombatSpawnedCount,
 			//CombatSpawnTargetCount);
+		UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit Summary | Spawner=%s Initialized=%d Failed=%d Spawned=%d Target=%d Reason=PoolEmpty"),
+			*GetNameSafe(this),
+			CombatInitializedCount,
+			CombatInitializationFailedCount,
+			CombatSpawnedCount,
+			CombatSpawnTargetCount
+		);
+		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+		{
+			GameMode->NotifySpawnerFinished(this);
+		}
 		return;
 	}
 
 	Enemy->EnemyMode = EEnemyMode::Combat;
 	Enemy->SetCombat();
 	AddActiveEnemy(Enemy);
-	ApplySpawnPlanToEnemy(Enemy, CombatSpawnedCount);
+	const bool bAppliedSpawnPlan = ApplySpawnPlanToEnemy(Enemy, CombatSpawnedCount);
+	AEnemyController* EnemyController = Cast<AEnemyController>(Enemy->GetController());
+	const bool bHasRouteBeforeRestart = EnemyController && EnemyController->EnemyRoute;
+	const bool bHasStateTree = EnemyController && EnemyController->StateTreeAIComp;
 	RestartEnemyLogic(Enemy);
+	const bool bInitComplete = bAppliedSpawnPlan && bHasRouteBeforeRestart && bHasStateTree;
+	if (bInitComplete)
+	{
+		++CombatInitializedCount;
+	}
+	else
+	{
+		++CombatInitializationFailedCount;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit | Spawner=%s Enemy=%s InitComplete=%d Initialized=%d Failed=%d SpawnedNext=%d/%d RouteApplied=%d HadRouteBeforeRestart=%d HasController=%d HasStateTree=%d Route=%s"),
+		*GetNameSafe(this),
+		*GetNameSafe(Enemy),
+		bInitComplete ? 1 : 0,
+		CombatInitializedCount,
+		CombatInitializationFailedCount,
+		CombatSpawnedCount + 1,
+		CombatSpawnTargetCount,
+		bAppliedSpawnPlan ? 1 : 0,
+		bHasRouteBeforeRestart ? 1 : 0,
+		EnemyController ? 1 : 0,
+		bHasStateTree ? 1 : 0,
+		EnemyController ? *GetNameSafe(EnemyController->EnemyRoute) : TEXT("None")
+	);
+	if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+	{
+		GameMode->NotifyEnemyActivated(Enemy);
+	}
 	++CombatSpawnedCount;
 	--CurrentCombatBatchRemaining;
 
 	if (CombatSpawnedCount >= CombatSpawnTargetCount)
 	{
 		GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
+		UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit Summary | Spawner=%s Initialized=%d Failed=%d Spawned=%d Target=%d"),
+			*GetNameSafe(this),
+			CombatInitializedCount,
+			CombatInitializationFailedCount,
+			CombatSpawnedCount,
+			CombatSpawnTargetCount
+		);
+		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+		{
+			GameMode->NotifySpawnerFinished(this);
+		}
 		return;
 	}
 
@@ -289,6 +386,32 @@ void AEnemySpawner::SpawnCombatBatch()
 		NextSpawnDelay,
 		false
 	);
+}
+
+int32 AEnemySpawner::PrepareCombatSpawnPlans(int32 WaveNumber)
+{
+	if (!ShouldSpawnInWave(WaveNumber))
+	{
+		CurrentWaveSpawnPlans.Empty();
+		return 0;
+	}
+
+	if (CurrentWaveSpawnPlans.Num() != EnemyCount)
+	{
+		BuildCurrentWaveSpawnPlans();
+	}
+
+	return CurrentWaveSpawnPlans.Num();
+}
+
+int32 AEnemySpawner::GetCurrentWaveSpawnPlanCount() const
+{
+	return CurrentWaveSpawnPlans.Num();
+}
+
+bool AEnemySpawner::ShouldSpawnInWave(int32 WaveNumber) const
+{
+	return SpawnWaves.Num() == 0 || SpawnWaves.Contains(WaveNumber);
 }
 
 // 현재 맵에 나와있는 적들 Pool로 되돌리기. 적이 스폰된 스포너를 저장하고 있어서 해당 
@@ -450,7 +573,6 @@ void AEnemySpawner::RestartEnemyLogic(AEnemyBase* Enemy) const
 	if (!EnemyController->EnemyRoute)
 	{
 		AssignRandomRouteToEnemy(Enemy);
-		return;
 	}
 	
 	if (EnemyController->StateTreeAIComp)

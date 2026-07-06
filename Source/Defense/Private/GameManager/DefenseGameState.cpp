@@ -34,10 +34,10 @@ void ADefenseGameState::OnRep_GamePhase()
 
 void ADefenseGameState::OnRep_CurrentWave()
 {
-	// UI
+	OnCurrentWaveChanged.Broadcast(CurrentWave);
 }
 
 void ADefenseGameState::OnRep_CountdownRemaining()
 {
-	// UI
+	OnCountdownChanged.Broadcast(CountdownRemaining);
 }
