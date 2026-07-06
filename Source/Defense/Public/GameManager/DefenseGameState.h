@@ -13,12 +13,16 @@
 UENUM()
 enum class EGamePhase : uint8
 {
+	GameStart,
 	Preparation,
-	WaveActive,
-	WaveEnded
+	WaveStart,
+	WaveEnded,
+	GameEnded,
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDestScoreChanged, int32, NewDestScore);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCountdownChanged, int32, NewCountdownRemaining);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCurrentWaveChanged, int32, NewCurrentWave);
 
 UCLASS()
 class DEFENSE_API ADefenseGameState : public AGameStateBase
@@ -28,13 +32,17 @@ class DEFENSE_API ADefenseGameState : public AGameStateBase
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
-	UPROPERTY(Replicated)
-	EGamePhase GamePhase;
+	UPROPERTY(ReplicatedUsing=OnRep_GamePhase)
+	EGamePhase GamePhase = EGamePhase::Preparation;
+	
+	UPROPERTY(ReplicatedUsing=OnRep_CurrentWave)
+	int32 CurrentWave = 1;
 	
 	UPROPERTY(Replicated)
-	int32 CurrentWave;
-	
-	int32 MaxWave;
+	int32 MaxWave = 6;
+
+	UPROPERTY(ReplicatedUsing=OnRep_CountdownRemaining)
+	int32 CountdownRemaining = 0;
 	
 	UPROPERTY(Replicated)
 	int32 AlivePlayerCount;
@@ -46,8 +54,23 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnDestScoreChanged OnDestScoreChanged;
 
+	UPROPERTY(BlueprintAssignable)
+	FOnCountdownChanged OnCountdownChanged;
+
+	UPROPERTY(BlueprintAssignable)
+	FOnCurrentWaveChanged OnCurrentWaveChanged;
+
 	UFUNCTION()
 	void OnRep_DestScore();
+
+	UFUNCTION()
+	void OnRep_GamePhase();
+
+	UFUNCTION()
+	void OnRep_CurrentWave();
+
+	UFUNCTION()
+	void OnRep_CountdownRemaining();
 
 	void SetDestScore(int32 NewDestScore);
 	

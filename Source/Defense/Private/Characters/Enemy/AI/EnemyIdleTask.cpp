@@ -3,10 +3,19 @@
 #include "Characters/Enemy/AI/EnemyIdleTask.h"
 
 #include "StateTreeExecutionContext.h"
+#include "Characters/Enemy/EnemyBase.h"
 
 EStateTreeRunStatus FEnemyIdleTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	return GetAIEnemy(Context) ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Failed;
+	AEnemyBase* AIEnemy = GetAIEnemy(Context);
+	if (!AIEnemy)
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+	
+	AIEnemy->EnemyState = EEnemyState::Idle;
+	
+	return EStateTreeRunStatus::Succeeded;
 }
 
 #if WITH_EDITOR

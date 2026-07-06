@@ -76,15 +76,10 @@ public:
 	
 	// Quinn 메시로 테스트 중이라 머티리얼 개수 동일하게 함. 추후 수정 예정
 	UPROPERTY(editAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UMaterialInterface> PreviewMaterial0;
-	UPROPERTY(editAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UMaterialInterface> PreviewMaterial1;
+	TObjectPtr<class UMaterialInterface> PreviewMaterial;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UMaterialInterface> CombatMaterial0;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UMaterialInterface> CombatMaterial1;
+	TObjectPtr<class UMaterialInterface> CombatMaterial;
 	
 	UPROPERTY()
 	TObjectPtr<class UEnemyAnim> AnimInst;

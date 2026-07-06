@@ -17,8 +17,19 @@ public:
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<class UTextBlock> DestinationCount;
 	
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<class UTextBlock> Text_MaxWave;
+	
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<class UTextBlock> Text_CurWave;
+	
 	UFUNCTION()
 	void UpdateUI(int32 newScore);
+
+	UFUNCTION()
+	void UpdateCurrentWave(int32 NewCurrentWave);
+
+	void UpdateMaxWave(int32 NewMaxWave);
 	
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
