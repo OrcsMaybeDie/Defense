@@ -10,9 +10,11 @@
 #include "Components/CapsuleComponent.h"
 #include "Engine/OverlapResult.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Characters/Player/DefensePlayerState.h"
 #include "Components/StateTreeAIComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "GameManager/DefenseGameMode.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 #include "Perception/AIPerceptionComponent.h"
@@ -105,6 +107,11 @@ void AEnemyBase::BeginPlay()
 		}
 		return;
 	}
+	else
+	{
+		GameMode = Cast<ADefenseGameMode>(GetWorld()->GetAuthGameMode());
+	}
+	
 	if (AIComp)
 	{
 		AIComp->OnTargetPerceptionUpdated.AddDynamic(
@@ -466,6 +473,8 @@ void AEnemyBase::MulticastRPC_DieMotion_Implementation()
 	{
 		return;
 	}
+	HpComp->SetVisibility(false);
+	bHpUIVisible = false;
 	AnimInst->PlayDieMotion();
 }
 
@@ -543,8 +552,23 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	
 	if (CurHP <= 0.0f)
 	{
+		GameMode->AwardEnemyKillCoin(this, DamageCauser, EventInstigator);
+		
+		// 재화 얻어지나 테스트--------------------
+		/*if (APawn* CauserPawn = Cast<APawn>(DamageCauser))
+		{
+			AController* CauserController = CauserPawn->GetController();
+
+			if (CauserController)
+			{
+				// 여기서 컨트롤러 사용
+				auto* ps = CauserController->GetPlayerState<ADefensePlayerState>();
+				UE_LOG(LogTemp, Error, TEXT("Coin : %d"), ps->GetCoin());
+			}
+		}*/
+		//----------------------------------------------
+		
 		SendStateTreeEvent(FName("AI.Event.Die"));
-		HpComp->SetVisibility(false);
 		bHpUIVisible = false;
 	}
 	else
