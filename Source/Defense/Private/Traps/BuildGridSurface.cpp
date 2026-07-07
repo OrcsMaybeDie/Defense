@@ -10,7 +10,7 @@
 
 namespace
 {
-	constexpr int32 TestTrapCoinCost = 100;
+	constexpr int32 BuildGridSurfaceTestTrapCoinCost = 100;
 }
 
 ABuildGridSurface::ABuildGridSurface()
@@ -122,7 +122,7 @@ bool ABuildGridSurface::TryRemoveTrap(const FVector& HitLocation, ADefensePlayer
 
 	if (OutRefundCoin)
 	{
-		*OutRefundCoin = Trap->GetSourceTrapData() ? TestTrapCoinCost : 0;
+		*OutRefundCoin = Trap->GetSourceTrapData() ? BuildGridSurfaceTestTrapCoinCost : 0;
 	}
 
 	Trap->Destroy();
