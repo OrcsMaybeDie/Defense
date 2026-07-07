@@ -49,6 +49,9 @@ public:
 	
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	
+	UPROPERTY()
+	TObjectPtr<class ADefenseGameMode> GameMode;
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="Components")
 	TObjectPtr<class UWidgetComponent> HpComp;
 
@@ -113,7 +116,9 @@ public:
 	
 	// 플레이어가 한 공격 받기
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
-
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 KillCoinReward = 10;
 	
 	//-----------AI Perception-------------------------------
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
