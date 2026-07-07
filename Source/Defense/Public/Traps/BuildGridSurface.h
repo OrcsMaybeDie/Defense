@@ -5,6 +5,7 @@
 #include "BuildGridSurface.generated.h"
 
 class ATrapBase;
+class ADefensePlayerState;
 class UBoxComponent;
 class USceneComponent;
 class UTrapData;
@@ -36,8 +37,8 @@ protected:
 
 public:
 	bool CanPlaceTrapAt(const FVector& HitLocation, FIntPoint* OutGridCoord = nullptr, FVector* OutPlaceLocation = nullptr) const;
-	bool TryPlaceTrap(const UTrapData* TrapData, const FVector& HitLocation, AController* InstigatorController);
-	bool TryRemoveTrap(const FVector& HitLocation);
+	bool TryPlaceTrap(UTrapData* TrapData, const FVector& HitLocation, AController* InstigatorController, ADefensePlayerState* InstalledByPlayerState);
+	bool TryRemoveTrap(const FVector& HitLocation, ADefensePlayerState** OutRefundTarget = nullptr, int32* OutRefundCoin = nullptr);
 	void MarkSlotOccupiedLocally(const FVector& HitLocation);
 	void MarkSlotFreeLocally(const FVector& HitLocation);
 

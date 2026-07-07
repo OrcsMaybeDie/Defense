@@ -9,8 +9,10 @@
 #include "Characters/Player/DefensePlayerState.h"
 #include "GameManager/DefenseGameState.h"
 #include "GameFramework/GameStateBase.h"
+#include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Traps/TrapBase.h"
 
 namespace
 {
@@ -88,6 +90,22 @@ void ADefenseGameMode::StartPlay()
 	}
 
 	SetGamePhase(EGamePhase::GameStart);
+}
+
+void ADefenseGameMode::PostLogin(APlayerController* NewPlayer)
+{
+	Super::PostLogin(NewPlayer);
+
+	ADefensePlayerState* PS = NewPlayer ? NewPlayer->GetPlayerState<ADefensePlayerState>() : nullptr;
+	if (!PS) return;
+
+	PS->SetCoin(InitCoin);
+	
+	UE_LOG(LogTemp, Warning, TEXT("[CoinTest] Init | PlayerController=%s PlayerState=%s Coin=%d"),
+		*GetNameSafe(NewPlayer),
+		*GetNameSafe(PS),
+		InitCoin
+	);
 }
 
 bool ADefenseGameMode::AreAllPlayersReady() const
@@ -773,4 +791,32 @@ int32 ADefenseGameMode::GetCurrentWave()
 int32 ADefenseGameMode::GetMaxWave()
 {
 	return MaxWave;
+}
+	
+void ADefenseGameMode::AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator)
+{
+	if (!HasAuthority() || !Enemy) return;
+	
+	// const int32 RewardCoin = Enemy->에너미리워드;
+	const int32 RewardCoin = 10;
+	if (RewardCoin <= 0) return;
+	
+	ADefensePlayerState* RewardTarget = nullptr;
+	
+	if (const ATrapBase* Trap = Cast<ATrapBase>(DamageCauser))
+	{
+		RewardTarget = Trap->GetOwnerPS();
+	}
+	else if (EventInstigator)
+	{
+		RewardTarget = EventInstigator->GetPlayerState<ADefensePlayerState>();
+	}
+	else if (const APawn* DamageCauserPawn = Cast<APawn>(DamageCauser))
+	{
+		RewardTarget = DamageCauserPawn->GetPlayerState<ADefensePlayerState>();
+	}
+
+	if (!RewardTarget) return;
+
+	RewardTarget->AddCoin(RewardCoin);
 }
