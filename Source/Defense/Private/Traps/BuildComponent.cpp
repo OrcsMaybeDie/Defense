@@ -1,11 +1,17 @@
 #include "Traps/BuildComponent.h"
 
+#include "Characters/Player/DefensePlayerState.h"
 #include "Equipment/LoadoutComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
 #include "Traps/BuildGridSurface.h"
 #include "Traps/TrapBase.h"
 #include "Traps/TrapData.h"
+
+namespace
+{
+	constexpr int32 TestTrapCoinCost = 100;
+}
 
 UBuildComponent::UBuildComponent()
 {
@@ -64,8 +70,6 @@ void UBuildComponent::BuildTrap()
 
 void UBuildComponent::SellTrap()
 {
-	if (!HasSelectedTrap()) return;
-
 	FHitResult Hit;
 	ABuildGridSurface* BuildSurface = nullptr;
 	if (!TraceBuildTarget(Hit, BuildSurface) || !BuildSurface)
@@ -146,7 +150,7 @@ void UBuildComponent::UpdateTrapPreview()
 		if (TrapPreviewActor)
 		{
 			TrapPreviewActor->SetReplicates(false);
-			TrapPreviewActor->SetPreviewMode(true);
+			TrapPreviewActor->InitializePreviewTrap(TrapData);
 			TrapPreviewActor->SetActorHiddenInGame(true);
 		}
 	}
@@ -207,15 +211,44 @@ void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(ABuildGridSurfac
 	UTrapData* TrapData = GetSelectedTrapData();
 	APawn* OwnerPawn = GetOwnerPawn();
 	AController* OwningController = OwnerPawn ? OwnerPawn->GetController() : nullptr;
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !BuildSurface || !TrapData) return;
+	ADefensePlayerState* PlayerState = OwnerPawn ? OwnerPawn->GetPlayerState<ADefensePlayerState>() : nullptr;
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !BuildSurface || !TrapData || !PlayerState) return;
 
-	BuildSurface->TryPlaceTrap(TrapData, HitLocation, OwningController);
+	if (!PlayerState->TrySpendCoin(TestTrapCoinCost))
+	{
+		return;
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[CoinTest] BuildSpend | PlayerState=%s Cost=%d Coin=%d Trap=%s"),
+		*GetNameSafe(PlayerState),
+		TestTrapCoinCost,
+		PlayerState->GetCoin(),
+		*GetNameSafe(TrapData)
+	);
+
+	if (!BuildSurface->TryPlaceTrap(TrapData, HitLocation, OwningController, PlayerState))
+	{
+		PlayerState->RefundCoin(TestTrapCoinCost);
+		UE_LOG(LogTemp, Warning, TEXT("[CoinTest] BuildRefund | PlayerState=%s Refund=%d Coin=%d Reason=PlaceFailed"),
+			*GetNameSafe(PlayerState),
+			TestTrapCoinCost,
+			PlayerState->GetCoin()
+		);
+	}
 }
 
 void UBuildComponent::ServerRPC_RequestSellTrap_Implementation(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation)
 {
-	UTrapData* TrapData = GetSelectedTrapData();
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !BuildSurface || !TrapData) return;
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !BuildSurface) return;
 
-	BuildSurface->TryRemoveTrap(HitLocation);
+	ADefensePlayerState* RefundTarget = nullptr;
+	int32 RefundCoin = 0;
+	if (BuildSurface->TryRemoveTrap(HitLocation, &RefundTarget, &RefundCoin) && RefundTarget)
+	{
+		RefundTarget->RefundCoin(RefundCoin);
+		UE_LOG(LogTemp, Warning, TEXT("[CoinTest] SellRefund | PlayerState=%s Refund=%d Coin=%d"),
+			*GetNameSafe(RefundTarget),
+			RefundCoin,
+			RefundTarget->GetCoin()
+		);
+	}
 }

@@ -41,6 +41,7 @@ public:
 	
 	virtual void BeginPlay() override;
 	virtual void StartPlay() override;
+	virtual void PostLogin(APlayerController* NewPlayer) override; // init coin set
 
 protected:
 	bool AreAllPlayersReady() const;
@@ -133,4 +134,11 @@ public:
 	UFUNCTION()
 	int32 GetMaxWave();
 	
+	
+	/* Player 재화 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Economy")
+	int32 InitCoin = 500;
+
+	void AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator);
+	// 추가할 것 : wave 보상
 };

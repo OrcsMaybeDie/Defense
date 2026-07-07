@@ -10,7 +10,7 @@ class UTrapData;
 class UItemData;
 
 
-// event 선언
+// Delegate (event) 선언
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	FOnSelectedEquipmentChanged,
 	int32, SelectedSlotIdx,

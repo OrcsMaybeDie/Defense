@@ -2,10 +2,16 @@
 
 #include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
+#include "Characters/Player/DefensePlayerState.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 #include "Traps/TrapBase.h"
 #include "Traps/TrapData.h"
+
+namespace
+{
+	constexpr int32 TestTrapCoinCost = 100;
+}
 
 ABuildGridSurface::ABuildGridSurface()
 {
@@ -47,9 +53,9 @@ bool ABuildGridSurface::CanPlaceTrapAt(const FVector& HitLocation, FIntPoint* Ou
 	return !OccupiedGridCoords.Contains(GridCoord);
 }
 
-bool ABuildGridSurface::TryPlaceTrap(const UTrapData* TrapData, const FVector& HitLocation, AController* InstigatorController)
+bool ABuildGridSurface::TryPlaceTrap(UTrapData* TrapData, const FVector& HitLocation, AController* InstigatorController, ADefensePlayerState* InstalledByPlayerState)
 {
-	if (!HasAuthority() || !TrapData || !TrapData->TrapClass) return false;
+	if (!HasAuthority() || !TrapData || !TrapData->TrapClass || !InstalledByPlayerState) return false;
 
 	FIntPoint GridCoord;
 	FVector PlaceLocation;
@@ -78,16 +84,25 @@ bool ABuildGridSurface::TryPlaceTrap(const UTrapData* TrapData, const FVector& H
 		return false;
 	}
 
-	SpawnedTrap->InitializeTrap(TrapData);
-	SpawnedTrap->SetPreviewMode(false);
+	SpawnedTrap->InitializePlacedTrap(TrapData, InstalledByPlayerState);
 	OccupiedSlots.Add(GridCoord, SpawnedTrap);
 	ForceNetUpdate();
 	return true;
 }
 
-bool ABuildGridSurface::TryRemoveTrap(const FVector& HitLocation)
+bool ABuildGridSurface::TryRemoveTrap(const FVector& HitLocation, ADefensePlayerState** OutRefundTarget, int32* OutRefundCoin)
 {
 	if (!HasAuthority()) return false;
+
+	if (OutRefundTarget)
+	{
+		*OutRefundTarget = nullptr;
+	}
+
+	if (OutRefundCoin)
+	{
+		*OutRefundCoin = 0;
+	}
 
 	const FIntPoint GridCoord = WorldToGrid(HitLocation);
 	TObjectPtr<ATrapBase>* ExistingTrap = OccupiedSlots.Find(GridCoord);
@@ -99,7 +114,18 @@ bool ABuildGridSurface::TryRemoveTrap(const FVector& HitLocation)
 		return false;
 	}
 
-	ExistingTrap->Get()->Destroy();
+	ATrapBase* Trap = ExistingTrap->Get();
+	if (OutRefundTarget)
+	{
+		*OutRefundTarget = Trap->GetOwnerPS();
+	}
+
+	if (OutRefundCoin)
+	{
+		*OutRefundCoin = Trap->GetSourceTrapData() ? TestTrapCoinCost : 0;
+	}
+
+	Trap->Destroy();
 	OccupiedSlots.Remove(GridCoord);
 	OccupiedGridCoords.Remove(GridCoord);
 	ForceNetUpdate();
