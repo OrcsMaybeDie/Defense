@@ -8,11 +8,6 @@
 #include "Traps/TrapBase.h"
 #include "Traps/TrapData.h"
 
-namespace
-{
-	constexpr int32 BuildComponentTestTrapCoinCost = 100;
-}
-
 UBuildComponent::UBuildComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -214,23 +209,24 @@ void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(ABuildGridSurfac
 	ADefensePlayerState* PlayerState = OwnerPawn ? OwnerPawn->GetPlayerState<ADefensePlayerState>() : nullptr;
 	if (!GetOwner() || !GetOwner()->HasAuthority() || !BuildSurface || !TrapData || !PlayerState) return;
 
-	if (!PlayerState->TrySpendCoin(BuildComponentTestTrapCoinCost))
+	const int32 TrapCost = FMath::Max(0, TrapData->Cost);
+	if (!PlayerState->TrySpendCoin(TrapCost))
 	{
 		return;
 	}
 	UE_LOG(LogTemp, Warning, TEXT("[CoinTest] BuildSpend | PlayerState=%s Cost=%d Coin=%d Trap=%s"),
 		*GetNameSafe(PlayerState),
-		BuildComponentTestTrapCoinCost,
+		TrapCost,
 		PlayerState->GetCoin(),
 		*GetNameSafe(TrapData)
 	);
 
 	if (!BuildSurface->TryPlaceTrap(TrapData, HitLocation, OwningController, PlayerState))
 	{
-		PlayerState->RefundCoin(BuildComponentTestTrapCoinCost);
+		PlayerState->RefundCoin(TrapCost);
 		UE_LOG(LogTemp, Warning, TEXT("[CoinTest] BuildRefund | PlayerState=%s Refund=%d Coin=%d Reason=PlaceFailed"),
 			*GetNameSafe(PlayerState),
-			BuildComponentTestTrapCoinCost,
+			TrapCost,
 			PlayerState->GetCoin()
 		);
 	}

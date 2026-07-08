@@ -13,6 +13,17 @@ ULoadoutComponent::ULoadoutComponent()
 	SetIsReplicatedByDefault(true);
 }
 
+void ULoadoutComponent::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// 시작 장비 0번 슬롯으로 고정
+	if (AActor* OwnerActor = GetOwner(); OwnerActor && OwnerActor->HasAuthority())
+	{
+		SetSelectedSlotIdx(0);
+	}
+}
+
 void ULoadoutComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -53,13 +64,19 @@ void ULoadoutComponent::SetSelectedSlotIdx(int32 SlotIdx)
 	SelectedSlotIdx = SlotIdx;
 	
 	// Broadcast
-	OnSelectedEquipmentChanged.Broadcast(SelectedSlotIdx, GetCurEquipment());
+	OnSelectedEquipChanged.Broadcast(SelectedSlotIdx, GetCurEquipment());
+}
+
+UEquipmentData* ULoadoutComponent::GetEquipAtSlot(int32 SlotIdx) const
+{
+	return EquippedSlots.IsValidIndex(SlotIdx)
+	? EquippedSlots[SlotIdx].EquipmentData : nullptr;
 }
 
 void ULoadoutComponent::OnRep_SelectedSlotIdx()
 {
 	// Broadcast
-	OnSelectedEquipmentChanged.Broadcast(SelectedSlotIdx, GetCurEquipment());
+	OnSelectedEquipChanged.Broadcast(SelectedSlotIdx, GetCurEquipment());
 }
 
 UEquipmentData* ULoadoutComponent::GetCurEquipment() const

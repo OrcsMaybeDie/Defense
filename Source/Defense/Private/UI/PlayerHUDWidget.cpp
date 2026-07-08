@@ -7,6 +7,8 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "TimerManager.h"
+#include "Characters/Player/DefensePlayerState.h"
+#include "UI/LoadoutBarWidget.h"
 #include "UI/PlayerStatusWidget.h"
 
 void UPlayerHUDWidget::NativeConstruct()
@@ -50,17 +52,30 @@ void UPlayerHUDWidget::TryBindPlayer()
 	
 	
 	// bind mine
-	if (SelfStatus)
+	if (ADefenseCharacter* SelfChar = Cast<ADefenseCharacter>(OwningPC->GetPawn()))
 	{
-		if (ADefenseCharacter* SelfChar = Cast<ADefenseCharacter>(OwningPC->GetPawn()))
+		if (SelfStatus)
 		{
 			SelfStatus->BindStatusComp(SelfChar->GetStatusComp());
 			bSelfBound = true;
+		}
+		
+		if (LoadoutBar)
+		{
+			LoadoutBar->BindLoadoutComponent(SelfChar->GetLoadoutComponent());
 		}
 	}
 	
 	AGameStateBase* GameState = World->GetGameState();
 	APlayerState* LocalPlayerState = OwningPC->PlayerState;
+	
+	if (LoadoutBar)
+	{
+		if (ADefensePlayerState* DefensePS = Cast<ADefensePlayerState>(LocalPlayerState))
+		{
+			LoadoutBar->BindPlayerState(DefensePS);
+		}
+	}
 	
 	if (GameState && LocalPlayerState && AllyStatus)
 	{

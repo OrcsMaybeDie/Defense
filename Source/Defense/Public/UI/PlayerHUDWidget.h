@@ -6,6 +6,7 @@
 #include "PlayerHUDWidget.generated.h"
 
 
+class ULoadoutBarWidget;
 class UPlayerStatusWidget;
 class UTextBlock;
 class ADefenseCharacter;
@@ -29,6 +30,9 @@ protected:
 	
 	UPROPERTY(meta=(BindWidgetOptional))
 	TObjectPtr<UTextBlock> AllyName;
+	
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<ULoadoutBarWidget> LoadoutBar;
 	
 private:
 	void TryBindPlayer();

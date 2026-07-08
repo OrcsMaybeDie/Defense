@@ -8,11 +8,6 @@
 #include "Traps/TrapBase.h"
 #include "Traps/TrapData.h"
 
-namespace
-{
-	constexpr int32 BuildGridSurfaceTestTrapCoinCost = 100;
-}
-
 ABuildGridSurface::ABuildGridSurface()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -122,7 +117,8 @@ bool ABuildGridSurface::TryRemoveTrap(const FVector& HitLocation, ADefensePlayer
 
 	if (OutRefundCoin)
 	{
-		*OutRefundCoin = Trap->GetSourceTrapData() ? BuildGridSurfaceTestTrapCoinCost : 0;
+		const UTrapData* TrapData = Trap->GetSourceTrapData();
+		*OutRefundCoin = TrapData ? FMath::Max(0, TrapData->Cost) : 0;
 	}
 
 	Trap->Destroy();
