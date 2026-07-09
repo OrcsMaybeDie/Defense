@@ -39,6 +39,8 @@ protected:
 	UPROPERTY(Replicated)
 	TArray<FIntPoint> OccupiedGridCoords;
 
+	bool HasBackingSurface(const FIntPoint& GridCoord) const;
+
 public:
 	bool CanPlaceTrapAt(
 	const UTrapData* TrapData,
