@@ -53,11 +53,19 @@ protected:
 	// 모든 웨이브가 끝나고 입력 멈춤 + 캐릭터 댄스애니메이션 + 결과 화면 UI를 보여줌
 	void GameEnd();
 	
+	// 게임 재시작 -> 맵 오픈
+	void RetryGame();
+	
+	// 게임 상태 적용 및 시작
 	void SetGamePhase(EGamePhase NewPhase);
+	
 	void Preparation();
 	void WaveStart();
 	void WaveEnd();
+	
+	// 맵에 남아있는 적 제거
 	void CleanupCurrentWave();
+	// 다음 웨이브 진행
 	void AdvanceToNextWave();
 	
 	// 자동시작 되는 웨이브인지 확인

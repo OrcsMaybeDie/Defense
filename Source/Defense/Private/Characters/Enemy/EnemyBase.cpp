@@ -99,6 +99,9 @@ void AEnemyBase::BeginPlay()
 	// 서버에서만 AIPerception이 동작하도록 / 클라이언트에서는 비활성화하고 HPUI 정의
 	if (!HasAuthority())
 	{
+		bHpUIVisible = false;
+		HpComp->SetVisibility(false);
+		
 		if (AIComp)
 		{
 			AIComp->Deactivate();
@@ -192,12 +195,7 @@ void AEnemyBase::SetPreview()
 	{
 		EnemyMesh = GetMesh();
 	}
-
-	if (!EnemyController)
-	{
-		EnemyController = Cast<AEnemyController>(GetController());
-	}
-
+	
 	//UE_LOG(LogTemp, Warning, TEXT("Enemy SetPreview | Enemy=%s Mode=%s(%d) NetMode=%d HasAuthority=%d Mesh=%s PreviewMats=%s/%s"),
 		//*GetNameSafe(this),
 		//LexToString(EnemyMode),
@@ -208,10 +206,50 @@ void AEnemyBase::SetPreview()
 		//*GetNameSafe(PreviewMaterial0),
 		//*GetNameSafe(PreviewMaterial1));
 
-	// 틱 처리
-	SetActorTickEnabled(true);
 	// 그리기 처리
 	SetActorHiddenInGame(false);
+
+	if(!IsRunningDedicatedServer())
+	{
+		if (EnemyMesh)
+		{
+			if (PreviewMaterial)
+			{
+				EnemyMesh->SetMaterial(0, PreviewMaterial);
+				EnemyMesh->SetMaterial(1, PreviewMaterial);
+			}
+		}
+		// 틱 처리
+		SetActorTickEnabled(true);
+		
+		bHpUIVisible = false;
+		HpComp->SetVisibility(false);
+	}
+
+	
+	// 서버에서 처리	
+	if (HasAuthority())
+	{	if (!EnemyController)
+		{
+			EnemyController = Cast<AEnemyController>(GetController());
+		}
+
+		if (AIComp)
+		{
+			AIComp->ForgetAll();
+			AIComp->Deactivate();
+			AIComp->SetComponentTickEnabled(false);
+		}
+
+		if (EnemyController && EnemyController->StateTreeAIComp)
+		{
+			EnemyController->StateTreeAIComp->StartLogic();
+			EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
+		}
+		
+		
+	}
+	
 	// 충돌 처리
 	SetActorEnableCollision(true);
 	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
@@ -226,26 +264,7 @@ void AEnemyBase::SetPreview()
 		EnemyMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	}
 	
-	if(!IsRunningDedicatedServer())
-	{
-		if (EnemyMesh)
-		{
-			if (PreviewMaterial)
-			{
-				EnemyMesh->SetMaterial(0, PreviewMaterial);
-				EnemyMesh->SetMaterial(1, PreviewMaterial);
-			}
-		}
-	}
 	
-	if (HasAuthority())
-	{
-		if (EnemyController && EnemyController->StateTreeAIComp)
-		{
-			EnemyController->StateTreeAIComp->StartLogic();
-			EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
-		}
-	}
 }
 
 void AEnemyBase::SetCombat()
@@ -263,7 +282,7 @@ void AEnemyBase::SetCombat()
 		//HasAuthority() ? 1 : 0,
 		//*GetNameSafe(CombatMaterial0),
 		//*GetNameSafe(CombatMaterial1));
-
+	
 	if (!IsRunningDedicatedServer())
 	{
 		if (EnemyMesh)
@@ -274,17 +293,29 @@ void AEnemyBase::SetCombat()
 				EnemyMesh->SetMaterial(1, CombatMaterial);
 			}
 		}
+		bHpUIVisible = false;
+		HpComp->SetVisibility(false);
+		SetActorTickEnabled(true); // tick에는 ui 회전만 있어서 데디서버가 아닌 곳에서 켜지게 함.
 	}
 	
 	if (HasAuthority())
 	{
+		
+		if (AIComp)
+		{
+			AIComp->ForgetAll();
+			AIComp->Activate(true);
+			AIComp->SetComponentTickEnabled(true);
+			AIComp->RequestStimuliListenerUpdate();
+		}
+		
 		if (EnemyController && EnemyController->StateTreeAIComp)
 		{
 			EnemyController->StateTreeAIComp->StartLogic();
 			EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
 		}
 	}
-
+	
 	SetActorEnableCollision(true);
 	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
 	{
@@ -292,15 +323,11 @@ void AEnemyBase::SetCombat()
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	}
+	
 }
 
 void AEnemyBase::SetInactive()
 {
-	if (!EnemyController)
-	{
-		EnemyController = Cast<AEnemyController>(GetController());
-	}
-
 	//UE_LOG(LogTemp, Warning, TEXT("Enemy SetInactive | Enemy=%s Mode=%s(%d) NetMode=%d HasAuthority=%d"),
 		//*GetNameSafe(this),
 		//LexToString(EnemyMode),
@@ -310,20 +337,30 @@ void AEnemyBase::SetInactive()
 
 	if (HasAuthority())
 	{
+		if (!EnemyController)
+		{
+			EnemyController = Cast<AEnemyController>(GetController());
+		}
+		
 		if (EnemyController && EnemyController->StateTreeAIComp)
 		{
 			EnemyController->StateTreeAIComp->StopLogic(TEXT("EnemyMode : Inactive"));
 		}
+
+		if (AIComp)
+		{
+			AIComp->ForgetAll();
+			AIComp->Deactivate();
+			AIComp->SetComponentTickEnabled(false);
+		}
+		
+		
 	}
 	else
 	{
 		
 	}
 	
-	// 틱 처리
-	SetActorTickEnabled(false);
-	// 그리기 처리
-	SetActorHiddenInGame(true);
 	// 충돌 처리
 	SetActorEnableCollision(false);
 	
@@ -331,10 +368,18 @@ void AEnemyBase::SetInactive()
 	{
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	}
-	if (HpComp)
-	{
-		bHpUIVisible = false;
-		HpComp->SetVisibility(false);
+	
+	// 그리기 처리
+	SetActorHiddenInGame(true);
+	
+	if (!IsRunningDedicatedServer())
+	{ // 틱 처리
+		SetActorTickEnabled(false);
+		if (HpComp)
+		{
+			bHpUIVisible = false;
+			HpComp->SetVisibility(false);
+		}
 	}
 }
 
@@ -356,7 +401,7 @@ void AEnemyBase::OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Updated | Enemy=%s Actor=%s Sensed=%d EnemyMode=%s EnemyState=%s CurrentTarget=%s Distance=%.1f Strength=%.2f"),
+	/*UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Updated | Enemy=%s Actor=%s Sensed=%d EnemyMode=%s EnemyState=%s CurrentTarget=%s Distance=%.1f Strength=%.2f"),
 		*GetNameSafe(this),
 		*GetNameSafe(Actor),
 		Stimulus.WasSuccessfullySensed() ? 1 : 0,
@@ -365,28 +410,28 @@ void AEnemyBase::OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 		*GetNameSafe(Target),
 		Actor ? GetDistanceTo(Actor) : -1.0f,
 		Stimulus.Strength
-	);
+	);*/
 	
 	if (EnemyMode != EEnemyMode::Combat)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Ignored | Enemy=%s Reason=NotCombat EnemyMode=%s EnemyState=%s Actor=%s"),
+		/*UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Ignored | Enemy=%s Reason=NotCombat EnemyMode=%s EnemyState=%s Actor=%s"),
 			*GetNameSafe(this),
 			LexToString(EnemyMode),
 			LexToString(EnemyState),
 			*GetNameSafe(Actor)
-		);
+		);*/
 		return;
 	}
 
 	ADefenseCharacter* PerceivedCharacter = Cast<ADefenseCharacter>(Actor);
 	if (!PerceivedCharacter)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Ignored | Enemy=%s Reason=ActorNotDefenseCharacter EnemyMode=%s EnemyState=%s Actor=%s"),
+		/*UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Ignored | Enemy=%s Reason=ActorNotDefenseCharacter EnemyMode=%s EnemyState=%s Actor=%s"),
 			*GetNameSafe(this),
 			LexToString(EnemyMode),
 			LexToString(EnemyState),
 			*GetNameSafe(Actor)
-		);
+		);*/
 		return;
 	}
 
@@ -395,41 +440,41 @@ void AEnemyBase::OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 		if (EnemyState == EEnemyState::Patrol)
 		{
 			Target = PerceivedCharacter;
-			UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Target Updated | Enemy=%s NewTarget=%s EnemyState=%s Event=TargetFind"),
+			/*UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Target Updated | Enemy=%s NewTarget=%s EnemyState=%s Event=TargetFind"),
 				*GetNameSafe(this),
 				*GetNameSafe(Target),
 				LexToString(EnemyState)
-			);
+			);*/
 			SendStateTreeEvent(FName("AI.Event.TargetFind"));
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Sensed But Not Tracking | Enemy=%s Actor=%s EnemyState=%s RequiredState=Patrol CurrentTarget=%s"),
+			/*UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Sensed But Not Tracking | Enemy=%s Actor=%s EnemyState=%s RequiredState=Patrol CurrentTarget=%s"),
 				*GetNameSafe(this),
 				*GetNameSafe(Actor),
 				LexToString(EnemyState),
 				*GetNameSafe(Target)
-			);
+			);*/
 		}
 	}
 	else
 	{
 		if (Target != PerceivedCharacter)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Lost Ignored | Enemy=%s LostActor=%s CurrentTarget=%s EnemyState=%s"),
+			/*UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Lost Ignored | Enemy=%s LostActor=%s CurrentTarget=%s EnemyState=%s"),
 				*GetNameSafe(this),
 				*GetNameSafe(PerceivedCharacter),
 				*GetNameSafe(Target),
 				LexToString(EnemyState)
-			);
+			);*/
 			return;
 		}
 		
 		Target = nullptr;
-		UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Target Updated | Enemy=%s NewTarget=None EnemyState=%s Event=TargetLost"),
+		/*UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Target Updated | Enemy=%s NewTarget=None EnemyState=%s Event=TargetLost"),
 			*GetNameSafe(this),
 			LexToString(EnemyState)
-		);
+		);*/
 		SendStateTreeEvent(TEXT("AI.Event.TargetLost"));
 	}
 }
@@ -499,7 +544,18 @@ void AEnemyBase::OnRep_UpdateUI()
 	{
 		return;
 	}
-	if (!bHpUIVisible && EnemyMode == EEnemyMode::Combat && EnemyState != EEnemyState::Die)
+	
+	if (EnemyMode != EEnemyMode::Combat)
+	{
+		return;
+	}
+	
+	if (CurHP >= MaxHP)
+	{
+		return;
+	}
+	
+	if (!bHpUIVisible &&  EnemyState != EEnemyState::Die)
 	{
 		bHpUIVisible = true;
 		HpComp->SetVisibility(true);

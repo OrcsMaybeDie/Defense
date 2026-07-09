@@ -90,10 +90,10 @@ TObjectPtr<AEnemyBase> UEnemyPoolSubsystem::SpawnFromPool(TSubclassOf<AEnemyBase
 		return nullptr;
 	}
 	enemy->SetActorLocationAndRotation(location, rotation);
-	enemy->CurHP = enemy->MaxHP;
 	enemy->EnemyState = EEnemyState::Idle;
 	enemy->Target = nullptr;
 	enemy->EnemyMode = EEnemyMode::Preview;
+	enemy->CurHP = enemy->MaxHP;
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPool SpawnFromPool set mode | Enemy=%s EnemyMode=Preview HasAuthority=%d"),
 		//*GetNameSafe(enemy),
 		//enemy->HasAuthority() ? 1 : 0);
