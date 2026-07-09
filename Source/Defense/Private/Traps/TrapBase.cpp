@@ -4,6 +4,8 @@
 #include "Components/PrimitiveComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Characters/Enemy/EnemyBase.h"
+#include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -15,6 +17,29 @@ namespace
 	constexpr ECollisionChannel EnemyCollisionChannel = ECC_GameTraceChannel1;
 	const FVector TrapMeshScale(1.5f, 1.5f, 1.5f);
 	constexpr float TrapPlacedHeightScale = 1.f / 3.f;
+	constexpr float WallTraceRange = 1400.f;
+	constexpr float WallTraceStartOffset = 10.f;
+	constexpr float WallTraceDebugTime = 0.35f;
+	const FVector WallTraceBoxExtent(120.f, 140.f, 20.f);
+	constexpr float WallTraceLaneOffset = 120.f;
+
+	float GetBoxHalfExtentAlongDirection(const UBoxComponent* BoxComponent, const FVector& WorldDirection)
+	{
+		if (!BoxComponent) return 0.f;
+
+		const FVector Direction = WorldDirection.GetSafeNormal();
+		const FVector Extent = BoxComponent->GetScaledBoxExtent();
+
+		return FMath::Abs(FVector::DotProduct(BoxComponent->GetForwardVector(), Direction)) * Extent.X
+			+ FMath::Abs(FVector::DotProduct(BoxComponent->GetRightVector(), Direction)) * Extent.Y
+			+ FMath::Abs(FVector::DotProduct(BoxComponent->GetUpVector(), Direction)) * Extent.Z;
+	}
+
+	bool IsCombatEnemy(const AActor* Actor)
+	{
+		const AEnemyBase* Enemy = Cast<AEnemyBase>(Actor);
+		return Enemy && Enemy->EnemyMode == EEnemyMode::Combat;
+	}
 }
 
 ATrapBase::ATrapBase()
@@ -225,6 +250,12 @@ void ATrapBase::ApplyPeriodicDamage()
 {
 	if (!HasAuthority() || !IsPlaced()) return;
 
+	if (SourceTrapData && SourceTrapData->GridSurface == ETrapGridSurface::Wall)
+	{
+		ApplyWallBoxTraceDamage();
+		return;
+	}
+
 	for (auto It = OverlappingEnemies.CreateIterator(); It; ++It)
 	{
 		AActor* OverlappingActor = It->Get();
@@ -234,7 +265,95 @@ void ATrapBase::ApplyPeriodicDamage()
 			continue;
 		}
 
+		if (!IsCombatEnemy(OverlappingActor))
+		{
+			continue;
+		}
+
 		UGameplayStatics::ApplyDamage(OverlappingActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
+	}
+}
+
+void ATrapBase::ApplyWallBoxTraceDamage()
+{
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	// BuildGridSurface convention: local +Z is the trap's outward direction.
+	const FVector TraceDirection = GetActorUpVector().GetSafeNormal();
+	if (TraceDirection.IsNearlyZero()) return;
+
+	const FVector TraceCenter = DamageArea ? DamageArea->GetComponentLocation() : GetActorLocation();
+	const float TraceHalfDepth = GetBoxHalfExtentAlongDirection(DamageArea, TraceDirection);
+	const FVector TraceLateralDirection = GetActorForwardVector().GetSafeNormal();
+	const FQuat TraceRotation = GetActorQuat();
+
+	FCollisionObjectQueryParams ObjectQueryParams;
+	ObjectQueryParams.AddObjectTypesToQuery(EnemyCollisionChannel);
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(WallTrapTrace), false, this);
+	QueryParams.AddIgnoredActor(this);
+	if (GetOwner())
+	{
+		QueryParams.AddIgnoredActor(GetOwner());
+	}
+
+	const FCollisionShape TraceShape = FCollisionShape::MakeBox(WallTraceBoxExtent);
+	const float LaneOffsets[] = { -WallTraceLaneOffset, 0.f, WallTraceLaneOffset };
+	TSet<AActor*> DamagedActors;
+
+	for (const float LaneOffset : LaneOffsets)
+	{
+		const FVector LaneCenter = TraceCenter + TraceLateralDirection * LaneOffset;
+		const FVector TraceStart = LaneCenter + TraceDirection * (TraceHalfDepth + WallTraceStartOffset);
+		const FVector TraceEnd = TraceStart + TraceDirection * WallTraceRange;
+
+		TArray<FHitResult> Hits;
+		const bool bHit = World->SweepMultiByObjectType(
+			Hits,
+			TraceStart,
+			TraceEnd,
+			TraceRotation,
+			ObjectQueryParams,
+			TraceShape,
+			QueryParams
+		);
+
+		if (!bHit)
+		{
+			continue;
+		}
+
+		for (const FHitResult& Hit : Hits)
+		{
+			AActor* HitActor = Hit.GetActor();
+			if (!IsValid(HitActor) || HitActor == this || DamagedActors.Contains(HitActor) || !IsCombatEnemy(HitActor))
+			{
+				continue;
+			}
+
+			DamagedActors.Add(HitActor);
+			Multicast_DrawWallTraceDebug(TraceStart, Hit.ImpactPoint, true);
+			UGameplayStatics::ApplyDamage(HitActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
+			break;
+		}
+	}
+}
+
+void ATrapBase::Multicast_DrawWallTraceDebug_Implementation(FVector TraceStart, FVector TraceEnd, bool bHit)
+{
+	if (UWorld* World = GetWorld())
+	{
+		DrawDebugLine(
+			World,
+			TraceStart,
+			TraceEnd,
+			bHit ? FColor::Red : FColor::Green,
+			false,
+			WallTraceDebugTime,
+			0,
+			2.f
+		);
 	}
 }
 
