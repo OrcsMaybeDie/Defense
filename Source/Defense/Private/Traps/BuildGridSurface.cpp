@@ -8,6 +8,12 @@
 #include "Traps/TrapBase.h"
 #include "Traps/TrapData.h"
 
+namespace
+{
+	constexpr float BackingSurfaceProbeOutwardOffset = 5.f;
+	constexpr float BackingSurfaceProbeDepth = 120.f;
+}
+
 ABuildGridSurface::ABuildGridSurface()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -44,12 +50,22 @@ bool ABuildGridSurface::CanPlaceTrapAt(const UTrapData* TrapData, const FVector&
 		*OutGridCoord = GridCoord;
 	}
 
+	if (OccupiedGridCoords.Contains(GridCoord))
+	{
+		return false;
+	}
+
+	if (SurfaceType == ETrapGridSurface::Wall && !HasBackingSurface(GridCoord))
+	{
+		return false;
+	}
+
 	if (OutPlaceLocation)
 	{
 		*OutPlaceLocation = GridToWorldCenter(GridCoord);
 	}
 
-	return !OccupiedGridCoords.Contains(GridCoord);
+	return true;
 }
 
 bool ABuildGridSurface::TryPlaceTrap(UTrapData* TrapData, const FVector& HitLocation, AController* InstigatorController, ADefensePlayerState* InstalledByPlayerState)
@@ -167,4 +183,24 @@ FVector ABuildGridSurface::GridToWorldCenter(const FIntPoint& GridCoord) const
 	);
 
 	return GetActorLocation() + GetActorRotation().RotateVector(LocalCenter);
+}
+
+bool ABuildGridSurface::HasBackingSurface(const FIntPoint& GridCoord) const
+{
+	UWorld* World = GetWorld();
+	if (!World) return false;
+
+	const FVector OutwardDirection = GetActorUpVector().GetSafeNormal();
+	if (OutwardDirection.IsNearlyZero()) return false;
+
+	const FVector SurfacePoint = GridToWorldCenter(GridCoord);
+	const FVector TraceStart = SurfacePoint + OutwardDirection * BackingSurfaceProbeOutwardOffset;
+	const FVector TraceEnd = SurfacePoint - OutwardDirection * BackingSurfaceProbeDepth;
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(BuildGridBackingSurface), false, this);
+	Params.AddIgnoredActor(this);
+
+	FHitResult Hit;
+	const FCollisionObjectQueryParams ObjectQueryParams(ECC_WorldStatic);
+	return World->LineTraceSingleByObjectType(Hit, TraceStart, TraceEnd, ObjectQueryParams, Params);
 }
