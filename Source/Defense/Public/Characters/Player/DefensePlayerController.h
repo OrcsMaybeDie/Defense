@@ -56,8 +56,6 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<class UInputAction> ReadyAction;
 	
-	void ToggleReady();
-	
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_SetReady(bool bReady);
 	
@@ -67,4 +65,23 @@ protected:
 	
 	UPROPERTY()
 	TObjectPtr<UUserWidget> HUDWidget;
+	
+public:
+	void ToggleReady();
+	
+	// 게임 끝났을 때 UI
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<class UGameEndUI> GameEndUIClass;
+	
+	UPROPERTY()
+	TObjectPtr<UGameEndUI> GameEndUI;
+	
+	// GameEndUI
+	UFUNCTION(Client, Reliable)
+	void ClientRPC_ShowGameEndUI(bool bGameClear);
+	
+	// 게임 다시 시작할 때 커서 및 입력모드 되돌리기
+	UFUNCTION(Client, Reliable)
+	void ClientRPC_HideGameEndUI();
+	
 };
