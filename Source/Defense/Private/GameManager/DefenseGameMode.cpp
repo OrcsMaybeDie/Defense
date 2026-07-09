@@ -236,7 +236,6 @@ void ADefenseGameMode::SetGamePhase(EGamePhase NewPhase)
 		DefenseGameState = GetGameState<ADefenseGameState>();
 	}
 	
-	// 같은 상태일 때는 조기 종료
 	if (!DefenseGameState || DefenseGameState->GamePhase == NewPhase)
 	{
 		return;
@@ -406,18 +405,18 @@ void ADefenseGameMode::WaveEnd()
 	// 게임오버시 리턴
 	if (DefenseGameState->GamePhase == EGamePhase::GameEnded)
 		return;
-	const FString Message = FString::Printf(
+	/*const FString Message = FString::Printf(
 		TEXT("Wave End | Wave=%d/%d RemainingEnemies=%d"),
 		CurrentWave,
 		MaxWave,
 		CurrentEnemyCount
-	);
+	);*/
 	/*UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode WaveEnd | Wave=%d/%d RemainingEnemies=%d"),
 		CurrentWave,
 		MaxWave,
 		CurrentEnemyCount
 	);*/
-	UKismetSystemLibrary::PrintString(this, Message, true, true, FLinearColor::Green, 3.0f);
+	//UKismetSystemLibrary::PrintString(this, Message, true, true, FLinearColor::Green, 3.0f);
 
 	AdvanceToNextWave();
 }
@@ -580,7 +579,7 @@ void ADefenseGameMode::AdvanceToNextWave()
 {
 	if (CurrentWave >= MaxWave)
 	{
-		SetGamePhase(EGamePhase::WaveEnded);
+		SetGamePhase(EGamePhase::GameEnded);
 		return;
 	}
 

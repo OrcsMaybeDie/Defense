@@ -99,7 +99,7 @@ private:
 	void ReturnActiveEnemiesToPool();
 	void AddActiveEnemy(class AEnemyBase* Enemy);
 	void BuildCurrentWaveSpawnPlans();
-	class AEnemyRoute* GetRandomRoute() const;
+	class AEnemyRoute* GetRandomRoute(const class AEnemyRoute* PreviousRoute = nullptr) const;
 	bool ApplySpawnPlanToEnemy(class AEnemyBase* Enemy, int32 SpawnPlanIndex) const;
 
 	FTimerHandle SpawnTimerHandle;

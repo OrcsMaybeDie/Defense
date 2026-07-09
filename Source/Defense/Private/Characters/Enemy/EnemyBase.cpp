@@ -320,7 +320,7 @@ void AEnemyBase::SetCombat()
 	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
 	{
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-		CapsuleComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
+		//CapsuleComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	}
 	
