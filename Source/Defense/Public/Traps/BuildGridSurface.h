@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "TrapData.h"
 #include "GameFramework/Actor.h"
 #include "BuildGridSurface.generated.h"
 
@@ -26,8 +27,11 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Build Grid")
 	TObjectPtr<UBoxComponent> BuildArea;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Build Grid")
+	ETrapGridSurface SurfaceType = ETrapGridSurface::Floor;
 
-	static constexpr float CellSize = 100.f;
+	static constexpr float CellSize = 150.f;
 
 	UPROPERTY()
 	TMap<FIntPoint, TObjectPtr<ATrapBase>> OccupiedSlots;
@@ -36,7 +40,12 @@ protected:
 	TArray<FIntPoint> OccupiedGridCoords;
 
 public:
-	bool CanPlaceTrapAt(const FVector& HitLocation, FIntPoint* OutGridCoord = nullptr, FVector* OutPlaceLocation = nullptr) const;
+	bool CanPlaceTrapAt(
+	const UTrapData* TrapData,
+	const FVector& HitLocation,
+	FIntPoint* OutGridCoord = nullptr,
+	FVector* OutPlaceLocation = nullptr
+) const;
 	bool TryPlaceTrap(UTrapData* TrapData, const FVector& HitLocation, AController* InstigatorController, ADefensePlayerState* InstalledByPlayerState);
 	bool TryRemoveTrap(const FVector& HitLocation, ADefensePlayerState** OutRefundTarget = nullptr, int32* OutRefundCoin = nullptr);
 	void MarkSlotOccupiedLocally(const FVector& HitLocation);

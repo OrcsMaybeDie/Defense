@@ -48,7 +48,7 @@ void UBuildComponent::BuildTrap()
 		return;
 	}
 
-	const bool bCanPlace = BuildSurface->CanPlaceTrapAt(Hit.ImpactPoint);
+	const bool bCanPlace = BuildSurface->CanPlaceTrapAt(TrapData, Hit.ImpactPoint);
 	if (!bCanPlace)
 	{
 		return;
@@ -173,7 +173,7 @@ void UBuildComponent::UpdateTrapPreview()
 	}
 
 	FVector PreviewLocation = Hit.ImpactPoint;
-	const bool bCanPlace = BuildSurface->CanPlaceTrapAt(Hit.ImpactPoint, nullptr, &PreviewLocation);
+	const bool bCanPlace = BuildSurface->CanPlaceTrapAt(TrapData, Hit.ImpactPoint, nullptr, &PreviewLocation);
 	if (!bCanPlace)
 	{
 		if (!TrapPreviewActor->IsHidden())
@@ -214,21 +214,10 @@ void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(ABuildGridSurfac
 	{
 		return;
 	}
-	UE_LOG(LogTemp, Warning, TEXT("[CoinTest] BuildSpend | PlayerState=%s Cost=%d Coin=%d Trap=%s"),
-		*GetNameSafe(PlayerState),
-		TrapCost,
-		PlayerState->GetCoin(),
-		*GetNameSafe(TrapData)
-	);
 
 	if (!BuildSurface->TryPlaceTrap(TrapData, HitLocation, OwningController, PlayerState))
 	{
 		PlayerState->RefundCoin(TrapCost);
-		UE_LOG(LogTemp, Warning, TEXT("[CoinTest] BuildRefund | PlayerState=%s Refund=%d Coin=%d Reason=PlaceFailed"),
-			*GetNameSafe(PlayerState),
-			TrapCost,
-			PlayerState->GetCoin()
-		);
 	}
 }
 
@@ -241,10 +230,5 @@ void UBuildComponent::ServerRPC_RequestSellTrap_Implementation(ABuildGridSurface
 	if (BuildSurface->TryRemoveTrap(HitLocation, &RefundTarget, &RefundCoin) && RefundTarget)
 	{
 		RefundTarget->RefundCoin(RefundCoin);
-		UE_LOG(LogTemp, Warning, TEXT("[CoinTest] SellRefund | PlayerState=%s Refund=%d Coin=%d"),
-			*GetNameSafe(RefundTarget),
-			RefundCoin,
-			RefundTarget->GetCoin()
-		);
 	}
 }

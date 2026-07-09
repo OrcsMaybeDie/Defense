@@ -39,7 +39,7 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap|Components")
 	TObjectPtr<UBoxComponent> DamageArea;
 
-	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Trap")
+	UPROPERTY(ReplicatedUsing=OnRep_RuntimeState, VisibleInstanceOnly, BlueprintReadOnly, Category="Trap")
 	ETrapRuntimeState RuntimeState = ETrapRuntimeState::Preview;
 	
 	UPROPERTY(BlueprintReadOnly, Category="Trap")
@@ -60,6 +60,7 @@ protected:
 
 	bool IsPlaced() const { return RuntimeState == ETrapRuntimeState::Placed; }
 	void ConfigureFromTrapData(UTrapData* TrapData);
+	void ApplyTrapMeshScale();
 	void ApplyPreviewVisual();
 	void SyncDamageAreaToMesh();
 	void StartDamageTimer();
@@ -84,6 +85,9 @@ protected:
 		UPrimitiveComponent* OtherComp,
 		int32 OtherBodyIndex
 	);
+
+	UFUNCTION()
+	void OnRep_RuntimeState();
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;

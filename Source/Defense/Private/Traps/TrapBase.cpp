@@ -13,6 +13,8 @@
 namespace
 {
 	constexpr ECollisionChannel EnemyCollisionChannel = ECC_GameTraceChannel1;
+	const FVector TrapMeshScale(1.5f, 1.5f, 1.5f);
+	constexpr float TrapPlacedHeightScale = 1.f / 3.f;
 }
 
 ATrapBase::ATrapBase()
@@ -62,6 +64,8 @@ void ATrapBase::BeginPlay()
 {
 	Super::BeginPlay();
 
+	ApplyTrapMeshScale();
+
 	if (DamageArea)
 	{
 		DamageArea->OnComponentBeginOverlap.AddUniqueDynamic(this, &ATrapBase::OnDamageAreaBeginOverlap);
@@ -88,6 +92,7 @@ void ATrapBase::InitializePreviewTrap(UTrapData* TrapData)
 	OverlappingEnemies.Empty();
 
 	ConfigureFromTrapData(TrapData);
+	ApplyTrapMeshScale();
 	StopDamageTimer();
 	SetActorEnableCollision(false);
 
@@ -108,6 +113,7 @@ void ATrapBase::InitializePlacedTrap(UTrapData* TrapData, ADefensePlayerState* I
 	OwnerPS = InInstalledByPlayerState;
 
 	ConfigureFromTrapData(TrapData);
+	ApplyTrapMeshScale();
 	SetActorEnableCollision(true);
 
 	if (DamageArea)
@@ -127,6 +133,25 @@ void ATrapBase::ConfigureFromTrapData(UTrapData* TrapData)
 	SourceTrapData = TrapData;
 	Damage = TrapData->Damage;
 	DamageInterval = TrapData->DamageInterval;
+}
+
+void ATrapBase::ApplyTrapMeshScale()
+{
+	if (!Mesh) return;
+
+	FVector TargetScale = TrapMeshScale;
+	if (RuntimeState == ETrapRuntimeState::Placed)
+	{
+		TargetScale.Z *= TrapPlacedHeightScale;
+	}
+
+	Mesh->SetRelativeScale3D(TargetScale);
+	SyncDamageAreaToMesh();
+}
+
+void ATrapBase::OnRep_RuntimeState()
+{
+	ApplyTrapMeshScale();
 }
 
 void ATrapBase::ApplyPreviewVisual()
