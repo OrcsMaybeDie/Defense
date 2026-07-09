@@ -66,6 +66,7 @@ protected:
 	void StartDamageTimer();
 	void StopDamageTimer();
 	void ApplyPeriodicDamage();
+	void ApplyWallBoxTraceDamage();
 	void CacheCurrentOverlaps();
 
 	UFUNCTION()
@@ -88,6 +89,9 @@ protected:
 
 	UFUNCTION()
 	void OnRep_RuntimeState();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_DrawWallTraceDebug(FVector TraceStart, FVector TraceEnd, bool bHit);
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
