@@ -65,6 +65,8 @@ ADefenseCharacter::ADefenseCharacter ()
 void ADefenseCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	TimeSinceFiredWeapon += DeltaSeconds;
 }
 
 void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -84,8 +86,10 @@ void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ADefenseCharacter::Look);
 		
 		EnhancedInputComponent->BindAction(IA_LClick, ETriggerEvent::Started, this, &ADefenseCharacter::HandleLClick);
+		EnhancedInputComponent->BindAction(IA_LClick, ETriggerEvent::Triggered, this, &ADefenseCharacter::HandleLClickTriggered);
 
 		EnhancedInputComponent->BindAction(IA_RClick, ETriggerEvent::Started, this, &ADefenseCharacter::HandleRClick);
+		EnhancedInputComponent->BindAction(IA_RClick, ETriggerEvent::Triggered, this, &ADefenseCharacter::HandleRClick);
 
 		EnhancedInputComponent->BindAction(IA_Sell, ETriggerEvent::Started, this, &ADefenseCharacter::SellTrap);
 		
@@ -181,9 +185,12 @@ void ADefenseCharacter::HandleLClick()
 	if (BuildComp && BuildComp->HasSelectedTrap())
 	{
 		BuildComp->BuildTrap();
-		return;
 	}
+}
 
+void ADefenseCharacter::HandleLClickTriggered()
+{
+	if (BuildComp && BuildComp->HasSelectedTrap()) return;
 	Attack();
 }
 
@@ -194,12 +201,22 @@ void ADefenseCharacter::HandleRClick()
 	AltAttack();
 }
 
+void ADefenseCharacter::FireWeapon()
+{
+	Attack();
+}
+
 void ADefenseCharacter::Attack()
 {
 	if (WeaponComp)
 	{
 		WeaponComp->Attack(EWeaponAttackType::Attack);
 	}
+}
+
+void ADefenseCharacter::NotifyFireWeapon()
+{
+	TimeSinceFiredWeapon = 0.f;
 }
 
 void ADefenseCharacter::AltAttack()

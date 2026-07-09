@@ -117,8 +117,14 @@ public:
 	void HandleLClick();
 
 	UFUNCTION(BlueprintCallable, Category="Input")
+	void HandleLClickTriggered();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
 	void HandleRClick();
 
+	UFUNCTION(BlueprintCallable, Category="Input")
+	void FireWeapon();
+	
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void Attack();	
 	UFUNCTION(BlueprintCallable, Category="Input")
@@ -143,5 +149,11 @@ public:
 	
 	UFUNCTION(BlueprintImplementableEvent, Category="Weapon")
 	void OnAttackAccepted(EWeaponAttackType AttackType);
+
+	UPROPERTY(BlueprintReadOnly, Category="Weapon")
+	float TimeSinceFiredWeapon = 999.f;
+
+	UFUNCTION(BlueprintCallable, Category="Weapon")
+	void NotifyFireWeapon();
 };
 
