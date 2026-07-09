@@ -134,8 +134,8 @@ public:
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 	
-	FORCEINLINE class UStatusComponent* GetStatComp() const { return StatusComp; }
-	FORCEINLINE class ULoadoutComponent* GetLoadoutComp() const { return LoadoutComp; }
+	FORCEINLINE class UStatusComponent* GetStatusComp() const { return StatusComp; }
+	FORCEINLINE class ULoadoutComponent* GetLoadoutComponent() const { return LoadoutComp; }
 	FORCEINLINE class UBuildComponent* GetBuildComp() const { return BuildComp; }
 	
 	// test

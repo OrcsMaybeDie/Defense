@@ -101,12 +101,6 @@ void ADefenseGameMode::PostLogin(APlayerController* NewPlayer)
 	if (!PS) return;
 
 	PS->SetCoin(InitCoin);
-	
-	/*UE_LOG(LogTemp, Warning, TEXT("[CoinTest] Init | PlayerController=%s PlayerState=%s Coin=%d"),
-		*GetNameSafe(NewPlayer),
-		*GetNameSafe(PS),
-		InitCoin
-	);*/
 }
 
 bool ADefenseGameMode::AreAllPlayersReady() const

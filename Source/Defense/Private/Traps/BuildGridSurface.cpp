@@ -8,11 +8,6 @@
 #include "Traps/TrapBase.h"
 #include "Traps/TrapData.h"
 
-namespace
-{
-	constexpr int32 BuildGridSurfaceTestTrapCoinCost = 100;
-}
-
 ABuildGridSurface::ABuildGridSurface()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -37,8 +32,12 @@ void ABuildGridSurface::GetLifetimeReplicatedProps(TArray<class FLifetimePropert
 	DOREPLIFETIME(ABuildGridSurface, OccupiedGridCoords);
 }
 
-bool ABuildGridSurface::CanPlaceTrapAt(const FVector& HitLocation, FIntPoint* OutGridCoord, FVector* OutPlaceLocation) const
+bool ABuildGridSurface::CanPlaceTrapAt(const UTrapData* TrapData, const FVector& HitLocation, FIntPoint* OutGridCoord,
+	FVector* OutPlaceLocation) const
 {
+	if (!TrapData) return false;
+	if (TrapData->GridSurface != SurfaceType) return false;
+	
 	const FIntPoint GridCoord = WorldToGrid(HitLocation);
 	if (OutGridCoord)
 	{
@@ -59,7 +58,7 @@ bool ABuildGridSurface::TryPlaceTrap(UTrapData* TrapData, const FVector& HitLoca
 
 	FIntPoint GridCoord;
 	FVector PlaceLocation;
-	if (!CanPlaceTrapAt(HitLocation, &GridCoord, &PlaceLocation))
+	if (!CanPlaceTrapAt(TrapData, HitLocation, &GridCoord, &PlaceLocation))
 	{
 		return false;
 	}
@@ -122,7 +121,8 @@ bool ABuildGridSurface::TryRemoveTrap(const FVector& HitLocation, ADefensePlayer
 
 	if (OutRefundCoin)
 	{
-		*OutRefundCoin = Trap->GetSourceTrapData() ? BuildGridSurfaceTestTrapCoinCost : 0;
+		const UTrapData* TrapData = Trap->GetSourceTrapData();
+		*OutRefundCoin = TrapData ? FMath::Max(0, TrapData->Cost) : 0;
 	}
 
 	Trap->Destroy();

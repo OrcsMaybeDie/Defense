@@ -68,9 +68,17 @@ public:
 
 	// event
 	UPROPERTY(BlueprintAssignable, Category="Loadout")
-	FOnSelectedEquipmentChanged OnSelectedEquipmentChanged;
+	FOnSelectedEquipmentChanged OnSelectedEquipChanged;
 
+	// getter
+	UFUNCTION(BlueprintPure, Category="Loadout")
+	int32 GetSlotCount() const { return EquippedSlots.Num(); }
+	UFUNCTION(BlueprintPure, Category="Loadout")
+	UEquipmentData* GetEquipAtSlot(int32 SlotIdx) const;
+	
 protected:
+	virtual void BeginPlay() override;
+
 	UFUNCTION()
 	void OnRep_SelectedSlotIdx(); // 복제 처리
 	

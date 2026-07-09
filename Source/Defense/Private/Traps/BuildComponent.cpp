@@ -8,11 +8,6 @@
 #include "Traps/TrapBase.h"
 #include "Traps/TrapData.h"
 
-namespace
-{
-	constexpr int32 BuildComponentTestTrapCoinCost = 100;
-}
-
 UBuildComponent::UBuildComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -53,7 +48,7 @@ void UBuildComponent::BuildTrap()
 		return;
 	}
 
-	const bool bCanPlace = BuildSurface->CanPlaceTrapAt(Hit.ImpactPoint);
+	const bool bCanPlace = BuildSurface->CanPlaceTrapAt(TrapData, Hit.ImpactPoint);
 	if (!bCanPlace)
 	{
 		return;
@@ -178,7 +173,7 @@ void UBuildComponent::UpdateTrapPreview()
 	}
 
 	FVector PreviewLocation = Hit.ImpactPoint;
-	const bool bCanPlace = BuildSurface->CanPlaceTrapAt(Hit.ImpactPoint, nullptr, &PreviewLocation);
+	const bool bCanPlace = BuildSurface->CanPlaceTrapAt(TrapData, Hit.ImpactPoint, nullptr, &PreviewLocation);
 	if (!bCanPlace)
 	{
 		if (!TrapPreviewActor->IsHidden())
@@ -214,25 +209,15 @@ void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(ABuildGridSurfac
 	ADefensePlayerState* PlayerState = OwnerPawn ? OwnerPawn->GetPlayerState<ADefensePlayerState>() : nullptr;
 	if (!GetOwner() || !GetOwner()->HasAuthority() || !BuildSurface || !TrapData || !PlayerState) return;
 
-	if (!PlayerState->TrySpendCoin(BuildComponentTestTrapCoinCost))
+	const int32 TrapCost = FMath::Max(0, TrapData->Cost);
+	if (!PlayerState->TrySpendCoin(TrapCost))
 	{
 		return;
 	}
-	UE_LOG(LogTemp, Warning, TEXT("[CoinTest] BuildSpend | PlayerState=%s Cost=%d Coin=%d Trap=%s"),
-		*GetNameSafe(PlayerState),
-		BuildComponentTestTrapCoinCost,
-		PlayerState->GetCoin(),
-		*GetNameSafe(TrapData)
-	);
 
 	if (!BuildSurface->TryPlaceTrap(TrapData, HitLocation, OwningController, PlayerState))
 	{
-		PlayerState->RefundCoin(BuildComponentTestTrapCoinCost);
-		UE_LOG(LogTemp, Warning, TEXT("[CoinTest] BuildRefund | PlayerState=%s Refund=%d Coin=%d Reason=PlaceFailed"),
-			*GetNameSafe(PlayerState),
-			BuildComponentTestTrapCoinCost,
-			PlayerState->GetCoin()
-		);
+		PlayerState->RefundCoin(TrapCost);
 	}
 }
 
@@ -245,10 +230,5 @@ void UBuildComponent::ServerRPC_RequestSellTrap_Implementation(ABuildGridSurface
 	if (BuildSurface->TryRemoveTrap(HitLocation, &RefundTarget, &RefundCoin) && RefundTarget)
 	{
 		RefundTarget->RefundCoin(RefundCoin);
-		UE_LOG(LogTemp, Warning, TEXT("[CoinTest] SellRefund | PlayerState=%s Refund=%d Coin=%d"),
-			*GetNameSafe(RefundTarget),
-			RefundCoin,
-			RefundTarget->GetCoin()
-		);
 	}
 }
