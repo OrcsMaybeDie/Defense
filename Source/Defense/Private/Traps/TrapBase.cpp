@@ -22,6 +22,7 @@ namespace
 	constexpr float WallTraceDebugTime = 0.35f;
 	const FVector WallTraceBoxExtent(120.f, 140.f, 20.f);
 	constexpr float WallTraceLaneOffset = 120.f;
+	constexpr float WallDebugLaneOffset = 50.f;
 
 	float GetBoxHalfExtentAlongDirection(const UBoxComponent* BoxComponent, const FVector& WorldDirection)
 	{
@@ -333,7 +334,12 @@ void ATrapBase::ApplyWallBoxTraceDamage()
 			}
 
 			DamagedActors.Add(HitActor);
-			Multicast_DrawWallTraceDebug(TraceStart, Hit.ImpactPoint, true);
+
+			const float DebugLaneOffset = FMath::Clamp(LaneOffset, -WallDebugLaneOffset, WallDebugLaneOffset);
+			const FVector DebugLaneCenter = TraceCenter + TraceLateralDirection * DebugLaneOffset;
+			const FVector DebugStart = DebugLaneCenter + TraceDirection * TraceHalfDepth;
+			Multicast_DrawWallTraceDebug(DebugStart, Hit.ImpactPoint, true);
+
 			UGameplayStatics::ApplyDamage(HitActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
 			break;
 		}
