@@ -264,13 +264,13 @@ void AEnemySpawner::SpawnCombatBatch()
 	if (CombatSpawnedCount >= CombatSpawnTargetCount)
 	{
 		GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
-		UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit Summary | Spawner=%s Initialized=%d Failed=%d Spawned=%d Target=%d"),
+		/*UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit Summary | Spawner=%s Initialized=%d Failed=%d Spawned=%d Target=%d"),
 			*GetNameSafe(this),
 			CombatInitializedCount,
 			CombatInitializationFailedCount,
 			CombatSpawnedCount,
 			CombatSpawnTargetCount
-		);
+		);*/
 		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
 		{
 			GameMode->NotifySpawnerFinished(this);
@@ -342,7 +342,7 @@ void AEnemySpawner::SpawnCombatBatch()
 		++CombatInitializationFailedCount;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit | Spawner=%s Enemy=%s InitComplete=%d Initialized=%d Failed=%d SpawnedNext=%d/%d RouteApplied=%d HadRouteBeforeRestart=%d HasController=%d HasStateTree=%d Route=%s"),
+	/*UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit | Spawner=%s Enemy=%s InitComplete=%d Initialized=%d Failed=%d SpawnedNext=%d/%d RouteApplied=%d HadRouteBeforeRestart=%d HasController=%d HasStateTree=%d Route=%s"),
 		*GetNameSafe(this),
 		*GetNameSafe(Enemy),
 		bInitComplete ? 1 : 0,
@@ -355,7 +355,7 @@ void AEnemySpawner::SpawnCombatBatch()
 		EnemyController ? 1 : 0,
 		bHasStateTree ? 1 : 0,
 		EnemyController ? *GetNameSafe(EnemyController->EnemyRoute) : TEXT("None")
-	);
+	);*/
 	if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
 	{
 		GameMode->NotifyEnemyActivated(Enemy);
@@ -466,12 +466,15 @@ void AEnemySpawner::BuildCurrentWaveSpawnPlans()
 		return;
 	}
 
+	AEnemyRoute* PreviousRoute = nullptr;
+
 	for (int32 i = 0; i < EnemyCount; ++i)
 	{
 		FEnemySpawnPlan SpawnPlan;
 		SpawnPlan.EnemyClass = EnemyFactory;
-		SpawnPlan.Route = GetRandomRoute();
+		SpawnPlan.Route = GetRandomRoute(PreviousRoute);
 		CurrentWaveSpawnPlans.Add(SpawnPlan);
+		PreviousRoute = SpawnPlan.Route;
 	}
 
 	//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner BuildSpawnPlans | Spawner=%s Plans=%d"),
@@ -480,15 +483,36 @@ void AEnemySpawner::BuildCurrentWaveSpawnPlans()
 }
 
 // 랜덤한 루트 선정
-AEnemyRoute* AEnemySpawner::GetRandomRoute() const
+AEnemyRoute* AEnemySpawner::GetRandomRoute(const AEnemyRoute* PreviousRoute) const
 {
 	if (EnemyRoutes.Num() == 0)
 	{
 		return nullptr;
 	}
 
-	const int32 RouteIndex = FMath::RandRange(0, EnemyRoutes.Num() - 1);
-	return EnemyRoutes[RouteIndex];
+	if (EnemyRoutes.Num() == 1)
+	{
+		return EnemyRoutes[0];
+	}
+
+	TArray<AEnemyRoute*> CandidateRoutes;
+	CandidateRoutes.Reserve(EnemyRoutes.Num());
+
+	for (const TObjectPtr<AEnemyRoute>& EnemyRoute : EnemyRoutes)
+	{
+		if (EnemyRoute && EnemyRoute != PreviousRoute)
+		{
+			CandidateRoutes.Add(EnemyRoute.Get());
+		}
+	}
+
+	if (CandidateRoutes.Num() == 0)
+	{
+		return nullptr;
+	}
+
+	const int32 RouteIndex = FMath::RandRange(0, CandidateRoutes.Num() - 1);
+	return CandidateRoutes[RouteIndex];
 }
 
 // 적에게 루트 플랜에 해당하는 루트 참조시킴

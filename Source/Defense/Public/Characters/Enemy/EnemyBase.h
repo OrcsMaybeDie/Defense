@@ -118,7 +118,7 @@ public:
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	int32 KillCoinReward = 10;
+	int32 KillCoinReward = 100;
 	
 	//-----------AI Perception-------------------------------
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)

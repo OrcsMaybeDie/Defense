@@ -145,7 +145,7 @@ public:
 	
 	/* Player 재화 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Economy")
-	int32 InitCoin = 2000;
+	int32 InitCoin = 3000;
 
 	void AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator);
 	// 추가할 것 : wave 보상
