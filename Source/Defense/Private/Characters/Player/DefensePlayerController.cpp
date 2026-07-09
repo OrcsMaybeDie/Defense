@@ -11,6 +11,7 @@
 
 #include "Characters/Player/DefensePlayerState.h"
 #include "GameManager/DefenseGameMode.h"
+#include "UI/GameEndUI.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
 void ADefensePlayerController::BeginPlay()
@@ -109,6 +110,52 @@ bool ADefensePlayerController::ShouldUseTouchControls() const
 	return SVirtualJoystick::ShouldDisplayTouchInterface() || bForceTouchControls;
 }
 
+void ADefensePlayerController::ClientRPC_ShowGameEndUI_Implementation(bool bGameClear)
+{
+	bShowMouseCursor = true;
+
+	FInputModeUIOnly InputMode;
+	// 또는 게임 입력도 살릴 거면 FInputModeGameAndUI
+	SetInputMode(InputMode);
+
+	if (!GameEndUI && GameEndUIClass)
+	{
+		GameEndUI = CreateWidget<UGameEndUI>(this, GameEndUIClass);
+	}
+
+	if (GameEndUI && !GameEndUI->IsInViewport())
+	{
+		GameEndUI->AddToViewport();
+	}
+
+	if (GameEndUI)
+	{
+		if (bGameClear)
+		{
+			GameEndUI->GameClear();
+		}
+		else
+		{
+			GameEndUI->GameOver();
+		}
+	}
+}
+
+void ADefensePlayerController::ClientRPC_HideGameEndUI_Implementation()
+{
+	/*if (GameEndUI && GameEndUI->IsInViewport())
+	{
+		GameEndUI->RemoveFromParent();
+	}*/
+	
+	bShowMouseCursor = false;
+
+	FInputModeGameOnly InputMode;
+
+	SetInputMode(InputMode);
+	
+}
+
 void ADefensePlayerController::ToggleReady()
 {
 	ADefensePlayerState* PS = GetPlayerState<ADefensePlayerState>();
@@ -117,6 +164,8 @@ void ADefensePlayerController::ToggleReady()
 		ServerRPC_SetReady(!PS->IsReady());
 	}
 }
+
+
 
 void ADefensePlayerController::ServerRPC_SetReady_Implementation(bool bReady)
 {

@@ -51,10 +51,12 @@ void AEnemySpawner::BeginPlay()
 			//EnemyRoutes.Num());
 		
 		BoxComp->SetGenerateOverlapEvents(true);
-		BoxComp->OnComponentBeginOverlap.AddUniqueDynamic(
+		
+		// 적 스폰 테스트
+		/*BoxComp->OnComponentBeginOverlap.AddUniqueDynamic(
 		this,
 		&AEnemySpawner::OnBoxBeginOverlap
-		);
+		);*/
 	}
 	
 }
@@ -308,13 +310,13 @@ void AEnemySpawner::SpawnCombatBatch()
 			//*GetNameSafe(this),
 			//CombatSpawnedCount,
 			//CombatSpawnTargetCount);
-		UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit Summary | Spawner=%s Initialized=%d Failed=%d Spawned=%d Target=%d Reason=PoolEmpty"),
+		/*UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit Summary | Spawner=%s Initialized=%d Failed=%d Spawned=%d Target=%d Reason=PoolEmpty"),
 			*GetNameSafe(this),
 			CombatInitializedCount,
 			CombatInitializationFailedCount,
 			CombatSpawnedCount,
 			CombatSpawnTargetCount
-		);
+		);*/
 		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
 		{
 			GameMode->NotifySpawnerFinished(this);
@@ -323,12 +325,12 @@ void AEnemySpawner::SpawnCombatBatch()
 	}
 
 	Enemy->EnemyMode = EEnemyMode::Combat;
-	Enemy->SetCombat();
 	AddActiveEnemy(Enemy);
 	const bool bAppliedSpawnPlan = ApplySpawnPlanToEnemy(Enemy, CombatSpawnedCount);
 	AEnemyController* EnemyController = Cast<AEnemyController>(Enemy->GetController());
 	const bool bHasRouteBeforeRestart = EnemyController && EnemyController->EnemyRoute;
 	const bool bHasStateTree = EnemyController && EnemyController->StateTreeAIComp;
+	Enemy->SetCombat();
 	RestartEnemyLogic(Enemy);
 	const bool bInitComplete = bAppliedSpawnPlan && bHasRouteBeforeRestart && bHasStateTree;
 	if (bInitComplete)
