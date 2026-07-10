@@ -183,8 +183,8 @@ void ADefenseGameMode::RetryGame()
 		}
 	}
 	
-	const FString CurrentLevelName = UGameplayStatics::GetCurrentLevelName(this, true);
-	GetWorld()->ServerTravel(CurrentLevelName);
+	//const FString CurrentLevelName = UGameplayStatics::GetCurrentLevelName(this, true);
+	GetWorld()->ServerTravel("/Game/ThirdPerson/L_BetaMap");
 }
 
 // 플레이어가 G키(준비)를 누르면 호출됨 -> 모든 플레이어가 준비됐는지 확인하고 StartWave를 함.
@@ -195,27 +195,8 @@ void ADefenseGameMode::HandlePlayerReadyChanged()
 		DefenseGameState = GetGameState<ADefenseGameState>();
 	}
 
-	if (!DefenseGameState ||  IsAutoStartWave(CurrentWave))
+	if (!DefenseGameState)
 	{
-		return;
-	}
-	if (DefenseGameState->GamePhase != EGamePhase::Preparation && DefenseGameState->GamePhase != EGamePhase::GameEnded )
-	{
-		return;
-	}
-
-	if (DefenseGameState->GamePhase == EGamePhase::Preparation)
-	{
-		if (IsAutoStartWave(CurrentWave))
-		{
-			return;
-		}
-
-		if (AreAllPlayersReady() && !GetWorldTimerManager().IsTimerActive(ReadyWaveCountdownTimerHandle))
-		{
-			StartReadyWaveCountdown();
-		}
-
 		return;
 	}
 
@@ -225,7 +206,23 @@ void ADefenseGameMode::HandlePlayerReadyChanged()
 		{
 			RetryGame();
 		}
-		
+
+		return;
+	}
+
+	if (DefenseGameState->GamePhase != EGamePhase::Preparation)
+	{
+		return;
+	}
+
+	if (IsAutoStartWave(CurrentWave))
+	{
+		return;
+	}
+
+	if (AreAllPlayersReady() && !GetWorldTimerManager().IsTimerActive(ReadyWaveCountdownTimerHandle))
+	{
+		StartReadyWaveCountdown();
 	}
 }
 
@@ -846,8 +843,7 @@ void ADefenseGameMode::AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* Damag
 {
 	if (!HasAuthority() || !Enemy) return;
 	
-	// const int32 RewardCoin = Enemy->에너미리워드;
-	const int32 RewardCoin = 10;
+	const int32 RewardCoin = Enemy->KillCoinReward;
 	if (RewardCoin <= 0) return;
 	
 	ADefensePlayerState* RewardTarget = nullptr;
