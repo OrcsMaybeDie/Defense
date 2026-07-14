@@ -106,6 +106,12 @@ void ADefensePlayerController::SetupInputComponent()
 
 bool ADefensePlayerController::ShouldUseTouchControls() const
 {
+	// build error
+	if (!IsLocalPlayerController() || GetNetMode() == NM_DedicatedServer)
+	{
+		return false;
+	}
+	
 	// are we on a mobile platform? Should we force touch?
 	return SVirtualJoystick::ShouldDisplayTouchInterface() || bForceTouchControls;
 }
