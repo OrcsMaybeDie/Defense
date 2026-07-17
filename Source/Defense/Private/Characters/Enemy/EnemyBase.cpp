@@ -255,7 +255,6 @@ void AEnemyBase::SetPreview()
 	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
 	{
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-		CapsuleComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	}
 	
