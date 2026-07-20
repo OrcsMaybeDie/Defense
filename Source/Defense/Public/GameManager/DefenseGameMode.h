@@ -39,18 +39,21 @@ public:
 	void TryFinishWave();
 	void ApplyDestinationDamage(int32 DamageAmount);
 	
-	virtual void BeginPlay() override;
 	virtual void StartPlay() override;
 	virtual void PostLogin(APlayerController* NewPlayer) override; // init coin set
 
 protected:
+	
+	// 게임 인스턴스에서 게임에 필요한 초기 설정 가져옴(재화, 웨이브 수 등) 
+	void ApplyDataAssets();
+	
 	bool AreAllPlayersReady() const;
 	void ResetAllPlayersReady();
 	
-	// 플레이어와 적들이 스폰되었는지 확인 - 그동안 UI로 로딩중 보여주기
+	// 플레이어와 적들이 스폰되었는지 확인
 	void GameStart();
 	
-	// 모든 웨이브가 끝나고 입력 멈춤 + 캐릭터 댄스애니메이션 + 결과 화면 UI를 보여줌
+	// 모든 웨이브가 끝나고 입력 멈춤
 	void GameEnd();
 	
 	// 게임 재시작 -> 맵 오픈
@@ -78,6 +81,7 @@ protected:
 	void HandleAutoWaveCountdownFinished();
 	void CleanupInvalidActiveEnemies();
 	void LogActiveWaveEnemies() const;
+	void TryStartGameAfterPlayerJoined();
 	
 	UPROPERTY()
 	int32 CurrentWave = 1;
@@ -87,6 +91,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wave")
 	TArray<int32> AutoStartWaves = {4, 6};
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Data")
+	TObjectPtr<class UWaveData> WaveData;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wave")
 	int32 AutoStartCountdownSeconds = 10;
@@ -108,6 +115,12 @@ protected:
 
 	UPROPERTY()
 	bool bIsWaveActive = false;
+
+	UPROPERTY()
+	bool bHasGameStarted = false;
+
+	UPROPERTY()
+	bool bHasStartPlayInitialized = false;
 
 	FTimerHandle AutoWaveCountdownTimerHandle;
 	FTimerHandle ReadyWaveCountdownTimerHandle;

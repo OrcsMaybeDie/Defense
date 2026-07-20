@@ -6,9 +6,12 @@
 #include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Enemy/EnemySpawner.h"
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
+#include "Characters/Enemy/Data/WaveData.h"
 #include "Characters/Player/DefensePlayerController.h"
 #include "Characters/Player/DefensePlayerState.h"
+#include "GameManager/DefenseGameInstance.h"
 #include "GameManager/DefenseGameState.h"
+#include "GameManager/Data/MapConfigData.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
@@ -43,17 +46,37 @@ ADefenseGameMode::ADefenseGameMode()
 	GameStateClass = ADefenseGameState::StaticClass();
 }
 
-void ADefenseGameMode::BeginPlay()
+void ADefenseGameMode::ApplyDataAssets()
 {
-	Super::BeginPlay();
+	if (const UDefenseGameInstance* DefenseGameInstance = GetGameInstance<UDefenseGameInstance>())
+	{
+		if (const UMapConfigData* SelectedMapConfigData = DefenseGameInstance->GetSelectedMapConfigData())
+		{
+			InitialDestScore = SelectedMapConfigData->InitialDestScore;
+			InitCoin = SelectedMapConfigData->InitCoin;
+			WaveData = SelectedMapConfigData->WaveData;
+		}
+	}
+
+	if (WaveData)
+	{
+		MaxWave = WaveData->MaxWave;
+		AutoStartWaves = WaveData->AutoStartWaves;
+	}
+
+	//UE_LOG(LogTemp, Warning, TEXT("[MapConfig] Dest=%d Coin=%d WaveData=%s"), InitialDestScore, InitCoin, *GetNameSafe(WaveData));
 }
 
-// Spawner마다 init을 하면 적 배열이 원하는대로 안 생길 수 있어서 GameMode에서만 한 번 init하도록 함.
-// Spawner의 BeginPlay에서 대입하는 변수에 접근시 타이밍상 문제 생길 수 있음.
-// 여기서는 Controller에 있는 Route에 값을 대입하지 않도록 함.
 void ADefenseGameMode::StartPlay()
 {
 	Super::StartPlay();
+
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	ApplyDataAssets();
 
 	DefenseGameState = GetGameState<ADefenseGameState>();
 	if (DefenseGameState)
@@ -86,21 +109,32 @@ void ADefenseGameMode::StartPlay()
 		{
 			EnemySpawners.Add(Spawner);
 			Spawner->SetEnemyPool(EnemyPool);
-			EnemyPool->InitPool(Spawner->EnemyFactory, Spawner->EnemyCount);
+			Spawner->SetWaveData(WaveData);
 		}
 	}
 
-	SetGamePhase(EGamePhase::GameStart);
+	bHasStartPlayInitialized = true;
+	TryStartGameAfterPlayerJoined();
 }
 
 void ADefenseGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
 
-	ADefensePlayerState* PS = NewPlayer ? NewPlayer->GetPlayerState<ADefensePlayerState>() : nullptr;
-	if (!PS) return;
+	if (!HasAuthority())
+	{
+		return;
+	}
 
-	PS->SetCoin(InitCoin);
+	ApplyDataAssets();
+
+	ADefensePlayerState* PS = NewPlayer ? NewPlayer->GetPlayerState<ADefensePlayerState>() : nullptr;
+	if (PS)
+	{
+		PS->SetCoin(InitCoin);
+	}
+
+	TryStartGameAfterPlayerJoined();
 }
 
 bool ADefenseGameMode::AreAllPlayersReady() const
@@ -108,7 +142,7 @@ bool ADefenseGameMode::AreAllPlayersReady() const
 	AGameStateBase* GS = GameState;
 	if (!GS) return false;
 	
-	// 혼자 플레이할 때도 시작하게 하기 위해 주석처리함.
+	// 꼭 2인 플레이로 만들려면
 	//if (GS->PlayerArray.Num() < 2) return false;
 	
 	// 전체 Player 검사
@@ -148,20 +182,20 @@ void ADefenseGameMode::GameEnd()
 	{
 		DefenseGameState->CountdownRemaining = 0;
 		
-		// TODO : UI만 갱신되면 여기선 필요 X
-		//DefenseGameState->OnRep_CountdownRemaining();
 	}
 	
 	// 모든 플레이어 레디 초기화
 	ResetAllPlayersReady();
 	
 	bool bGameClear = false;
-	// 모든 클라이언트에게 ShowGameEndUI 실행시키기
+	
+	// TODO : 플레이어가 하나라도 살아있는지 조건 추가하기
 	if (DefenseGameState->DestScore > 0 && CurrentWave >= MaxWave)
 	{
 		bGameClear = true;
 	}
-
+	
+	// 모든 클라이언트에게 ShowGameEndUI 실행시키기
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		if (ADefensePlayerController* PC = Cast<ADefensePlayerController>(It->Get()))
@@ -190,6 +224,11 @@ void ADefenseGameMode::RetryGame()
 // 플레이어가 G키(준비)를 누르면 호출됨 -> 모든 플레이어가 준비됐는지 확인하고 StartWave를 함.
 void ADefenseGameMode::HandlePlayerReadyChanged()
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (!DefenseGameState)
 	{
 		DefenseGameState = GetGameState<ADefenseGameState>();
@@ -228,6 +267,11 @@ void ADefenseGameMode::HandlePlayerReadyChanged()
 
 void ADefenseGameMode::SetGamePhase(EGamePhase NewPhase)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (!DefenseGameState)
 	{
 		DefenseGameState = GetGameState<ADefenseGameState>();
@@ -239,7 +283,6 @@ void ADefenseGameMode::SetGamePhase(EGamePhase NewPhase)
 	}
 
 	DefenseGameState->GamePhase = NewPhase;
-	DefenseGameState->OnRep_GamePhase(); // 클라이언트에서 UI 갱신
 
 	switch (NewPhase)
 	{
@@ -261,6 +304,32 @@ void ADefenseGameMode::SetGamePhase(EGamePhase NewPhase)
 	default:
 		break;
 	}
+}
+
+void ADefenseGameMode::TryStartGameAfterPlayerJoined()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (bHasGameStarted)
+	{
+		return;
+	}
+
+	if (!DefenseGameState)
+	{
+		DefenseGameState = GetGameState<ADefenseGameState>();
+	}
+
+	if (!bHasStartPlayInitialized || !DefenseGameState || DefenseGameState->PlayerArray.Num() < 1)
+	{
+		return;
+	}
+
+	bHasGameStarted = true;
+	SetGamePhase(EGamePhase::GameStart);
 }
 
 void ADefenseGameMode::Preparation()
@@ -328,8 +397,8 @@ void ADefenseGameMode::WaveStart()
 		DefenseGameState->CountdownRemaining = 0;
 		
 		// TODO : UI 갱신만 하면 서버에서 필요없음.
-		DefenseGameState->OnRep_CurrentWave();
-		DefenseGameState->OnRep_CountdownRemaining();
+		/*DefenseGameState->OnRep_CurrentWave();
+		DefenseGameState->OnRep_CountdownRemaining();*/
 		//-------------------------------------------
 	}
 
@@ -442,6 +511,11 @@ void ADefenseGameMode::CleanupCurrentWave()
 // 적의 수 감소 -> Destination에 overlap했을 때, 적이 처치됐을 때 호출
 void ADefenseGameMode::DecreaseCurrentEnemyCount()
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	CurrentEnemyCount = FMath::Max(0, CurrentEnemyCount - 1);
 
 	/*UE_LOG(LogTemp, Warning, TEXT("DefenseGameMode DecreaseCurrentEnemyCount fallback | Wave=%d/%d RemainingEnemies=%d ActiveEnemies=%d"),
@@ -456,6 +530,11 @@ void ADefenseGameMode::DecreaseCurrentEnemyCount()
 
 void ADefenseGameMode::NotifyEnemyActivated(AEnemyBase* Enemy)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (!bIsWaveActive || !IsValid(Enemy) || Enemy->EnemyMode != EEnemyMode::Combat)
 	{
 		return;
@@ -476,6 +555,11 @@ void ADefenseGameMode::NotifyEnemyActivated(AEnemyBase* Enemy)
 
 void ADefenseGameMode::NotifyEnemyRemoved(AEnemyBase* Enemy, EEnemyRemoveReason Reason)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (!Enemy)
 	{
 		return;
@@ -506,6 +590,11 @@ void ADefenseGameMode::NotifyEnemyRemoved(AEnemyBase* Enemy, EEnemyRemoveReason 
 
 void ADefenseGameMode::NotifySpawnerFinished(AEnemySpawner* Spawner)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (!bIsWaveActive || !Spawner)
 	{
 		return;
@@ -532,6 +621,11 @@ void ADefenseGameMode::NotifySpawnerFinished(AEnemySpawner* Spawner)
 
 void ADefenseGameMode::TryFinishWave()
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (!bIsWaveActive)
 	{
 		return;
@@ -553,6 +647,11 @@ void ADefenseGameMode::TryFinishWave()
 
 void ADefenseGameMode::ApplyDestinationDamage(int32 DamageAmount)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (!DefenseGameState)
 	{
 		DefenseGameState = GetGameState<ADefenseGameState>();

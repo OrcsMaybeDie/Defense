@@ -7,6 +7,7 @@
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
 #include "Characters/Enemy/EnemyRoute.h"
 #include "Characters/Enemy/AI/EnemyController.h"
+#include "Characters/Enemy/Data/WaveData.h"
 #include "Characters/Player/DefenseCharacter.h"
 #include "Components/StateTreeAIComponent.h"
 #include "Components/BoxComponent.h"
@@ -98,6 +99,20 @@ void AEnemySpawner::SetEnemyPool(UEnemyPoolSubsystem* InEnemyPool)
 	EnemyPool = InEnemyPool;
 }
 
+void AEnemySpawner::SetWaveData(UWaveData* InWaveData)
+{
+	WaveData = InWaveData;
+
+	if (!WaveData)
+	{
+		return;
+	}
+
+	PreviewSpawnInterval = WaveData->PreviewSpawnInterval;
+	CombatSpawnInterval = WaveData->CombatSpawnInterval;
+	CombatBatchInterval = WaveData->CombatBatchInterval;
+}
+
 void AEnemySpawner::RemoveActiveEnemy(AEnemyBase* Enemy)
 {
 	if (!Enemy)
@@ -114,7 +129,7 @@ void AEnemySpawner::RemoveActiveEnemy(AEnemyBase* Enemy)
 
 void AEnemySpawner::StartPreviewSpawn(int32 WaveNumber)
 {
-	if (!HasAuthority() || !EnemyFactory || !EnemyPool)
+	if (!HasAuthority() || !EnemyPool)
 	{
 		return;
 	}
@@ -161,7 +176,7 @@ void AEnemySpawner::ClearPreviewEnemies()
 
 void AEnemySpawner::SpawnPreviewEnemy()
 {
-	if (!HasAuthority() || !EnemyFactory || !EnemyPool)
+	if (!HasAuthority() || !EnemyPool)
 	{
 		StopPreviewSpawn();
 		return;
@@ -198,7 +213,7 @@ void AEnemySpawner::SpawnPreviewEnemy()
 // Preview상태의 적들을 Pool로 되돌리고 Combat상태의 적들 스폰
 void AEnemySpawner::StartCombatSpawn(int32 WaveNumber)
 {
-	if (!HasAuthority() || !EnemyFactory || !EnemyPool)
+	if (!HasAuthority() || !EnemyPool)
 	{
 		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
 		{
@@ -251,7 +266,7 @@ void AEnemySpawner::EndWave()
 // 일정시간 간격으로 한마리씩 스폰하되, 배치 크기는 2~4개로 랜덤하게 정함.
 void AEnemySpawner::SpawnCombatBatch()
 {
-	if (!HasAuthority() || !EnemyFactory || !EnemyPool)
+	if (!HasAuthority() || !EnemyPool)
 	{
 		GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
 		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
@@ -395,13 +410,18 @@ int32 AEnemySpawner::PrepareCombatSpawnPlans(int32 WaveNumber)
 	if (!ShouldSpawnInWave(WaveNumber))
 	{
 		CurrentWaveSpawnPlans.Empty();
+		PreparedWaveNumber = INDEX_NONE;
 		return 0;
 	}
 
-	if (CurrentWaveSpawnPlans.Num() != EnemyCount)
+	const int32 ExpectedPlanCount = WaveData ? GetWaveDataPlanCount(WaveNumber) : EnemyCount;
+	if (PreparedWaveNumber != WaveNumber || CurrentWaveSpawnPlans.Num() != ExpectedPlanCount)
 	{
+		PreparedWaveNumber = WaveNumber;
 		BuildCurrentWaveSpawnPlans();
 	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Spawner] %s Wave=%d Plans=%d"), *SpawnerId.ToString(), WaveNumber, CurrentWaveSpawnPlans.Num());
 
 	return CurrentWaveSpawnPlans.Num();
 }
@@ -413,6 +433,11 @@ int32 AEnemySpawner::GetCurrentWaveSpawnPlanCount() const
 
 bool AEnemySpawner::ShouldSpawnInWave(int32 WaveNumber) const
 {
+	if (WaveData)
+	{
+		return WaveData->FindSpawnerPlan(WaveNumber, SpawnerId) != nullptr;
+	}
+
 	return SpawnWaves.Num() == 0 || SpawnWaves.Contains(WaveNumber);
 }
 
@@ -457,7 +482,7 @@ void AEnemySpawner::BuildCurrentWaveSpawnPlans()
 {
 	CurrentWaveSpawnPlans.Empty();
 
-	if (!EnemyFactory || EnemyRoutes.Num() == 0)
+	if (EnemyRoutes.Num() == 0)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner BuildSpawnPlans failed | Spawner=%s EnemyFactory=%s Routes=%d"),
 			//*GetNameSafe(this),
@@ -467,6 +492,81 @@ void AEnemySpawner::BuildCurrentWaveSpawnPlans()
 	}
 
 	AEnemyRoute* PreviousRoute = nullptr;
+
+	if (WaveData)
+	{
+		const FSpawnerWavePlan* SpawnerPlan = WaveData->FindSpawnerPlan(PreparedWaveNumber, SpawnerId);
+		if (!SpawnerPlan)
+		{
+			return;
+		}
+
+		struct FWeightedEnemyCount
+		{
+			TSubclassOf<AEnemyBase> EnemyClass;
+			int32 InitialCount = 0;
+			int32 RemainingCount = 0;
+			int32 CurrentWeight = 0;
+		};
+
+		TArray<FWeightedEnemyCount> WeightedEnemyCounts;
+		int32 TotalWeight = 0;
+		for (const FWaveEnemyCount& EnemyCountInfo : SpawnerPlan->EnemyCounts)
+		{
+			if (!EnemyCountInfo.EnemyClass || EnemyCountInfo.Count <= 0)
+			{
+				continue;
+			}
+
+			FWeightedEnemyCount WeightedEnemyCount;
+			WeightedEnemyCount.EnemyClass = EnemyCountInfo.EnemyClass;
+			WeightedEnemyCount.InitialCount = EnemyCountInfo.Count;
+			WeightedEnemyCount.RemainingCount = EnemyCountInfo.Count;
+			WeightedEnemyCounts.Add(WeightedEnemyCount);
+			TotalWeight += EnemyCountInfo.Count;
+		}
+
+		for (int32 SpawnIndex = 0; SpawnIndex < TotalWeight; ++SpawnIndex)
+		{
+			int32 BestIndex = INDEX_NONE;
+			for (int32 EnemyIndex = 0; EnemyIndex < WeightedEnemyCounts.Num(); ++EnemyIndex)
+			{
+				FWeightedEnemyCount& WeightedEnemyCount = WeightedEnemyCounts[EnemyIndex];
+				if (WeightedEnemyCount.RemainingCount <= 0)
+				{
+					continue;
+				}
+
+				WeightedEnemyCount.CurrentWeight += WeightedEnemyCount.InitialCount;
+				if (BestIndex == INDEX_NONE || WeightedEnemyCount.CurrentWeight > WeightedEnemyCounts[BestIndex].CurrentWeight)
+				{
+					BestIndex = EnemyIndex;
+				}
+			}
+
+			if (BestIndex == INDEX_NONE)
+			{
+				break;
+			}
+
+			FWeightedEnemyCount& SelectedEnemyCount = WeightedEnemyCounts[BestIndex];
+			SelectedEnemyCount.CurrentWeight -= TotalWeight;
+			--SelectedEnemyCount.RemainingCount;
+
+			FEnemySpawnPlan SpawnPlan;
+			SpawnPlan.EnemyClass = SelectedEnemyCount.EnemyClass;
+			SpawnPlan.Route = GetRandomRoute(PreviousRoute);
+			CurrentWaveSpawnPlans.Add(SpawnPlan);
+			PreviousRoute = SpawnPlan.Route;
+		}
+
+		return;
+	}
+
+	if (!EnemyFactory)
+	{
+		return;
+	}
 
 	for (int32 i = 0; i < EnemyCount; ++i)
 	{
@@ -480,6 +580,31 @@ void AEnemySpawner::BuildCurrentWaveSpawnPlans()
 	//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner BuildSpawnPlans | Spawner=%s Plans=%d"),
 		//*GetNameSafe(this),
 		//CurrentWaveSpawnPlans.Num());
+}
+
+int32 AEnemySpawner::GetWaveDataPlanCount(int32 WaveNumber) const
+{
+	if (!WaveData)
+	{
+		return 0;
+	}
+
+	const FSpawnerWavePlan* SpawnerPlan = WaveData->FindSpawnerPlan(WaveNumber, SpawnerId);
+	if (!SpawnerPlan)
+	{
+		return 0;
+	}
+
+	int32 TotalCount = 0;
+	for (const FWaveEnemyCount& EnemyCountInfo : SpawnerPlan->EnemyCounts)
+	{
+		if (EnemyCountInfo.EnemyClass && EnemyCountInfo.Count > 0)
+		{
+			TotalCount += EnemyCountInfo.Count;
+		}
+	}
+
+	return TotalCount;
 }
 
 // 랜덤한 루트 선정
