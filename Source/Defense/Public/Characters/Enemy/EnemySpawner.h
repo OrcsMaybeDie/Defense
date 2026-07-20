@@ -37,6 +37,9 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MyVar")
 	TSubclassOf<class AEnemyBase> EnemyFactory;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wave")
+	FName SpawnerId;
 	
 	// 스폰할 적의 수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MyVar")
@@ -67,6 +70,9 @@ public:
 	
 	UPROPERTY()
 	TObjectPtr<class UEnemyPoolSubsystem> EnemyPool;
+
+	UPROPERTY()
+	TObjectPtr<class UWaveData> WaveData;
 	
 	// 현재 맵에 나와있는 적 배열
 	UPROPERTY()
@@ -87,6 +93,7 @@ public:
 	int32 PrepareCombatSpawnPlans(int32 WaveNumber);
 	int32 GetCurrentWaveSpawnPlanCount() const;
 	void SetEnemyPool(class UEnemyPoolSubsystem* InEnemyPool);
+	void SetWaveData(class UWaveData* InWaveData);
 	void RemoveActiveEnemy(class AEnemyBase* Enemy);
 	bool ShouldSpawnInWave(int32 WaveNumber) const;
 
@@ -99,6 +106,7 @@ private:
 	void ReturnActiveEnemiesToPool();
 	void AddActiveEnemy(class AEnemyBase* Enemy);
 	void BuildCurrentWaveSpawnPlans();
+	int32 GetWaveDataPlanCount(int32 WaveNumber) const;
 	class AEnemyRoute* GetRandomRoute(const class AEnemyRoute* PreviousRoute = nullptr) const;
 	bool ApplySpawnPlanToEnemy(class AEnemyBase* Enemy, int32 SpawnPlanIndex) const;
 
@@ -109,6 +117,7 @@ private:
 	int32 CurrentCombatBatchRemaining = 0;
 	int32 CombatInitializedCount = 0;
 	int32 CombatInitializationFailedCount = 0;
+	int32 PreparedWaveNumber = INDEX_NONE;
 	
 public:
 	UFUNCTION()

@@ -32,7 +32,7 @@ class DEFENSE_API ADefenseGameState : public AGameStateBase
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
-	UPROPERTY(ReplicatedUsing=OnRep_GamePhase)
+	UPROPERTY(Replicated)
 	EGamePhase GamePhase = EGamePhase::Preparation;
 	
 	UPROPERTY(ReplicatedUsing=OnRep_CurrentWave)
@@ -62,10 +62,7 @@ public:
 
 	UFUNCTION()
 	void OnRep_DestScore();
-
-	UFUNCTION()
-	void OnRep_GamePhase();
-
+	
 	UFUNCTION()
 	void OnRep_CurrentWave();
 
