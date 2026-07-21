@@ -45,6 +45,9 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void DestroyTargetTrap();
 
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_DrawDestroySearchDebug(FVector SearchCenter, float SearchRadius, bool bFoundTrap);
+
 	void MarkDestroyFinished(bool bDestroyedTrap);
 	float GetDestroyDuration(float DefaultDuration = 1.2f) const;
 
@@ -62,6 +65,9 @@ public:
 	
 	// 파괴하는 범위
 	float DestroyRadius = 100.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector DestroySearchOffset = FVector::ZeroVector;
 
 	UPROPERTY()
 	TArray<TObjectPtr<AActor>> TargetTraps;

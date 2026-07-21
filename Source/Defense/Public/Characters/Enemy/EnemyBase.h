@@ -95,6 +95,10 @@ public:
 	UPROPERTY()
 	TObjectPtr<class UEnemyAnim> AnimInst;
 	
+	// 서버(state tree)에서만 씀.
+	UPROPERTY()
+	TObjectPtr<class ADestinationActor> DestinationActor;
+	
 	//---------------피격---------------------------------
 	// Enemy HP
 	UPROPERTY(ReplicatedUsing=OnRep_UpdateUI)
@@ -138,6 +142,8 @@ public:
 	// 문을 만든다면 문을 인식해서 부수게 하기 위해 일단 Actor로 지정
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Target")
 	TObjectPtr<AActor> Target;
+
+	FORCEINLINE class ADestinationActor* GetDestinationActor() const { return DestinationActor; }
 	
 	virtual void ApplyEnemyData();
 	

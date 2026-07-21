@@ -15,6 +15,8 @@
 #include "Components/WidgetComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameManager/DefenseGameMode.h"
+#include "GameManager/DestinationActor.h"
+#include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 #include "UI/EnemyHPUI.h"
 
@@ -92,6 +94,9 @@ void AEnemyBase::BeginPlay()
 	else
 	{
 		GameMode = Cast<ADefenseGameMode>(GetWorld()->GetAuthGameMode());
+		DestinationActor = Cast<ADestinationActor>(
+	UGameplayStatics::GetActorOfClass(GetWorld(), ADestinationActor::StaticClass())
+);
 	}
 	
 }
