@@ -7,15 +7,16 @@
 #include "Characters/Enemy/EnemyBase.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
 #include "Traps/TrapData.h"
+#include "Traps/Grid/GridManager.h"
 
 namespace
 {
 	constexpr ECollisionChannel EnemyCollisionChannel = ECC_GameTraceChannel1;
-	const FVector TrapMeshScale(1.5f, 1.5f, 1.5f);
 	constexpr float TrapPlacedHeightScale = 1.f / 3.f;
 	constexpr float WallTraceRange = 1400.f;
 	constexpr float WallTraceStartOffset = 10.f;
@@ -65,6 +66,7 @@ ATrapBase::ATrapBase()
 	DamageArea->SetCollisionObjectType(ECC_WorldDynamic);
 	DamageArea->SetCollisionResponseToAllChannels(ECR_Ignore);
 	DamageArea->SetCollisionResponseToChannel(EnemyCollisionChannel, ECR_Overlap);
+	DamageArea->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	DamageArea->SetGenerateOverlapEvents(true);
 }
 
@@ -77,6 +79,7 @@ void ATrapBase::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutL
 	
 	DOREPLIFETIME(ATrapBase, RuntimeState);
 	DOREPLIFETIME(ATrapBase, OwnerPS);
+	DOREPLIFETIME(ATrapBase, OccupiedCells);
 }
 
 void ATrapBase::OnConstruction(const FTransform& Transform)
@@ -91,6 +94,7 @@ void ATrapBase::BeginPlay()
 	Super::BeginPlay();
 
 	ApplyTrapMeshScale();
+	ApplyTrapCollision();
 
 	if (DamageArea)
 	{
@@ -99,11 +103,28 @@ void ATrapBase::BeginPlay()
 	}
 
 	SyncDamageAreaToMesh();
+
+	if (!HasAuthority() && !OccupiedCells.IsEmpty())
+	{
+		OnRep_OccupiedCells();
+	}
 }
 
 void ATrapBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	StopDamageTimer();
+
+	if (!HasAuthority())
+	{
+		if (UWorld* World = GetWorld())
+		{
+			for (TActorIterator<AGridManager> It(World); It; ++It)
+			{
+				It->ReleaseClientTrap(this);
+				break;
+			}
+		}
+	}
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -120,31 +141,35 @@ void ATrapBase::InitializePreviewTrap(UTrapData* TrapData)
 	ConfigureFromTrapData(TrapData);
 	ApplyTrapMeshScale();
 	StopDamageTimer();
-	SetActorEnableCollision(false);
-
-	if (DamageArea)
-	{
-		DamageArea->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	}
+	ApplyTrapCollision();
 
 	ApplyPreviewVisual();
 }
 
 void ATrapBase::InitializePlacedTrap(UTrapData* TrapData, ADefensePlayerState* InInstalledByPlayerState)
 {
+	InitializePlacedTrap(TrapData, InInstalledByPlayerState, {});
+}
+
+void ATrapBase::InitializePlacedTrap(
+	UTrapData* TrapData,
+	ADefensePlayerState* InInstalledByPlayerState,
+	const TArray<FTrapCellKey>& InOccupiedCells
+)
+{
 	if (bInitialized) return;
 
 	bInitialized = true;
 	RuntimeState = ETrapRuntimeState::Placed;
 	OwnerPS = InInstalledByPlayerState;
+	OccupiedCells = InOccupiedCells;
 
 	ConfigureFromTrapData(TrapData);
 	ApplyTrapMeshScale();
-	SetActorEnableCollision(true);
+	ApplyTrapCollision();
 
 	if (DamageArea)
 	{
-		DamageArea->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 		DamageArea->UpdateOverlaps();
 		CacheCurrentOverlaps();
 	}
@@ -163,21 +188,81 @@ void ATrapBase::ConfigureFromTrapData(UTrapData* TrapData)
 
 void ATrapBase::ApplyTrapMeshScale()
 {
-	if (!Mesh) return;
+	if (!Mesh || !Mesh->GetStaticMesh()) return;
 
-	FVector TargetScale = TrapMeshScale;
+	AGridManager* GridManager = nullptr;
+	if (UWorld* World = GetWorld())
+	{
+		for (TActorIterator<AGridManager> It(World); It; ++It)
+		{
+			GridManager = *It;
+			break;
+		}
+	}
+	if (!GridManager) return;
+
+	FVector BoundsMin;
+	FVector BoundsMax;
+	Mesh->GetLocalBounds(BoundsMin, BoundsMax);
+
+	const FVector BoundsSize = BoundsMax - BoundsMin;
+	if (BoundsSize.X <= 0.f || BoundsSize.Y <= 0.f || BoundsSize.Z <= 0.f) return;
+
+	const float FootprintSizeCm = GridManager->GetTrapFootprintSizeCm();
+	FVector TargetScale(
+		FootprintSizeCm / BoundsSize.X,
+		FootprintSizeCm / BoundsSize.Y,
+		FMath::Min(FootprintSizeCm / BoundsSize.X, FootprintSizeCm / BoundsSize.Y)
+	);
 	if (RuntimeState == ETrapRuntimeState::Placed)
 	{
 		TargetScale.Z *= TrapPlacedHeightScale;
 	}
 
 	Mesh->SetRelativeScale3D(TargetScale);
+
+	// Actor 위치는 Grid가 정한 Trap 중심이다. Mesh pivot 위치와 무관하게
+	// Bounds 중심을 Root에 맞춰 시각적 중심과 논리 중심을 일치시킨다.
+	const FVector BoundsCenter = (BoundsMin + BoundsMax) * 0.5f;
+	FVector MeshLocation = Mesh->GetRelativeLocation();
+	MeshLocation.X = -BoundsCenter.X * TargetScale.X;
+	MeshLocation.Y = -BoundsCenter.Y * TargetScale.Y;
+	Mesh->SetRelativeLocation(MeshLocation);
+
 	SyncDamageAreaToMesh();
 }
 
 void ATrapBase::OnRep_RuntimeState()
 {
 	ApplyTrapMeshScale();
+	ApplyTrapCollision();
+}
+
+void ATrapBase::ApplyTrapCollision()
+{
+	SetActorEnableCollision(IsPlaced());
+
+	if (DamageArea)
+	{
+		DamageArea->SetCollisionEnabled(IsPlaced() ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
+	}
+}
+
+void ATrapBase::OnRep_OccupiedCells()
+{
+	if (HasAuthority() || OccupiedCells.IsEmpty())
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		for (TActorIterator<AGridManager> It(World); It; ++It)
+		{
+			It->RegisterClientOccupiedCells(this, OccupiedCells);
+			break;
+		}
+	}
 }
 
 void ATrapBase::ApplyPreviewVisual()

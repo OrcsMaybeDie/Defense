@@ -8,6 +8,8 @@
 #include "TimerManager.h"
 #include "DefenseGameMode.generated.h"
 
+class AGridManager;
+
 UENUM(BlueprintType)
 enum class EEnemyRemoveReason : uint8
 {
@@ -135,6 +137,9 @@ public:
 	
 	UPROPERTY()
 	TObjectPtr<class ADefenseGameState> DefenseGameState;
+
+	UPROPERTY()
+	TObjectPtr<AGridManager> GridManager;
 
 	UFUNCTION()
 	int32 GetCurrentWave();

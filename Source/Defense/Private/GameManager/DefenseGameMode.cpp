@@ -8,12 +8,14 @@
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
 #include "Characters/Player/DefensePlayerController.h"
 #include "Characters/Player/DefensePlayerState.h"
+#include "EngineUtils.h"
 #include "GameManager/DefenseGameState.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Traps/TrapBase.h"
+#include "Traps/Grid/GridManager.h"
 
 namespace
 {
@@ -46,6 +48,28 @@ ADefenseGameMode::ADefenseGameMode()
 void ADefenseGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// GridManager (없으면) 초기화
+	for (TActorIterator<AGridManager> It(GetWorld()); It; ++It)
+	{
+		GridManager = *It;
+		break;
+	}
+
+	if (!GridManager)
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		// 월드 원점 (0,0,0)에 Spawn
+		GridManager = GetWorld()->SpawnActor<AGridManager>(
+			AGridManager::StaticClass(),
+			FVector::ZeroVector,
+			FRotator::ZeroRotator,
+			SpawnParams
+		);
+	}
 }
 
 // Spawner마다 init을 하면 적 배열이 원하는대로 안 생길 수 있어서 GameMode에서만 한 번 init하도록 함.

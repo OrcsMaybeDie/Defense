@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "TimerManager.h"
+#include "Traps/Grid/TrapGridTypes.h"
 #include "TrapBase.generated.h"
 
 class UPrimitiveComponent;
@@ -48,6 +49,9 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Trap")
 	TObjectPtr<ADefensePlayerState> OwnerPS = nullptr;
 
+	UPROPERTY(ReplicatedUsing=OnRep_OccupiedCells)
+	TArray<FTrapCellKey> OccupiedCells;
+
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Trap")
 	float Damage = 0.f;
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Trap")
@@ -61,6 +65,7 @@ protected:
 	bool IsPlaced() const { return RuntimeState == ETrapRuntimeState::Placed; }
 	void ConfigureFromTrapData(UTrapData* TrapData);
 	void ApplyTrapMeshScale();
+	void ApplyTrapCollision();
 	void ApplyPreviewVisual();
 	void SyncDamageAreaToMesh();
 	void StartDamageTimer();
@@ -90,6 +95,9 @@ protected:
 	UFUNCTION()
 	void OnRep_RuntimeState();
 
+	UFUNCTION()
+	void OnRep_OccupiedCells();
+
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_DrawWallTraceDebug(FVector TraceStart, FVector TraceEnd, bool bHit);
 
@@ -99,6 +107,11 @@ public:
 	void InitializePreviewTrap(UTrapData* TrapData);
 
 	void InitializePlacedTrap(UTrapData* TrapData, ADefensePlayerState* InInstalledByPlayerState);
+	void InitializePlacedTrap(
+		UTrapData* TrapData,
+		ADefensePlayerState* InInstalledByPlayerState,
+		const TArray<FTrapCellKey>& InOccupiedCells
+	);
 	
 	FORCEINLINE ADefensePlayerState* GetOwnerPS() const { return OwnerPS; }
 	FORCEINLINE UTrapData* GetSourceTrapData() const { return SourceTrapData; }
