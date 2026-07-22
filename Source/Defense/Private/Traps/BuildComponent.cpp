@@ -217,13 +217,12 @@ void UBuildComponent::UpdateTrapPreview()
 		return;
 	}
 
-	const FVector PreviewLocation = GridManager->GetTrapFootprintCenter(CellKey);
-	TrapPreviewActor->SetActorLocation(PreviewLocation);
-	TrapPreviewActor->SetActorRotation(FRotator::ZeroRotator);
+	const FTransform PreviewTransform = GridManager->GetTrapFootprintTransform(CellKey);
+	TrapPreviewActor->SetActorTransform(PreviewTransform);
 	TrapPreviewActor->SetActorHiddenInGame(false);
 
 #if ENABLE_DRAW_DEBUG
-	DrawDebugPoint(World, PreviewLocation, 10.f, FColor::Yellow, false, 0.f);
+	DrawDebugPoint(World, PreviewTransform.GetLocation(), 10.f, FColor::Yellow, false, 0.f);
 #endif
 }
 
@@ -278,10 +277,11 @@ void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(FVector_NetQuant
 	SpawnParams.Instigator = OwningController ? OwningController->GetPawn() : nullptr;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
+	const FTransform SpawnTransform = GridManager->GetTrapFootprintTransform(CellKey);
+
 	ATrapBase* SpawnedTrap = GetWorld()->SpawnActor<ATrapBase>(
 		TrapData->TrapClass,
-		GridManager->GetTrapFootprintCenter(CellKey),
-		FRotator::ZeroRotator,
+		SpawnTransform,
 		SpawnParams
 	);
 

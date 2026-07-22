@@ -48,6 +48,9 @@ public:
 	void GetTrapFootprintCells(const FTrapCellKey& AnchorCell, TArray<FTrapCellKey>& OutCellKeys) const;
 	FVector GetTrapFootprintCenter(const FTrapCellKey& AnchorCell) const;
 	
+	// Trap의 Footprint 중심과 설치면 방향으로 최종 Actor Transform을 계산
+	FTransform GetTrapFootprintTransform(const FTrapCellKey& AnchorCell) const;
+
 	
 	/* 점유와 해제 (Server에서만 확정) */
 	bool TryOccupyCells(const TArray<FTrapCellKey>& CellKeys, ATrapBase* Trap); //  모든 셀이 유효, 비어 있을 때 점유

@@ -3,6 +3,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "Traps/TrapBase.h"
 #include "EngineUtils.h"
+#include "Math/RotationMatrix.h"
 #include "Traps/Grid/GridSurfaceComponent.h"
 
 
@@ -332,9 +333,10 @@ bool AGridManager::TryGetCellKeyForSurface(
 	
 	// 정말 이 GridSurface 내부를 조준했는가?를 판단
 	const FVector2D SurfaceHalfSize = Surface->SurfaceSizeCm * 0.5f;
+	const float PlaneDistanceCm = FMath::Abs(LocalLocation.Z);
 
 	if (
-		FMath::Abs(LocalLocation.Z) > SurfaceHitPlaneToleranceCm
+		PlaneDistanceCm > SurfaceHitPlaneToleranceCm
 		|| FMath::Abs(LocalLocation.X) > SurfaceHalfSize.X
 		|| FMath::Abs(LocalLocation.Y) > SurfaceHalfSize.Y
 	)
@@ -553,6 +555,50 @@ FVector AGridManager::GetTrapFootprintCenter(const FTrapCellKey& AnchorCell) con
 	return Center;
 }
 
+FTransform AGridManager::GetTrapFootprintTransform(const FTrapCellKey& AnchorCell) const
+{
+	FVector TrapLocalUp = FVector::UpVector;
+
+	switch (AnchorCell.PlaneAxis)
+	{
+	case ETrapPlaneAxis::X:
+		TrapLocalUp = AnchorCell.PlaneNormal == ETrapPlaneNormal::Positive
+			? FVector::ForwardVector
+			: -FVector::ForwardVector;
+		break;
+
+	case ETrapPlaneAxis::Y:
+		TrapLocalUp = AnchorCell.PlaneNormal == ETrapPlaneNormal::Positive
+			? FVector::RightVector
+			: -FVector::RightVector;
+		break;
+
+	case ETrapPlaneAxis::Z:
+	default:
+		TrapLocalUp = AnchorCell.PlaneNormal == ETrapPlaneNormal::Positive
+			? FVector::UpVector
+			: -FVector::UpVector;
+		break;
+	}
+
+	// CellKey의 월드 축 규칙과 같은 방향을 사용
+	// X 평면 벽은 World +Y, 나머지는 World +X를 Trap local +X로 고정
+	const FVector TrapLocalForward = AnchorCell.PlaneAxis == ETrapPlaneAxis::X
+		? FVector::RightVector
+		: FVector::ForwardVector;
+
+	const FQuat Rotation = FRotationMatrix::MakeFromXZ(
+		TrapLocalForward,
+		TrapLocalUp
+	).ToQuat();
+
+	return FTransform(
+		Rotation,
+		GetTrapFootprintCenter(AnchorCell),
+		FVector::OneVector
+	);
+}
+
 bool AGridManager::TryOccupyCells(const TArray<FTrapCellKey>& CellKeys, ATrapBase* Trap)
 {
 	// Server
@@ -659,4 +705,3 @@ void AGridManager::HandleTrapDestroyed(AActor* DestroyedActor)
 		ReleaseTrap(DestroyedTrap);
 	}
 }
-
