@@ -27,11 +27,6 @@ void ADefenseGameState::SetDestScore(int32 NewDestScore)
 	OnRep_DestScore();
 }
 
-void ADefenseGameState::OnRep_GamePhase()
-{
-	// UI
-}
-
 void ADefenseGameState::OnRep_CurrentWave()
 {
 	OnCurrentWaveChanged.Broadcast(CurrentWave);

@@ -3,7 +3,9 @@
 
 #include "Characters/Enemy/EnemyAnim.h"
 
+#include "Characters/Enemy/EnemyAttack.h"
 #include "Characters/Enemy/EnemyBase.h"
+#include "Characters/Enemy/EnemyDestroy.h"
 
 void UEnemyAnim::NativeInitializeAnimation()
 {
@@ -14,6 +16,11 @@ void UEnemyAnim::NativeInitializeAnimation()
 void UEnemyAnim::PlayAttackMotion()
 {
 	Montage_Play(AttackMontage);
+}
+
+void UEnemyAnim::PlayDestroyMotion()
+{
+	Montage_Play(DestroyMontage);
 }
 
 void UEnemyAnim::PlayDamageMotion()
@@ -30,6 +37,22 @@ void UEnemyAnim::AnimNotify_Hit()
 {
 	if (Enemy && Enemy->HasAuthority())
 	{
-		Enemy->AttackTarget();
+		auto* EnemyAttack = Cast<AEnemyAttack>(Enemy);
+		if (EnemyAttack)
+		{
+			EnemyAttack->AttackTarget();
+		}
+	}
+}
+
+void UEnemyAnim::AnimNotify_Destroy()
+{
+	if (Enemy && Enemy->HasAuthority())
+	{
+		auto* EnemyDestroy = Cast<AEnemyDestroy>(Enemy);
+		if (EnemyDestroy)
+		{
+			EnemyDestroy->DestroyTargetTrap();
+		}
 	}
 }
