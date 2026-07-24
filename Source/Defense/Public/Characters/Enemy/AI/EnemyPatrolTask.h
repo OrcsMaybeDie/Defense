@@ -19,6 +19,12 @@ struct FEnemyPatrolTaskInstanceData : public FEnemyBaseTaskInstanceData
 	UPROPERTY(EditAnywhere, Category = "Parameter")
 	float AcceptanceRadius = 50.f;
 
+	UPROPERTY(EditAnywhere, Category = "Parameter")
+	float DestinationAcceptanceRadius = 50.f;
+
+	UPROPERTY()
+	bool bMovingToDestination = false;
+
 	FDelegateHandle MoveFinishedHandle;
 	FAIRequestID MoveRequestID;
 	FStateTreeWeakExecutionContext WeakExecutionContext;

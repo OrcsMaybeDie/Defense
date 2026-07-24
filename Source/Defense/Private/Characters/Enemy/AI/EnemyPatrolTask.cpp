@@ -7,6 +7,7 @@
 #include "Characters/Enemy/EnemyRoute.h"
 #include "Characters/Enemy/AI/EnemyController.h"
 #include "Engine/Engine.h"
+#include "GameManager/DestinationActor.h"
 #include "Navigation/PathFollowingComponent.h"
 
 FEnemyPatrolTask::FEnemyPatrolTask()
@@ -114,6 +115,12 @@ EStateTreeRunStatus FEnemyPatrolTask::EnterState(FStateTreeExecutionContext& Con
 
 			if (Result.IsSuccess())
 			{
+				if (InstanceData.bMovingToDestination)
+				{
+					FinishPatrolTask(WeakController, &InstanceData, EStateTreeFinishTaskType::Succeeded);
+					return;
+				}
+
 				AdvanceToNextWaypoint(WeakController, &InstanceData);
 				return;
 			}
@@ -147,9 +154,46 @@ void FEnemyPatrolTask::MoveToCurrentWaypoint(TWeakObjectPtr<AEnemyController> We
 	AEnemyController* AIController = WeakController.Get();
 	AEnemyBase* AIEnemy = Cast<AEnemyBase>(AIController->GetPawn());
 	const TArray<FVector>& Waypoints = AIController->EnemyRoute->Waypoints;
+	InstanceData->bMovingToDestination = false;
+
 	if (!Waypoints.IsValidIndex(InstanceData->CurrentWaypointIndex))
 	{
 		FinishPatrolTask(WeakController, InstanceData, EStateTreeFinishTaskType::Succeeded);
+		return;
+	}
+
+	if (InstanceData->CurrentWaypointIndex == Waypoints.Num() - 1)
+	{
+		AActor* DestinationActor = AIEnemy ? AIEnemy->GetDestinationActor() : nullptr;
+		if (!DestinationActor)
+		{
+			FinishPatrolTask(WeakController, InstanceData, EStateTreeFinishTaskType::Failed);
+			return;
+		}
+
+		InstanceData->bMovingToDestination = true;
+		const EPathFollowingRequestResult::Type MoveResult = AIController->MoveToActor(
+			DestinationActor,
+			InstanceData->DestinationAcceptanceRadius
+		);
+
+		if (MoveResult == EPathFollowingRequestResult::Failed)
+		{
+			FinishPatrolTask(WeakController, InstanceData, EStateTreeFinishTaskType::Failed);
+			return;
+		}
+
+		if (MoveResult == EPathFollowingRequestResult::AlreadyAtGoal)
+		{
+			FinishPatrolTask(WeakController, InstanceData, EStateTreeFinishTaskType::Succeeded);
+			return;
+		}
+
+		if (const UPathFollowingComponent* PathFollowingComp = AIController->GetPathFollowingComponent())
+		{
+			InstanceData->MoveRequestID = PathFollowingComp->GetCurrentRequestId();
+		}
+
 		return;
 	}
 

@@ -158,7 +158,21 @@ void ADefenseGameMode::PostLogin(APlayerController* NewPlayer)
 		PS->SetCoin(InitCoin);
 	}
 
+	AssignGameRole(NewPlayer);
 	TryStartGameAfterPlayerJoined();
+}
+
+void ADefenseGameMode::Logout(AController* Exiting)
+{
+	const ADefensePlayerState* ExitingPlayerState = Exiting ? Exiting->GetPlayerState<ADefensePlayerState>() : nullptr;
+	const bool bWasHost = ExitingPlayerState && ExitingPlayerState->IsHost();
+
+	Super::Logout(Exiting);
+
+	if (bWasHost)
+	{
+		PromoteRemainingGuestToHost();
+	}
 }
 
 bool ADefenseGameMode::AreAllPlayersReady() const
@@ -237,12 +251,175 @@ void ADefenseGameMode::RetryGame()
 	{
 		if (ADefensePlayerController* PC = Cast<ADefensePlayerController>(It->Get()))
 		{
-			PC->ClientRPC_HideGameEndUI();
+			PC->ClientRPC_ShowEndLoadingUI();
 		}
 	}
 	
 	//const FString CurrentLevelName = UGameplayStatics::GetCurrentLevelName(this, true);
-	GetWorld()->ServerTravel("/Game/ThirdPerson/L_BetaMap");
+	//GetWorld()->ServerTravel("/Game/ThirdPerson/L_BetaMap");
+	GetWorld()->ServerTravel(GetWorld()->URL.Map);
+}
+
+void ADefenseGameMode::HandleGameEndRetryRequested(APlayerController* RequestingPlayer)
+{
+	if (!HasAuthority() || !RequestingPlayer || !DefenseGameState)
+	{
+		return;
+	}
+
+	if (DefenseGameState->GamePhase != EGamePhase::GameEnded)
+	{
+		return;
+	}
+
+	if (!IsHostPlayer(RequestingPlayer))
+	{
+		return;
+	}
+
+	RetryGame();
+}
+
+void ADefenseGameMode::HandleReturnToIntroMapRequested(APlayerController* RequestingPlayer)
+{
+	if (!HasAuthority() || !RequestingPlayer || !IsHostPlayer(RequestingPlayer))
+	{
+		return;
+	}
+
+	const UDefenseGameInstance* DefenseGameInstance = GetGameInstance<UDefenseGameInstance>();
+	const FString IntroMapPackageName = DefenseGameInstance
+		? DefenseGameInstance->GetIntroMapPackageName()
+		: FString();
+
+	if (IntroMapPackageName.IsEmpty())
+	{
+		return;
+	}
+
+	ADefensePlayerState* HostPlayerState = nullptr;
+	ADefensePlayerState* GuestPlayerState = nullptr;
+	if (GameState)
+	{
+		for (APlayerState* PlayerState : GameState->PlayerArray)
+		{
+			if (ADefensePlayerState* DefensePlayerState = Cast<ADefensePlayerState>(PlayerState))
+			{
+				if (DefensePlayerState->IsHost())
+				{
+					HostPlayerState = DefensePlayerState;
+				}
+				else if (DefensePlayerState->IsGuest())
+				{
+					GuestPlayerState = DefensePlayerState;
+				}
+			}
+		}
+	}
+
+	if (UDefenseGameInstance* MutableDefenseGameInstance = GetGameInstance<UDefenseGameInstance>())
+	{
+		MutableDefenseGameInstance->SaveIntroPlayerRoles(HostPlayerState, GuestPlayerState);
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (ADefensePlayerController* PC = Cast<ADefensePlayerController>(It->Get()))
+		{
+			PC->ClientRPC_ShowESCLoadingUI();
+		}
+	}
+
+	GetWorld()->ServerTravel(IntroMapPackageName);
+}
+
+void ADefenseGameMode::HandleClientIdentitySubmitted(APlayerController* PlayerController)
+{
+	AssignGameRole(PlayerController);
+}
+
+bool ADefenseGameMode::IsHostPlayer(APlayerController* PlayerController) const
+{
+	if (!PlayerController)
+	{
+		return false;
+	}
+
+	if (const ADefensePlayerState* DefensePlayerState = PlayerController->GetPlayerState<ADefensePlayerState>())
+	{
+		return DefensePlayerState->IsHost();
+	}
+
+	return false;
+}
+
+void ADefenseGameMode::AssignGameRole(APlayerController* NewPlayer)
+{
+	if (!HasAuthority() || !NewPlayer)
+	{
+		return;
+	}
+
+	ADefensePlayerState* DefensePlayerState = NewPlayer->GetPlayerState<ADefensePlayerState>();
+	if (!DefensePlayerState)
+	{
+		return;
+	}
+
+	const UDefenseGameInstance* DefenseGameInstance = GetGameInstance<UDefenseGameInstance>();
+	if (DefenseGameInstance && DefenseGameInstance->IsSavedHostPlayerState(DefensePlayerState))
+	{
+		DefensePlayerState->SetGameRole(EDefensePlayerRole::Host);
+		return;
+	}
+
+	if (DefenseGameInstance && DefenseGameInstance->IsSavedGuestPlayerState(DefensePlayerState))
+	{
+		DefensePlayerState->SetGameRole(EDefensePlayerRole::Guest);
+		return;
+	}
+
+	bool bHasHost = false;
+	int32 PlayerCount = 0;
+	if (GameState)
+	{
+		for (APlayerState* PlayerState : GameState->PlayerArray)
+		{
+			if (const ADefensePlayerState* ExistingDefensePlayerState = Cast<ADefensePlayerState>(PlayerState))
+			{
+				++PlayerCount;
+				bHasHost |= ExistingDefensePlayerState->IsHost();
+			}
+		}
+	}
+
+	if (!bHasHost)
+	{
+		DefensePlayerState->SetGameRole(EDefensePlayerRole::Host);
+		return;
+	}
+
+	DefensePlayerState->SetGameRole(PlayerCount <= 2 ? EDefensePlayerRole::Guest : EDefensePlayerRole::Spectator);
+}
+
+void ADefenseGameMode::PromoteRemainingGuestToHost()
+{
+	if (!HasAuthority() || !GameState)
+	{
+		return;
+	}
+
+	for (APlayerState* PlayerState : GameState->PlayerArray)
+	{
+		if (ADefensePlayerState* DefensePlayerState = Cast<ADefensePlayerState>(PlayerState))
+		{
+			if (DefensePlayerState->IsGuest() || DefensePlayerState->GetGameRole() == EDefensePlayerRole::None)
+			{
+				DefensePlayerState->SetGameRole(EDefensePlayerRole::Host);
+				return;
+			}
+		}
+	}
 }
 
 // 플레이어가 G키(준비)를 누르면 호출됨 -> 모든 플레이어가 준비됐는지 확인하고 StartWave를 함.

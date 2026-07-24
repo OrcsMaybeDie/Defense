@@ -15,6 +15,8 @@
 #include "Components/WidgetComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameManager/DefenseGameMode.h"
+#include "GameManager/DestinationActor.h"
+#include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 #include "UI/EnemyHPUI.h"
 
@@ -92,6 +94,9 @@ void AEnemyBase::BeginPlay()
 	else
 	{
 		GameMode = Cast<ADefenseGameMode>(GetWorld()->GetAuthGameMode());
+		DestinationActor = Cast<ADestinationActor>(
+	UGameplayStatics::GetActorOfClass(GetWorld(), ADestinationActor::StaticClass())
+);
 	}
 	
 }
@@ -243,7 +248,9 @@ void AEnemyBase::SetPreview()
 	
 	if (EnemyMesh)
 	{
+		EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 		EnemyMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+		EnemyMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 	}
 	
 	
@@ -302,6 +309,12 @@ void AEnemyBase::SetCombat()
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	}
 	
+	if (EnemyMesh)
+	{
+		//EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		//EnemyMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	}
+	
 }
 
 void AEnemyBase::SetInactive()
@@ -338,6 +351,11 @@ void AEnemyBase::SetInactive()
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	}
 	
+	if (EnemyMesh)
+	{
+		//EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+		EnemyMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	}
 	// 그리기 처리
 	SetActorHiddenInGame(true);
 	

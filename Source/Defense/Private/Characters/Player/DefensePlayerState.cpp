@@ -9,6 +9,8 @@ void ADefensePlayerState::GetLifetimeReplicatedProps(TArray<class FLifetimePrope
 	
 	DOREPLIFETIME(ADefensePlayerState, bIsReady);
 	DOREPLIFETIME(ADefensePlayerState, Coin);
+	DOREPLIFETIME(ADefensePlayerState, GameRole);
+	DOREPLIFETIME(ADefensePlayerState, ClientIdentity);
 }
 
 
@@ -19,6 +21,27 @@ void ADefensePlayerState::SetReady(bool bReady)
 	if (bIsReady == bReady) { return; }
 	
 	bIsReady = bReady;
+}
+
+void ADefensePlayerState::SetGameRole(EDefensePlayerRole NewRole)
+{
+	if (!HasAuthority() || GameRole == NewRole)
+	{
+		return;
+	}
+
+	GameRole = NewRole;
+	OnRep_GameRole();
+}
+
+void ADefensePlayerState::SetClientIdentity(const FString& NewClientIdentity)
+{
+	if (!HasAuthority() || ClientIdentity == NewClientIdentity)
+	{
+		return;
+	}
+
+	ClientIdentity = NewClientIdentity;
 }
 
 void ADefensePlayerState::OnRep_IsReady()
@@ -71,4 +94,8 @@ void ADefensePlayerState::SetCoin(int32 NewCoin)
 void ADefensePlayerState::OnRep_Coin()
 {
 	OnCoinChanged.Broadcast(Coin);
+}
+
+void ADefensePlayerState::OnRep_GameRole()
+{
 }

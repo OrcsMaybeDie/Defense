@@ -17,6 +17,9 @@ public:
 	virtual void NativeConstruct() override;
 	
 	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<class UWidgetSwitcher> SwitcherEndLoading;
+	
+	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<class UWidgetSwitcher> WidgetSwitcher;
 	
 	UPROPERTY(meta=(BindWidget))
@@ -38,4 +41,6 @@ public:
 	
 	UFUNCTION()
 	void RetryGame();
+
+	void ShowEndLoading();
 };
