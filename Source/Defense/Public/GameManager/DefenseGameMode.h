@@ -40,9 +40,13 @@ public:
 	void NotifySpawnerFinished(class AEnemySpawner* Spawner);
 	void TryFinishWave();
 	void ApplyDestinationDamage(int32 DamageAmount);
+	void HandleGameEndRetryRequested(APlayerController* RequestingPlayer);
+	void HandleReturnToIntroMapRequested(APlayerController* RequestingPlayer);
+	void HandleClientIdentitySubmitted(APlayerController* PlayerController);
 	
 	virtual void StartPlay() override;
 	virtual void PostLogin(APlayerController* NewPlayer) override; // init coin set
+	virtual void Logout(AController* Exiting) override;
 
 protected:
 	
@@ -60,6 +64,7 @@ protected:
 	
 	// 게임 재시작 -> 맵 오픈
 	void RetryGame();
+	bool IsHostPlayer(APlayerController* PlayerController) const;
 	
 	// 게임 상태 적용 및 시작
 	void SetGamePhase(EGamePhase NewPhase);
@@ -84,6 +89,8 @@ protected:
 	void CleanupInvalidActiveEnemies();
 	void LogActiveWaveEnemies() const;
 	void TryStartGameAfterPlayerJoined();
+	void AssignGameRole(APlayerController* NewPlayer);
+	void PromoteRemainingGuestToHost();
 	
 	UPROPERTY()
 	int32 CurrentWave = 1;

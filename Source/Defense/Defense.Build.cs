@@ -19,7 +19,8 @@ public class Defense : ModuleRules
 			"GameplayStateTreeModule",
 			"UMG",
 			"Slate",
-			"GameplayTags"
+			"GameplayTags",
+			"SlateCore"
 		});
 
 		PublicIncludePaths.AddRange(new string[] {

@@ -40,8 +40,14 @@ void UGameEndUI::RetryGame()
 {
 	if (ADefensePlayerController* PC = GetOwningPlayer<ADefensePlayerController>())
 	{
-		PC->ToggleReady();
+		PC->RequestGameEndRetry();
 	}
-	
-	Retry_Switcher->SetActiveWidgetIndex(1);
+}
+
+void UGameEndUI::ShowEndLoading()
+{
+	if (SwitcherEndLoading)
+	{
+		SwitcherEndLoading->SetActiveWidgetIndex(1);
+	}
 }
