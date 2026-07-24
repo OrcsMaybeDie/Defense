@@ -13,6 +13,18 @@ class DEFENSE_API UMapConfigData : public UDataAsset
 
 public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Map")
+	FText DisplayName;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Map")
+	TSoftObjectPtr<class UTexture2D> Thumbnail;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Map")
+	bool bNotReady = false;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Map")
+	TSoftObjectPtr<class UWorld> GameMap;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Map")
 	int32 InitialDestScore = 20;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Economy")

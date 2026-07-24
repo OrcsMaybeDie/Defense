@@ -48,8 +48,6 @@ public:
 	void MulticastRPC_AttackMotion();
 	
 	// Data Asset에서 가져옴
-	// 타격 거리
-	float AttackDist = 100.f;
 	// 타겟에 가할 데미지
 	float DamageNum = 10.f;
 	// 공격 쿨타임

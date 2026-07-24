@@ -248,7 +248,9 @@ void AEnemyBase::SetPreview()
 	
 	if (EnemyMesh)
 	{
+		EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 		EnemyMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+		EnemyMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 	}
 	
 	
@@ -307,6 +309,12 @@ void AEnemyBase::SetCombat()
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	}
 	
+	if (EnemyMesh)
+	{
+		//EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		//EnemyMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	}
+	
 }
 
 void AEnemyBase::SetInactive()
@@ -343,6 +351,11 @@ void AEnemyBase::SetInactive()
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	}
 	
+	if (EnemyMesh)
+	{
+		//EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+		EnemyMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	}
 	// 그리기 처리
 	SetActorHiddenInGame(true);
 	

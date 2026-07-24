@@ -133,6 +133,10 @@ public:
 	int32 KillCoinReward = 100;
 	float PreviewMoveSpeed = 200.f;
 	float CombatMoveSpeed = 600.f;
+
+	// StateTree 조건과 실제 공격 판정에서 사용할 공격 거리
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Attack")
+	float AttackDist = 100.f;
 	
 	UPROPERTY()
 	TObjectPtr<class AEnemyController> EnemyController;
