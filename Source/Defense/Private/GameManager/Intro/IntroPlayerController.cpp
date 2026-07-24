@@ -18,7 +18,7 @@
 
 namespace
 {
-	FString MakeLocalClientIdentity()
+	FString MakeIntroLocalClientIdentity()
 	{
 		FString ClientIdentity = FPlatformProcess::ComputerName();
 
@@ -259,7 +259,7 @@ void AIntroPlayerController::SubmitClientIdentity()
 		return;
 	}
 
-	ServerRPC_SubmitClientIdentity(MakeLocalClientIdentity());
+	ServerRPC_SubmitClientIdentity(MakeIntroLocalClientIdentity());
 }
 
 void AIntroPlayerController::ToggleESCUI()
