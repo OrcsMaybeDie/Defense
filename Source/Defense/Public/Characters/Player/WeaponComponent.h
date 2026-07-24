@@ -29,7 +29,7 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_RequestAttack(EWeaponAttackType AttackType);
 
-	UFUNCTION(NetMulticast, Reliable)
+	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastRPC_PlayAttack(EWeaponAttackType AttackType);
 
 	ADefenseCharacter* GetOwnerCharacter() const;
@@ -52,4 +52,8 @@ protected:
 
 	UPROPERTY(Transient)
 	TSubclassOf<ADefenseWeaponActor> EquippedWeaponActorClass;
+	
+	// animlayer
+	UPROPERTY(Transient)
+	TSubclassOf<UAnimInstance> AppliedAnimLayerClass;
 };
