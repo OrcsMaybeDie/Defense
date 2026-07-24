@@ -5,15 +5,15 @@
 
 #include "Characters/Enemy/EnemyAnim.h"
 #include "Characters/Enemy/Data/EnemyData.h"
-#include "DrawDebugHelpers.h"
+// #include "DrawDebugHelpers.h"
 #include "Engine/OverlapResult.h"
 #include "Traps/TrapBase.h"
 
-namespace
-{
-	constexpr float DestroySearchDebugTime = 1.0f;
-	constexpr int32 DestroySearchDebugSegments = 24;
-}
+// namespace
+// {
+// 	constexpr float DestroySearchDebugTime = 1.0f;
+// 	constexpr int32 DestroySearchDebugSegments = 24;
+// }
 
 // Sets default values
 AEnemyDestroy::AEnemyDestroy()
@@ -130,7 +130,7 @@ bool AEnemyDestroy::TryFindDestroyTarget()
 
 	if (!bHasOverlap)
 	{
-		Multicast_DrawDestroySearchDebug(SearchCenter, DestroyRadius, false);
+		// Multicast_DrawDestroySearchDebug(SearchCenter, DestroyRadius, false);
 		return false;
 	}
 
@@ -145,28 +145,28 @@ bool AEnemyDestroy::TryFindDestroyTarget()
 		TargetTraps.AddUnique(FoundTrap);
 	}
 
-	Multicast_DrawDestroySearchDebug(SearchCenter, DestroyRadius, !TargetTraps.IsEmpty());
+	// Multicast_DrawDestroySearchDebug(SearchCenter, DestroyRadius, !TargetTraps.IsEmpty());
 
 	return !TargetTraps.IsEmpty();
 }
 
-void AEnemyDestroy::Multicast_DrawDestroySearchDebug_Implementation(FVector SearchCenter, float SearchRadius, bool bFoundTrap)
-{
-	if (UWorld* World = GetWorld())
-	{
-		DrawDebugSphere(
-			World,
-			SearchCenter,
-			SearchRadius,
-			DestroySearchDebugSegments,
-			bFoundTrap ? FColor::Red : FColor::Green,
-			false,
-			DestroySearchDebugTime,
-			0,
-			2.f
-		);
-	}
-}
+// void AEnemyDestroy::Multicast_DrawDestroySearchDebug_Implementation(FVector SearchCenter, float SearchRadius, bool bFoundTrap)
+// {
+// 	if (UWorld* World = GetWorld())
+// 	{
+// 		DrawDebugSphere(
+// 			World,
+// 			SearchCenter,
+// 			SearchRadius,
+// 			DestroySearchDebugSegments,
+// 			bFoundTrap ? FColor::Red : FColor::Green,
+// 			false,
+// 			DestroySearchDebugTime,
+// 			0,
+// 			2.f
+// 		);
+// 	}
+// }
 
 void AEnemyDestroy::DestroyTargetTrap()
 {

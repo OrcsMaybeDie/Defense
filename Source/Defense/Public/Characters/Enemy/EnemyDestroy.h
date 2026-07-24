@@ -45,8 +45,8 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void DestroyTargetTrap();
 
-	UFUNCTION(NetMulticast, Unreliable)
-	void Multicast_DrawDestroySearchDebug(FVector SearchCenter, float SearchRadius, bool bFoundTrap);
+	// UFUNCTION(NetMulticast, Unreliable)
+	// void Multicast_DrawDestroySearchDebug(FVector SearchCenter, float SearchRadius, bool bFoundTrap);
 
 	void MarkDestroyFinished(bool bDestroyedTrap);
 	float GetDestroyDuration(float DefaultDuration = 1.2f) const;
