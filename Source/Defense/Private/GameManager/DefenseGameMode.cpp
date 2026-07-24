@@ -12,6 +12,7 @@
 #include "EngineUtils.h"
 #include "GameManager/DefenseGameInstance.h"
 #include "GameManager/DefenseGameState.h"
+#include "GameManager/DefenseSpectatorController.h"
 #include "GameManager/Data/MapConfigData.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
@@ -46,6 +47,7 @@ ADefenseGameMode::ADefenseGameMode()
 {
 	PlayerStateClass = ADefensePlayerState::StaticClass();
 	GameStateClass = ADefenseGameState::StaticClass();
+	SpectatorPlayerControllerClass = ADefenseSpectatorController::StaticClass();
 }
 
 void ADefenseGameMode::ApplyDataAssets()
@@ -162,6 +164,31 @@ void ADefenseGameMode::PostLogin(APlayerController* NewPlayer)
 	TryStartGameAfterPlayerJoined();
 }
 
+APlayerController* ADefenseGameMode::SpawnPlayerController(ENetRole InRemoteRole, const FString& Options)
+{
+	if (ShouldSpawnSpectatorController() && SpectatorPlayerControllerClass)
+	{
+		return SpawnPlayerControllerCommon(
+			InRemoteRole,
+			FVector::ZeroVector,
+			FRotator::ZeroRotator,
+			SpectatorPlayerControllerClass
+		);
+	}
+
+	return Super::SpawnPlayerController(InRemoteRole, Options);
+}
+
+void ADefenseGameMode::RestartPlayer(AController* NewPlayer)
+{
+	if (Cast<ADefenseSpectatorController>(NewPlayer))
+	{
+		return;
+	}
+
+	Super::RestartPlayer(NewPlayer);
+}
+
 void ADefenseGameMode::Logout(AController* Exiting)
 {
 	const ADefensePlayerState* ExitingPlayerState = Exiting ? Exiting->GetPlayerState<ADefensePlayerState>() : nullptr;
@@ -187,7 +214,20 @@ bool ADefenseGameMode::AreAllPlayersReady() const
 	for (APlayerState* PlayerState : GS->PlayerArray)
 	{
 		const ADefensePlayerState* PS = Cast<ADefensePlayerState>(PlayerState);
-		if (!PS || !PS->IsReady()) return false;
+		if (!PS)
+		{
+			return false;
+		}
+
+		if (PS->GetGameRole() == EDefensePlayerRole::Spectator)
+		{
+			continue;
+		}
+
+		if (!PS->IsReady())
+		{
+			return false;
+		}
 	}
 	
 	return true;
@@ -379,6 +419,12 @@ void ADefenseGameMode::AssignGameRole(APlayerController* NewPlayer)
 		return;
 	}
 
+	if (Cast<ADefenseSpectatorController>(NewPlayer) || bHasGameStarted)
+	{
+		DefensePlayerState->SetGameRole(EDefensePlayerRole::Spectator);
+		return;
+	}
+
 	bool bHasHost = false;
 	int32 PlayerCount = 0;
 	if (GameState)
@@ -400,6 +446,22 @@ void ADefenseGameMode::AssignGameRole(APlayerController* NewPlayer)
 	}
 
 	DefensePlayerState->SetGameRole(PlayerCount <= 2 ? EDefensePlayerRole::Guest : EDefensePlayerRole::Spectator);
+}
+
+bool ADefenseGameMode::ShouldSpawnSpectatorController() const
+{
+	if (!bHasGameStarted)
+	{
+		return false;
+	}
+
+	if (GameState && GameState->PlayerArray.Num() >= 2)
+	{
+		return true;
+	}
+
+	const UDefenseGameInstance* DefenseGameInstance = GetGameInstance<UDefenseGameInstance>();
+	return !DefenseGameInstance || !DefenseGameInstance->HasSavedGuestPlayerId();
 }
 
 void ADefenseGameMode::PromoteRemainingGuestToHost()

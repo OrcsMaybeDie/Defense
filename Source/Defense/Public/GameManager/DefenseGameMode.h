@@ -47,6 +47,8 @@ public:
 	virtual void StartPlay() override;
 	virtual void PostLogin(APlayerController* NewPlayer) override; // init coin set
 	virtual void Logout(AController* Exiting) override;
+	virtual APlayerController* SpawnPlayerController(ENetRole InRemoteRole, const FString& Options) override;
+	virtual void RestartPlayer(AController* NewPlayer) override;
 
 protected:
 	
@@ -91,6 +93,7 @@ protected:
 	void TryStartGameAfterPlayerJoined();
 	void AssignGameRole(APlayerController* NewPlayer);
 	void PromoteRemainingGuestToHost();
+	bool ShouldSpawnSpectatorController() const;
 	
 	UPROPERTY()
 	int32 CurrentWave = 1;
@@ -130,6 +133,9 @@ protected:
 
 	UPROPERTY()
 	bool bHasStartPlayInitialized = false;
+
+	UPROPERTY(EditDefaultsOnly, Category="Spectator")
+	TSubclassOf<APlayerController> SpectatorPlayerControllerClass;
 
 	FTimerHandle AutoWaveCountdownTimerHandle;
 	FTimerHandle ReadyWaveCountdownTimerHandle;

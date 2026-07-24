@@ -92,6 +92,11 @@ bool UDefenseGameInstance::IsSavedGuestPlayerState(const APlayerState* PlayerSta
 	return !SavedGuestPlayerId.IsEmpty() && MakeTravelPlayerId(PlayerState) == SavedGuestPlayerId;
 }
 
+bool UDefenseGameInstance::HasSavedGuestPlayerId() const
+{
+	return !SavedGuestPlayerId.IsEmpty();
+}
+
 void UDefenseGameInstance::ShowFullWarning()
 {
 	if (!FullWarningClass)

@@ -44,6 +44,7 @@ public:
 	void SaveIntroPlayerRoles(APlayerState* HostPlayerState, APlayerState* GuestPlayerState);
 	bool IsSavedHostPlayerState(const APlayerState* PlayerState) const;
 	bool IsSavedGuestPlayerState(const APlayerState* PlayerState) const;
+	bool HasSavedGuestPlayerId() const;
 
 	void ShowFullWarning();
 
