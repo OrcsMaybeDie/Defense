@@ -149,7 +149,17 @@ UWeaponData* UWeaponComponent::GetCurWeaponData() const
 
 void UWeaponComponent::RefreshEquippedWeapon()
 {
+	UWorld* World = GetWorld();
+	
+	// dediserver는 충돌 판정과 데미지만 담당
+	if (!World || World->GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
 	UWeaponData* WeaponData = GetCurWeaponData();
+	
+	// Client
 	SpawnAndAttachWeaponActor(WeaponData);
 	ApplyWeaponAnimLayer(WeaponData);
 }

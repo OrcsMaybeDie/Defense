@@ -186,6 +186,8 @@ void ADefenseCharacter::HandleLClick()
 	{
 		BuildComp->BuildTrap();
 	}
+	
+	Attack();
 }
 
 void ADefenseCharacter::HandleLClickTriggered()
