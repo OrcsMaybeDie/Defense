@@ -100,6 +100,25 @@ protected:
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_DrawWallTraceDebug(FVector TraceStart, FVector TraceEnd, bool bHit);
+	
+	// VFX test
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayDamageVFX(FVector_NetQuantize EffectLocation);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="Trap|VFX")
+	void PlayDamageVFX(FVector EffectLocation);
+	
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayWallShotVFX(
+		FVector_NetQuantize StartLocation,
+		FVector_NetQuantize EndLocation
+	);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="Trap|VFX")
+	void PlayWallShotVFX(
+		FVector StartLocation,
+		FVector EndLocation
+	);
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;

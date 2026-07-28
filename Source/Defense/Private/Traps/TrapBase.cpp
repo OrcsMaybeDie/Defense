@@ -265,6 +265,18 @@ void ATrapBase::OnRep_OccupiedCells()
 	}
 }
 
+// VFX Test
+void ATrapBase::Multicast_PlayDamageVFX_Implementation(FVector_NetQuantize EffectLocation)
+{
+	PlayDamageVFX(EffectLocation);
+}
+
+// VFX Test
+void ATrapBase::Multicast_PlayWallShotVFX_Implementation(FVector_NetQuantize StartLocation, FVector_NetQuantize EndLocation)
+{
+	PlayWallShotVFX(StartLocation, EndLocation);
+}
+
 void ATrapBase::ApplyPreviewVisual()
 {
 	if (Mesh)
@@ -356,7 +368,14 @@ void ATrapBase::ApplyPeriodicDamage()
 			continue;
 		}
 
-		UGameplayStatics::ApplyDamage(OverlappingActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
+		const float ActualDamage = UGameplayStatics::ApplyDamage(OverlappingActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
+		
+		if (ActualDamage > 0.f)
+		{
+			const FVector EffectLocation = DamageArea ? DamageArea->GetComponentLocation() : GetActorLocation();
+			
+			Multicast_PlayDamageVFX(EffectLocation);
+		}
 	}
 }
 
@@ -425,7 +444,13 @@ void ATrapBase::ApplyWallBoxTraceDamage()
 			const FVector DebugStart = DebugLaneCenter + TraceDirection * TraceHalfDepth;
 			Multicast_DrawWallTraceDebug(DebugStart, Hit.ImpactPoint, true);
 
-			UGameplayStatics::ApplyDamage(HitActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
+			const float ActualDamage = UGameplayStatics::ApplyDamage(HitActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
+			
+			if (ActualDamage > 0.f)
+			{
+				Multicast_PlayWallShotVFX(DebugStart, Hit.ImpactPoint);
+			}
+			
 			break;
 		}
 	}
