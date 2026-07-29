@@ -6,9 +6,11 @@
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
+#include "GameManager/DefenseGameState.h"
 #include "TimerManager.h"
 #include "Characters/Player/DefensePlayerState.h"
 #include "UI/LoadoutBarWidget.h"
+#include "UI/NoticeWidget.h"
 #include "UI/PlayerStatusWidget.h"
 
 void UPlayerHUDWidget::NativeConstruct()
@@ -68,13 +70,19 @@ void UPlayerHUDWidget::TryBindPlayer()
 	
 	AGameStateBase* GameState = World->GetGameState();
 	APlayerState* LocalPlayerState = OwningPC->PlayerState;
+	ADefensePlayerState* DefensePlayerState = Cast<ADefensePlayerState>(LocalPlayerState);
 	
-	if (LoadoutBar)
+	if (LoadoutBar && DefensePlayerState)
 	{
-		if (ADefensePlayerState* DefensePS = Cast<ADefensePlayerState>(LocalPlayerState))
-		{
-			LoadoutBar->BindPlayerState(DefensePS);
-		}
+		LoadoutBar->BindPlayerState(DefensePlayerState);
+	}
+
+	if (WBP_Notice)
+	{
+		WBP_Notice->BindReadyState(
+			Cast<ADefenseGameState>(GameState),
+			DefensePlayerState
+		);
 	}
 	
 	if (GameState && LocalPlayerState && AllyStatus)

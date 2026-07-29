@@ -15,6 +15,9 @@
 #include "Characters/Player/WeaponComponent.h"
 #include "Equipment/LoadoutComponent.h"
 #include "Traps/BuildComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+#include "GameManager/DefenseGameMode.h"
 
 ADefenseCharacter::ADefenseCharacter ()
 {
@@ -60,6 +63,17 @@ ADefenseCharacter::ADefenseCharacter ()
 	WeaponComp = CreateDefaultSubobject<UWeaponComponent>(TEXT("WeaponComp"));
 	LoadoutComp = CreateDefaultSubobject<ULoadoutComponent>(TEXT("LoadoutComp"));
 	BuildComp = CreateDefaultSubobject<UBuildComponent>(TEXT("BuildComp"));
+}
+
+void ADefenseCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	
+	if (!StatusComp) return;
+	
+	StatusComp->OnLifeStateChanged.AddUniqueDynamic(this, &ADefenseCharacter::HandleLifeStateChanged);
+	
+	HandleLifeStateChanged(StatusComp->GetLifeState());
 }
 
 void ADefenseCharacter::Tick(float DeltaSeconds)
@@ -121,6 +135,8 @@ void ADefenseCharacter::Look(const FInputActionValue& Value)
 
 void ADefenseCharacter::SelectLoadoutIdx(const FInputActionValue& Value)
 {
+	if (!StatusComp->IsAlive()) return;
+
 	const float RawInputValue = Value.Get<float>();
 	const int32 SlotNumber = FMath::RoundToInt(RawInputValue);
 	const int32 SlotIdx = SlotNumber - 1;
@@ -140,6 +156,8 @@ void ADefenseCharacter::SelectLoadoutIdx(const FInputActionValue& Value)
 
 void ADefenseCharacter::DoMove(float Right, float Forward)
 {
+	if (!StatusComp->IsAlive()) return;
+
 	if (GetController() != nullptr)
 	{
 		// find out which way is forward
@@ -160,6 +178,8 @@ void ADefenseCharacter::DoMove(float Right, float Forward)
 
 void ADefenseCharacter::DoLook(float Yaw, float Pitch)
 {
+	if (!StatusComp->IsAlive()) return;
+
 	if (GetController() != nullptr)
 	{
 		// add yaw and pitch input to controller
@@ -170,6 +190,8 @@ void ADefenseCharacter::DoLook(float Yaw, float Pitch)
 
 void ADefenseCharacter::DoJumpStart()
 {
+	if (!StatusComp->IsAlive()) return;
+
 	// signal the character to jump
 	Jump();
 }
@@ -182,9 +204,12 @@ void ADefenseCharacter::DoJumpEnd()
 
 void ADefenseCharacter::HandleLClick()
 {
+	if (!StatusComp->IsAlive()) return;
+
 	if (BuildComp && BuildComp->HasSelectedTrap())
 	{
 		BuildComp->BuildTrap();
+		return;
 	}
 	
 	Attack();
@@ -210,6 +235,8 @@ void ADefenseCharacter::FireWeapon()
 
 void ADefenseCharacter::Attack()
 {
+	if (!StatusComp->IsAlive()) return;
+
 	if (WeaponComp)
 	{
 		WeaponComp->Attack(EWeaponAttackType::Attack);
@@ -223,6 +250,8 @@ void ADefenseCharacter::NotifyFireWeapon()
 
 void ADefenseCharacter::AltAttack()
 {
+	if (!StatusComp->IsAlive()) return;
+
 	if (WeaponComp)
 	{
 		WeaponComp->Attack(EWeaponAttackType::AltAttack);
@@ -231,6 +260,8 @@ void ADefenseCharacter::AltAttack()
 
 void ADefenseCharacter::SellTrap()
 {
+	if (!StatusComp->IsAlive()) return;
+
 	if (BuildComp)
 	{
 		BuildComp->SellTrap();
@@ -248,4 +279,59 @@ float ADefenseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent cons
 	if (ActualDamage <= 0) { return 0.f; }
 	
 	return StatusComp->ApplyDamage(ActualDamage, DamageCauser);
+}
+
+void ADefenseCharacter::HandleLifeStateChanged(EPlayerLifeState NewLifeState)
+{
+	const bool bAlive = NewLifeState == EPlayerLifeState::Alive;
+	UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+	
+	if (bAlive)
+	{
+		if (AnimInstance && DeathMontage)
+		{
+			AnimInstance->Montage_Stop(0.15f, DeathMontage);
+		}
+
+		SetActorEnableCollision(true);
+		GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+		
+		// test 확인 후 제거
+		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}
+	else
+	{
+		GetCharacterMovement()->StopMovementImmediately();
+		GetCharacterMovement()->DisableMovement();
+
+		// Capsule, Mesh 등 이 Actor가 가진 충돌을 모두 끔
+		SetActorEnableCollision(false);
+		// test 확인 후 제거
+		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		
+		// death montage
+		if (AnimInstance && DeathMontage)
+		{
+			AnimInstance->Montage_Play(DeathMontage);
+		}
+		
+		// alert game mode
+		if (HasAuthority())
+		{
+			if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+			{
+				GameMode->NotifyPlayerDied(this);
+			}
+		}
+	}
+	
+	// 이동/시점 입력은 소유 클라이언트에서 차단
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		if (PlayerController->IsLocalController())
+		{
+			PlayerController->SetIgnoreMoveInput(!bAlive);
+			PlayerController->SetIgnoreLookInput(!bAlive);
+		}
+	}
 }

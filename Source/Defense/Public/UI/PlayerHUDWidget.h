@@ -7,6 +7,7 @@
 
 
 class ULoadoutBarWidget;
+class UNoticeWidget;
 class UPlayerStatusWidget;
 class UTextBlock;
 class ADefenseCharacter;
@@ -33,6 +34,9 @@ protected:
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<ULoadoutBarWidget> LoadoutBar;
+
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UNoticeWidget> WBP_Notice;
 	
 private:
 	void TryBindPlayer();

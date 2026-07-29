@@ -23,6 +23,7 @@ enum class EGamePhase : uint8
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDestScoreChanged, int32, NewDestScore);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCountdownChanged, int32, NewCountdownRemaining);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCurrentWaveChanged, int32, NewCurrentWave);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnReadyInputRequiredChanged, bool, bRequired);
 
 UCLASS()
 class DEFENSE_API ADefenseGameState : public AGameStateBase
@@ -60,6 +61,14 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnCurrentWaveChanged OnCurrentWaveChanged;
 
+	UPROPERTY(BlueprintAssignable, Category="Ready")
+	FOnReadyInputRequiredChanged OnReadyInputRequiredChanged;
+
+	UFUNCTION(BlueprintPure, Category="Ready")
+	bool IsReadyInputRequired() const { return bReadyInputRequired; }
+
+	void SetReadyInputRequired(bool bRequired);
+
 	UFUNCTION()
 	void OnRep_DestScore();
 	
@@ -70,5 +79,11 @@ public:
 	void OnRep_CountdownRemaining();
 
 	void SetDestScore(int32 NewDestScore);
-	
+
+private:
+	UPROPERTY(ReplicatedUsing=OnRep_ReadyInputRequired)
+	bool bReadyInputRequired = false;
+
+	UFUNCTION()
+	void OnRep_ReadyInputRequired();
 };

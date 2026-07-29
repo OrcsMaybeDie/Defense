@@ -66,6 +66,9 @@ void UWeaponComponent::ServerRPC_RequestAttack_Implementation(EWeaponAttackType 
 	AActor* OwnerActor = GetOwner();
 	if (!OwnerActor || !OwnerActor->HasAuthority()) return;
 
+	UStatusComponent* StatusComp = OwnerActor->FindComponentByClass<UStatusComponent>();
+	if (!StatusComp || !StatusComp->IsAlive()) return;
+
 	UWeaponData* WeaponData = GetCurWeaponData();
 	if (!WeaponData) return;
 
@@ -100,8 +103,7 @@ void UWeaponComponent::ServerRPC_RequestAttack_Implementation(EWeaponAttackType 
 		return;
 	}
 
-	UStatusComponent* StatusComp = OwnerActor->FindComponentByClass<UStatusComponent>();
-	if (StatusComp && !StatusComp->TrySpendMana(AttackData->ManaCost))
+	if (!StatusComp->TrySpendMana(AttackData->ManaCost))
 	{
 		UE_LOG(LogTemp, Verbose, TEXT("Attack rejected by server mana. Cost: %.1f / Mana: %.1f"),
 			AttackData->ManaCost,

@@ -12,6 +12,7 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
+class UAnimMontage; // Death
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -78,11 +79,15 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputAction> IA_LoadoutIdx;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Anim")
+	TObjectPtr<UAnimMontage> DeathMontage;
+	
 public:
 	/** Constructor */
 	ADefenseCharacter();	
 
 protected:
+	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 
 	/** Initialize input action bindings */
@@ -93,6 +98,9 @@ protected:
 
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
+	
+	UFUNCTION()
+	void HandleLifeStateChanged(EPlayerLifeState NewLifeState);
 	
 	void SelectLoadoutIdx(const FInputActionValue& Value);
 

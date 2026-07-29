@@ -62,7 +62,7 @@ protected:
 	TObjectPtr<class UInputAction> IA_ESC;
 	
 	UFUNCTION(Server, Reliable)
-	void ServerRPC_SetReady(bool bReady);
+	void ServerRPC_RequestReady();
 
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_RequestGameEndRetry();
@@ -87,7 +87,7 @@ protected:
 	TObjectPtr<UESCUI> ESCUI;
 	
 public:
-	void ToggleReady();
+	void RequestReady();
 	void RequestGameEndRetry();
 	void RequestReturnToIntroMap();
 	void QuitGame();

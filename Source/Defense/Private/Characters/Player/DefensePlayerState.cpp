@@ -21,6 +21,8 @@ void ADefensePlayerState::SetReady(bool bReady)
 	if (bIsReady == bReady) { return; }
 	
 	bIsReady = bReady;
+	
+	OnRep_IsReady(); // server
 }
 
 void ADefensePlayerState::SetGameRole(EDefensePlayerRole NewRole)
@@ -46,7 +48,7 @@ void ADefensePlayerState::SetClientIdentity(const FString& NewClientIdentity)
 
 void ADefensePlayerState::OnRep_IsReady()
 {
-	// UI
+	OnReadyChanged.Broadcast(bIsReady);
 }
 
 

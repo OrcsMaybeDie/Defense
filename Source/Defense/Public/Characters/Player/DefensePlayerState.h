@@ -8,6 +8,9 @@
 // Delegate
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCoinChanged, int32, NewCoin);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnReadyChanged, bool, bReady);
+
+
 UENUM(BlueprintType)
 enum class EDefensePlayerRole : uint8
 {
@@ -42,6 +45,9 @@ public:
 	
 	bool IsReady() const { return bIsReady; }
 	void SetReady(bool bReady);
+	
+	UPROPERTY(BlueprintAssignable, Category="State")
+	FOnReadyChanged OnReadyChanged;
 
 	UFUNCTION(BlueprintPure, Category="State|Role")
 	EDefensePlayerRole GetGameRole() const { return GameRole; }

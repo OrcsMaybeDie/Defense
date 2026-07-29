@@ -12,6 +12,7 @@
 #include "Characters/Player/DefensePlayerState.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameManager/DefenseGameMode.h"
+#include "GameManager/DefenseGameState.h"
 #include "HAL/PlatformProcess.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/CommandLine.h"
@@ -139,7 +140,7 @@ void ADefensePlayerController::SetupInputComponent()
 			ReadyAction,
 			ETriggerEvent::Started,
 			this,
-			&ADefensePlayerController::ToggleReady
+			&ADefensePlayerController::RequestReady
 		);
 
 		if (IA_ESC)
@@ -255,12 +256,12 @@ void ADefensePlayerController::ClientRPC_ShowESCLoadingUI_Implementation()
 	}
 }
 
-void ADefensePlayerController::ToggleReady()
+void ADefensePlayerController::RequestReady()
 {
 	ADefensePlayerState* PS = GetPlayerState<ADefensePlayerState>();
-	if (PS)
+	if (PS && !PS->IsReady())
 	{
-		ServerRPC_SetReady(!PS->IsReady());
+		ServerRPC_RequestReady();
 	}
 }
 
@@ -352,12 +353,15 @@ bool ADefensePlayerController::IsGameHostPlayer() const
 
 
 
-void ADefensePlayerController::ServerRPC_SetReady_Implementation(bool bReady)
+void ADefensePlayerController::ServerRPC_RequestReady_Implementation()
 {
+	const ADefenseGameState* DefenseGameState = GetWorld()->GetGameState<ADefenseGameState>();
+	if (!DefenseGameState || !DefenseGameState->IsReadyInputRequired()) return;
+
 	ADefensePlayerState* PS = GetPlayerState<ADefensePlayerState>();
 	if (!PS) return;
 
-	PS->SetReady(bReady);
+	PS->SetReady(true);
 	
 	if (ADefenseGameMode* GM = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
 	{

@@ -9,6 +9,7 @@
 #include "DefenseGameMode.generated.h"
 
 class AGridManager;
+class ADefenseCharacter;
 
 UENUM(BlueprintType)
 enum class EEnemyRemoveReason : uint8
@@ -34,6 +35,8 @@ public:
 	ADefenseGameMode();
 	
 	void HandlePlayerReadyChanged();
+	void NotifyPlayerDied(ADefenseCharacter* DeadCharacter);
+
 	void DecreaseCurrentEnemyCount();
 	void NotifyEnemyActivated(class AEnemyBase* Enemy);
 	void NotifyEnemyRemoved(class AEnemyBase* Enemy, EEnemyRemoveReason Reason);
@@ -58,6 +61,9 @@ protected:
 	bool AreAllPlayersReady() const;
 	void ResetAllPlayersReady();
 	
+	bool AreAllActivePlayersDead() const;
+	void RespawnDeadPlayer(AController* Controller);
+
 	// 플레이어와 적들이 스폰되었는지 확인
 	void GameStart();
 	
@@ -140,6 +146,8 @@ protected:
 	FTimerHandle AutoWaveCountdownTimerHandle;
 	FTimerHandle ReadyWaveCountdownTimerHandle;
 	FTimerHandle EnemyCleanupTimerHandle;
+
+	float RespawnDelay = 3.f;
 
 public:
 	

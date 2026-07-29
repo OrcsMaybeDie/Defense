@@ -10,8 +10,10 @@
 #include "Characters/Player/DefensePlayerController.h"
 #include "Characters/Player/DefensePlayerState.h"
 #include "EngineUtils.h"
+#include "Characters/Player/DefenseCharacter.h"
 #include "GameManager/DefenseGameInstance.h"
 #include "GameManager/DefenseGameState.h"
+#include "GameManager/DestinationActor.h"
 #include "GameManager/DefenseSpectatorController.h"
 #include "GameManager/Data/MapConfigData.h"
 #include "GameFramework/GameStateBase.h"
@@ -247,6 +249,100 @@ void ADefenseGameMode::ResetAllPlayersReady()
 	}
 }
 
+bool ADefenseGameMode::AreAllActivePlayersDead() const
+{
+	int32 ActivePlayerCount = 0;
+
+	for (FConstPlayerControllerIterator It =
+		GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const APlayerController* PlayerController = It->Get();
+		const ADefenseCharacter* Character = PlayerController
+			? Cast<ADefenseCharacter>(PlayerController->GetPawn())
+			: nullptr;
+
+		if (!Character)
+		{
+			continue;
+		}
+
+		++ActivePlayerCount;
+
+		UStatusComponent* StatusComp = Character->GetStatusComp();
+		if (!StatusComp || StatusComp->IsAlive())
+		{
+			return false;
+		}
+	}
+
+	return ActivePlayerCount >= 2;
+}
+
+void ADefenseGameMode::NotifyPlayerDied(ADefenseCharacter* DeadCharacter)
+{
+	if (!HasAuthority() || !IsValid(DeadCharacter)) return;
+
+	UStatusComponent* StatusComp = DeadCharacter->GetStatusComp();
+	if (!StatusComp || StatusComp->IsAlive()) return;
+
+	if (!DefenseGameState || DefenseGameState->GamePhase == EGamePhase::GameEnded) return;
+
+	AController* Controller = DeadCharacter->GetController();
+	if (!Controller) return;
+
+	if (AreAllActivePlayersDead())
+	{
+		SetGamePhase(EGamePhase::GameEnded);
+		return;
+	}
+
+	FTimerHandle RespawnTimerHandle;
+	FTimerDelegate RespawnDelegate;
+	RespawnDelegate.BindUObject(
+		this,
+		&ADefenseGameMode::RespawnDeadPlayer,
+		Controller
+	);
+
+	GetWorldTimerManager().SetTimer(
+		RespawnTimerHandle,
+		RespawnDelegate,
+		RespawnDelay,
+		false
+	);
+}
+
+void ADefenseGameMode::RespawnDeadPlayer(AController* Controller)
+{
+	if (!IsValid(Controller)) return;
+	if (!DefenseGameState || DefenseGameState->GamePhase == EGamePhase::GameEnded) return;
+
+	ADefenseCharacter* Character = Cast<ADefenseCharacter>(Controller->GetPawn());
+	if (!IsValid(Character)) return;
+
+	UStatusComponent* StatusComp = Character->GetStatusComp();
+	if (!StatusComp || StatusComp->IsAlive()) return;
+
+	ADestinationActor* Destination = nullptr;
+	for (TActorIterator<ADestinationActor> It(GetWorld()); It; ++It)
+	{
+		Destination = *It;
+		break;
+	}
+
+	if (!Destination) return;
+
+	const FRotator DestinationRotation = Destination->GetActorRotation();
+	const FTransform RespawnTransform(
+		FRotator(0.f, DestinationRotation.Yaw, 0.f),
+		Destination->GetActorLocation(),
+		FVector::OneVector
+	);
+
+	Character->SetActorTransform(RespawnTransform, false, nullptr, ETeleportType::TeleportPhysics);
+	StatusComp->Revive();
+}
+
 void ADefenseGameMode::GameStart()
 {
 	SetGamePhase(EGamePhase::Preparation);
@@ -259,6 +355,7 @@ void ADefenseGameMode::GameEnd()
 	if (DefenseGameState)
 	{
 		DefenseGameState->CountdownRemaining = 0;
+		DefenseGameState->SetReadyInputRequired(false);
 		
 	}
 	
@@ -267,8 +364,9 @@ void ADefenseGameMode::GameEnd()
 	
 	bool bGameClear = false;
 	
-	// TODO : 플레이어가 하나라도 살아있는지 조건 추가하기
-	if (DefenseGameState->DestScore > 0 && CurrentWave >= MaxWave)
+	if (!AreAllActivePlayersDead()
+		&& DefenseGameState->DestScore > 0
+		&& CurrentWave >= MaxWave)
 	{
 		bGameClear = true;
 	}
@@ -607,6 +705,8 @@ void ADefenseGameMode::Preparation()
 	GetWorldTimerManager().ClearTimer(ReadyWaveCountdownTimerHandle);
 	GetWorldTimerManager().ClearTimer(EnemyCleanupTimerHandle);
 
+	const bool bReadyInputRequired = !IsAutoStartWave(CurrentWave);
+
 	if (DefenseGameState)
 	{
 		DefenseGameState->CurrentWave = CurrentWave;
@@ -614,14 +714,27 @@ void ADefenseGameMode::Preparation()
 		DefenseGameState->MaxWave = MaxWave;
 		DefenseGameState->CountdownRemaining = 0;
 		DefenseGameState->OnRep_CountdownRemaining();
+		DefenseGameState->SetReadyInputRequired(bReadyInputRequired);
 	}
 
-	if (EnemySpawners.Num() == 0)
+	if (!bReadyInputRequired)
 	{
 		return;
 	}
 
-	if (IsAutoStartWave(CurrentWave))
+	// 초기화 웨이브 player hp reset
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ADefenseCharacter* Character = Cast<ADefenseCharacter>(It->Get()->GetPawn());
+		if (!Character) continue;
+
+		if (UStatusComponent* StatusComp = Character->GetStatusComp())
+		{
+			StatusComp->Heal(StatusComp->MaxHealth);
+		}
+	}
+
+	if (EnemySpawners.Num() == 0)
 	{
 		return;
 	}
@@ -969,6 +1082,11 @@ void ADefenseGameMode::StartReadyWaveCountdown()
 {
 	GetWorldTimerManager().ClearTimer(ReadyWaveCountdownTimerHandle);
 	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+
+	if (DefenseGameState)
+	{
+		DefenseGameState->SetReadyInputRequired(false);
+	}
 
 	for (AEnemySpawner* Spawner : EnemySpawners)
 	{
