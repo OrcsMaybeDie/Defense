@@ -125,21 +125,21 @@ bool UBuildComponent::TraceBuildTarget(FHitResult& OutHit) const
 	);
 
 #if ENABLE_DRAW_DEBUG
-	DrawDebugLine(
-		World,
-		ViewLocation,
-		bHit ? OutHit.ImpactPoint : TraceEnd,
-		bHit ? FColor::Green : FColor::Red,
-		false,
-		0.f,
-		0,
-		0.25f
-	);
+	// DrawDebugLine(
+	// 	World,
+	// 	ViewLocation,
+	// 	bHit ? OutHit.ImpactPoint : TraceEnd,
+	// 	bHit ? FColor::Green : FColor::Red,
+	// 	false,
+	// 	0.f,
+	// 	0,
+	// 	0.25f
+	// );
 
-	if (bHit)
-	{
-		DrawDebugPoint(World, OutHit.ImpactPoint, 6.f, FColor::Red, false, 0.f);
-	}
+	// if (bHit)
+	// {
+	// 	DrawDebugPoint(World, OutHit.ImpactPoint, 6.f, FColor::Red, false, 0.f);
+	// }
 #endif
 
 	return bHit;
@@ -222,7 +222,7 @@ void UBuildComponent::UpdateTrapPreview()
 	TrapPreviewActor->SetActorHiddenInGame(false);
 
 #if ENABLE_DRAW_DEBUG
-	DrawDebugPoint(World, PreviewTransform.GetLocation(), 10.f, FColor::Yellow, false, 0.f);
+	// DrawDebugPoint(World, PreviewTransform.GetLocation(), 10.f, FColor::Yellow, false, 0.f);
 #endif
 }
 

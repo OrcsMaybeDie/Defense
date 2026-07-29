@@ -442,7 +442,7 @@ void ATrapBase::ApplyWallBoxTraceDamage()
 			const float DebugLaneOffset = FMath::Clamp(LaneOffset, -WallDebugLaneOffset, WallDebugLaneOffset);
 			const FVector DebugLaneCenter = TraceCenter + TraceLateralDirection * DebugLaneOffset;
 			const FVector DebugStart = DebugLaneCenter + TraceDirection * TraceHalfDepth;
-			Multicast_DrawWallTraceDebug(DebugStart, Hit.ImpactPoint, true);
+			// Multicast_DrawWallTraceDebug(DebugStart, Hit.ImpactPoint, true);
 
 			const float ActualDamage = UGameplayStatics::ApplyDamage(HitActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
 			
@@ -458,19 +458,19 @@ void ATrapBase::ApplyWallBoxTraceDamage()
 
 void ATrapBase::Multicast_DrawWallTraceDebug_Implementation(FVector TraceStart, FVector TraceEnd, bool bHit)
 {
-	if (UWorld* World = GetWorld())
-	{
-		DrawDebugLine(
-			World,
-			TraceStart,
-			TraceEnd,
-			bHit ? FColor::Red : FColor::Green,
-			false,
-			WallTraceDebugTime,
-			0,
-			2.f
-		);
-	}
+	// if (UWorld* World = GetWorld())
+	// {
+	// 	DrawDebugLine(
+	// 		World,
+	// 		TraceStart,
+	// 		TraceEnd,
+	// 		bHit ? FColor::Red : FColor::Green,
+	// 		false,
+	// 		WallTraceDebugTime,
+	// 		0,
+	// 		2.f
+	// 	);
+	// }
 }
 
 void ATrapBase::CacheCurrentOverlaps()

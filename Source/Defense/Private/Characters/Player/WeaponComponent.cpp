@@ -308,9 +308,9 @@ void UWeaponComponent::HitscanAttack(const FAttackData& AttackData)
 	);
 
 #if ENABLE_DRAW_DEBUG
-	const FColor DebugColor = bHit ? FColor::Red : FColor::Green;
-	DrawDebugLine(World, Start, End, DebugColor, false, 1.0f, 0, 1.0f);
-	DrawDebugSphere(World, bHit ? Hit.ImpactPoint : End, TraceRadius, 16, DebugColor, false, 1.0f);
+	// const FColor DebugColor = bHit ? FColor::Red : FColor::Green;
+	// DrawDebugLine(World, Start, End, DebugColor, false, 1.0f, 0, 1.0f);
+	// DrawDebugSphere(World, bHit ? Hit.ImpactPoint : End, TraceRadius, 16, DebugColor, false, 1.0f);
 #endif
 
 	if (bHit)
