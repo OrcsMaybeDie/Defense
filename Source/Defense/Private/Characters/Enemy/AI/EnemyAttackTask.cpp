@@ -10,6 +10,7 @@ EStateTreeRunStatus FEnemyAttackTask::EnterState(FStateTreeExecutionContext& Con
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	InstanceData.ElapsedTime = 0.f;
+	InstanceData.bHasAppliedDamage = false;
 
 	AEnemyAttack* AIEnemy = Cast<AEnemyAttack>(GetAIEnemy(Context));
 	if (!AIEnemy)
@@ -50,6 +51,14 @@ EStateTreeRunStatus FEnemyAttackTask::Tick(FStateTreeExecutionContext& Context, 
 	}
 
 	InstanceData.ElapsedTime += DeltaTime;
+
+	const float AttackHitTime = InstanceData.AttackDuration
+		* FMath::Clamp(InstanceData.AttackHitTimeRatio, 0.f, 1.f);
+	if (!InstanceData.bHasAppliedDamage && InstanceData.ElapsedTime >= AttackHitTime)
+	{
+		InstanceData.bHasAppliedDamage = true;
+		AIEnemy->AttackTarget();
+	}
 
 	if (InstanceData.ElapsedTime >= InstanceData.AttackDuration)
 	{

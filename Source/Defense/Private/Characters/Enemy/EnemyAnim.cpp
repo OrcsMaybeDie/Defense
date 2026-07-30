@@ -3,7 +3,6 @@
 
 #include "Characters/Enemy/EnemyAnim.h"
 
-#include "Characters/Enemy/EnemyAttack.h"
 #include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Enemy/EnemyDestroy.h"
 
@@ -35,14 +34,7 @@ void UEnemyAnim::PlayDieMotion()
 
 void UEnemyAnim::AnimNotify_Hit()
 {
-	if (Enemy && Enemy->HasAuthority())
-	{
-		auto* EnemyAttack = Cast<AEnemyAttack>(Enemy);
-		if (EnemyAttack)
-		{
-			EnemyAttack->AttackTarget();
-		}
-	}
+	// Damage is applied by the authoritative attack StateTree task.
 }
 
 void UEnemyAnim::AnimNotify_Destroy()

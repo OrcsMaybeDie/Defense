@@ -56,7 +56,7 @@ public:
 	UPROPERTY()
 	float LastAttackFinishedTime = -1000000.f;
 	
-	// Notify_hit에서 실행. 서버에서만 실행. Enemy가 서버에서 스폰되기때문에 RPC지정X
+	// 공격 StateTree Task에서 실행. 서버에서만 실행. Enemy가 서버에서 스폰되기때문에 RPC지정X
 	UFUNCTION(BlueprintCallable)
 	void AttackTarget();
 
