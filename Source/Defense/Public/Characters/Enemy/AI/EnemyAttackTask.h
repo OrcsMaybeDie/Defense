@@ -14,7 +14,11 @@ struct FEnemyAttackTaskInstanceData : public FEnemyBaseTaskInstanceData
 	UPROPERTY(EditAnywhere, Category = "Parameter")
 	float AttackDuration = 1.2f;
 
+	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float AttackHitTimeRatio = 0.5f;
+
 	float ElapsedTime = 0.f;
+	bool bHasAppliedDamage = false;
 };
 
 USTRUCT(meta = (DisplayName = "Enemy Attack", Category = "Enemy|AI"))
