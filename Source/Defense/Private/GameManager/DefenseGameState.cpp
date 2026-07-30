@@ -10,8 +10,11 @@ void ADefenseGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ADefenseGameState, GamePhase);
 	DOREPLIFETIME(ADefenseGameState, CurrentWave);
+	DOREPLIFETIME(ADefenseGameState, MaxWave);
+	DOREPLIFETIME(ADefenseGameState, CountdownRemaining);
 	DOREPLIFETIME(ADefenseGameState, AlivePlayerCount);
 	DOREPLIFETIME(ADefenseGameState, DestScore);
+	DOREPLIFETIME(ADefenseGameState, bReadyInputRequired);
 }
 
 void ADefenseGameState::OnRep_DestScore()
@@ -23,4 +26,29 @@ void ADefenseGameState::SetDestScore(int32 NewDestScore)
 {
 	DestScore = NewDestScore;
 	OnRep_DestScore();
+}
+
+void ADefenseGameState::OnRep_CurrentWave()
+{
+	OnCurrentWaveChanged.Broadcast(CurrentWave);
+}
+
+void ADefenseGameState::OnRep_CountdownRemaining()
+{
+	OnCountdownChanged.Broadcast(CountdownRemaining);
+}
+
+void ADefenseGameState::SetReadyInputRequired(bool bRequired)
+{
+	if (!HasAuthority() || bReadyInputRequired == bRequired) return;
+
+	bReadyInputRequired = bRequired;
+
+	// 서버에서도 클라이언트의 RepNotify와 동일한 이벤트 경로 사용
+	OnRep_ReadyInputRequired();
+}
+
+void ADefenseGameState::OnRep_ReadyInputRequired()
+{
+	OnReadyInputRequiredChanged.Broadcast(bReadyInputRequired);
 }

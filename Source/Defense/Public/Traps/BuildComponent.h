@@ -4,8 +4,8 @@
 #include "Components/ActorComponent.h"
 #include "BuildComponent.generated.h"
 
-class ABuildGridSurface;
 class ATrapBase;
+class AGridManager;
 class UTrapData;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
@@ -38,13 +38,14 @@ protected:
 	UTrapData* GetSelectedTrapData() const;
 	APawn* GetOwnerPawn() const;
 
-	bool TraceBuildTarget(FHitResult& OutHit, ABuildGridSurface*& OutBuildSurface) const;
+	bool TraceBuildTarget(FHitResult& OutHit) const;
+	AGridManager* FindGridManager() const;
 	void UpdateTrapPreview();
 	void DestroyTrapPreview();
 
 	UFUNCTION(Server, Reliable)
-	void ServerRPC_RequestBuildTrap(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation);
+	void ServerRPC_RequestBuildTrap(FVector_NetQuantize HitLocation);
 
 	UFUNCTION(Server, Reliable)
-	void ServerRPC_RequestSellTrap(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation);
+	void ServerRPC_RequestSellTrap(ATrapBase* Trap);
 };

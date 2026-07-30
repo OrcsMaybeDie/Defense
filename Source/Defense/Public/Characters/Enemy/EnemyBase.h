@@ -6,6 +6,8 @@
 #include "GameFramework/Character.h"
 #include "EnemyBase.generated.h"
 
+enum class EEnemyType : uint8;
+
 UENUM(BlueprintType)
 enum class EEnemyMode  : uint8
 {
@@ -23,9 +25,9 @@ enum class EEnemyState  : uint8 // State tree의 상태
 	Chase,
 	Damage,
 	Attack,
+	Destroy,
 	Die
 };
-
 
 UCLASS()
 class DEFENSE_API AEnemyBase : public ACharacter
@@ -49,15 +51,25 @@ public:
 	
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	
+	UPROPERTY()
+	TObjectPtr<class ADefenseGameMode> GameMode;
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="Components")
 	TObjectPtr<class UWidgetComponent> HpComp;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Data")
+	TObjectPtr<class UEnemyData> EnemyData;
+
 	// State Tree 상태
-	UPROPERTY(Replicated)
+	UPROPERTY(Replicated,VisibleAnywhere,BlueprintReadOnly)
 	EEnemyState EnemyState;
 	
+	// 공격타입에 따라 공격상태일 때 다른 task 수행
+	UPROPERTY(VisibleAnywhere,BlueprintReadOnly)
+	EEnemyType EnemyType;
+	
 	// 게임 진행 상태에 따른 상태
-	UPROPERTY(ReplicatedUsing=OnRep_UpdateMode, EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(ReplicatedUsing=OnRep_UpdateMode)
 	EEnemyMode EnemyMode = EEnemyMode::Inactive;
 
 	// DestinationActor에 Overlap시 태어난 스포너에 있는 Active배열에서 제거하기 위함.
@@ -67,34 +79,32 @@ public:
 	UFUNCTION()
 	void OnRep_UpdateMode();
 	
-	void SetPreview();
-	void SetCombat();
-	void SetInactive();
+	virtual void SetPreview();
+	virtual void SetCombat();
+	virtual void SetInactive();
 	
 	UPROPERTY()
 	TObjectPtr<class UMeshComponent> EnemyMesh;
 	
-	// Quinn 메시로 테스트 중이라 머티리얼 개수 동일하게 함. 추후 수정 예정
 	UPROPERTY(editAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UMaterialInterface> PreviewMaterial0;
-	UPROPERTY(editAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UMaterialInterface> PreviewMaterial1;
+	TObjectPtr<class UMaterialInterface> PreviewMaterial;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UMaterialInterface> CombatMaterial0;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UMaterialInterface> CombatMaterial1;
+	TObjectPtr<class UMaterialInterface> CombatMaterial;
 	
 	UPROPERTY()
 	TObjectPtr<class UEnemyAnim> AnimInst;
+	
+	// 서버(state tree)에서만 씀.
+	UPROPERTY()
+	TObjectPtr<class ADestinationActor> DestinationActor;
 	
 	//---------------피격---------------------------------
 	// Enemy HP
 	UPROPERTY(ReplicatedUsing=OnRep_UpdateUI)
 	float CurHP;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY()
 	float MaxHP = 100.f;
 	
 	UFUNCTION(NetMulticast, Unreliable)
@@ -118,44 +128,28 @@ public:
 	
 	// 플레이어가 한 공격 받기
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
-
 	
-	//-----------AI Perception-------------------------------
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UAIPerceptionComponent> AIComp;
+	// Data Asset에서 가져옴.
+	int32 KillCoinReward = 100;
+	float PreviewMoveSpeed = 200.f;
+	float CombatMoveSpeed = 600.f;
+
+	// StateTree 조건과 실제 공격 판정에서 사용할 공격 거리
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Attack")
+	float AttackDist = 100.f;
 	
 	UPROPERTY()
 	TObjectPtr<class AEnemyController> EnemyController;
 	
-	// 시야로 적 감지 (일정 거리 이내)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UAISenseConfig_Sight> SightConfig;
-	
-	UFUNCTION()
-	void OnTargetPerceptionUpdated(AActor* Actor, struct FAIStimulus Stimulus);
-	
 	void SendStateTreeEvent(FName EventTagName) const;
-	
-	//-------------타겟 공격----------------------
+
 	// 문을 만든다면 문을 인식해서 부수게 하기 위해 일단 Actor로 지정
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Target")
 	TObjectPtr<AActor> Target;
+
+	FORCEINLINE class ADestinationActor* GetDestinationActor() const { return DestinationActor; }
 	
-	// 애니메이션 재생
-	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastRPC_AttackMotion();
-	
-	// 타격 거리
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MyVar")
-	float AttackDist = 100.f;
-	
-	// 타겟에 가할 데미지
-	UPROPERTY(EditAnywhere, BlueprintReadWrite,Category = "MyVar")
-	float DamageNum = 10.f;
-	
-	// Notify_hit에서 실행. 서버에서만 실행. Enemy가 서버에서 스폰되기때문에 RPC지정X
-	UFUNCTION(BlueprintCallable)
-	void AttackTarget();
+	virtual void ApplyEnemyData();
 	
 	//------------------------------------------
 	

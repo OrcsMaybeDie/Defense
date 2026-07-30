@@ -35,6 +35,9 @@ Plugins/**/Binaries/
 *.ucas.tmp
 *.utoc.tmp
 
+# Local-only migrated asset over GitHub's 100 MB file limit
+Content/Effects/Textures/Flipbooks/SmokeSwirl_3_Flipbook_CHANNELPACK.uasset
+
 # Generated project files
 *.sln
 *.suo
@@ -100,3 +103,6 @@ Builds/
 Packaged/
 StagedBuilds/
 Build/
+
+# Docs
+Docs/

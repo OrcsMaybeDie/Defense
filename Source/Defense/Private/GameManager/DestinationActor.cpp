@@ -14,7 +14,7 @@
 ADestinationActor::ADestinationActor()
 {
 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 	
 	MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
 	SetRootComponent(MeshComp);
@@ -59,22 +59,24 @@ void ADestinationActor::OnEnemySensorBeginOverlap(UPrimitiveComponent* Overlappe
 	if (AEnemyBase* enemy = Cast<AEnemyBase>(OtherActor))
 	{
 		const bool bWasCombatEnemy = enemy->EnemyMode == EEnemyMode::Combat;
+		const bool bAlive = enemy->EnemyState != EEnemyState::Die;
 
-		if (AEnemySpawner* Spawner = enemy->OwningSpawner)
-		{
-			Spawner->RemoveActiveEnemy(enemy);
-		}
-		if (EnemyPool)
-		{
-			EnemyPool->ReturnToPool(enemy);
-		}
-		if (bWasCombatEnemy)
+		if (bWasCombatEnemy && bAlive)
 		{
 			if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
 			{
-				GameMode->DecreaseCurrentEnemyCount();
+				GameMode->NotifyEnemyRemoved(enemy, EEnemyRemoveReason::ReachedDestination);
 				GameMode->ApplyDestinationDamage(1);
 			}
+		}
+		else if (AEnemySpawner* Spawner = enemy->OwningSpawner)
+		{
+			Spawner->RemoveActiveEnemy(enemy);
+		}
+
+		if (EnemyPool)
+		{
+			EnemyPool->ReturnToPool(enemy);
 		}
 	}
 }

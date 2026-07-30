@@ -25,12 +25,16 @@ class DEFENSE_API UEnemyAnim : public UAnimInstance
 	TObjectPtr<class UAnimMontage> AttackMontage;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TObjectPtr<class UAnimMontage> DestroyMontage;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<class UAnimMontage> DamagedMontage;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<class UAnimMontage> DieMontage;
 	
 	void PlayAttackMotion();
+	void PlayDestroyMotion();
 	void PlayDamageMotion();
 	void PlayDieMotion();
 	
@@ -38,6 +42,9 @@ class DEFENSE_API UEnemyAnim : public UAnimInstance
 	void AnimNotify_AttackEnd();*/
 	UFUNCTION()
 	void AnimNotify_Hit();
+	
+	UFUNCTION()
+	void AnimNotify_Destroy();
 	
 	/*UFUNCTION()
 	void AnimNotify_DamageEnd();

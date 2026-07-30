@@ -15,6 +15,9 @@
 #include "Characters/Player/WeaponComponent.h"
 #include "Equipment/LoadoutComponent.h"
 #include "Traps/BuildComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+#include "GameManager/DefenseGameMode.h"
 
 ADefenseCharacter::ADefenseCharacter ()
 {
@@ -62,6 +65,24 @@ ADefenseCharacter::ADefenseCharacter ()
 	BuildComp = CreateDefaultSubobject<UBuildComponent>(TEXT("BuildComp"));
 }
 
+void ADefenseCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	
+	if (!StatusComp) return;
+	
+	StatusComp->OnLifeStateChanged.AddUniqueDynamic(this, &ADefenseCharacter::HandleLifeStateChanged);
+	
+	HandleLifeStateChanged(StatusComp->GetLifeState());
+}
+
+void ADefenseCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	TimeSinceFiredWeapon += DeltaSeconds;
+}
+
 void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	// Set up action bindings
@@ -78,21 +99,20 @@ void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ADefenseCharacter::Look);
 		
-		EnhancedInputComponent->BindAction(LClickAction, ETriggerEvent::Started, this, &ADefenseCharacter::HandleLClick);
+		EnhancedInputComponent->BindAction(IA_LClick, ETriggerEvent::Started, this, &ADefenseCharacter::HandleLClick);
+		EnhancedInputComponent->BindAction(IA_LClick, ETriggerEvent::Triggered, this, &ADefenseCharacter::HandleLClickTriggered);
 
-		EnhancedInputComponent->BindAction(RClickAction, ETriggerEvent::Started, this, &ADefenseCharacter::HandleRClick);
+		EnhancedInputComponent->BindAction(IA_RClick, ETriggerEvent::Started, this, &ADefenseCharacter::HandleRClick);
+		EnhancedInputComponent->BindAction(IA_RClick, ETriggerEvent::Triggered, this, &ADefenseCharacter::HandleRClick);
 
-		EnhancedInputComponent->BindAction(SellAction, ETriggerEvent::Started, this, &ADefenseCharacter::SellTrap);
+		EnhancedInputComponent->BindAction(IA_Sell, ETriggerEvent::Started, this, &ADefenseCharacter::SellTrap);
+		
+		EnhancedInputComponent->BindAction(IA_LoadoutIdx, ETriggerEvent::Started, this, &ADefenseCharacter::SelectLoadoutIdx);
 	}
 	else
 	{
 		UE_LOG(LogDefense, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
 	}
-}
-
-void ADefenseCharacter::Tick(float DeltaSeconds)
-{
-	Super::Tick(DeltaSeconds);
 }
 
 void ADefenseCharacter::Move(const FInputActionValue& Value)
@@ -113,8 +133,31 @@ void ADefenseCharacter::Look(const FInputActionValue& Value)
 	DoLook(LookAxisVector.X, LookAxisVector.Y);
 }
 
+void ADefenseCharacter::SelectLoadoutIdx(const FInputActionValue& Value)
+{
+	if (!StatusComp->IsAlive()) return;
+
+	const float RawInputValue = Value.Get<float>();
+	const int32 SlotNumber = FMath::RoundToInt(RawInputValue);
+	const int32 SlotIdx = SlotNumber - 1;
+	
+	// UE_LOG(LogDefense, Log, TEXT("Loadout input | Character=%s Raw=%.2f SlotNumber=%d SlotIdx=%d HasAuthority=%d LocallyControlled=%d"),
+	// 	*GetNameSafe(this),
+	// 	RawInputValue,
+	// 	SlotNumber,
+	// 	SlotIdx,
+	// 	HasAuthority() ? 1 : 0,
+	// 	IsLocallyControlled() ? 1 : 0);
+	
+	if (!LoadoutComp) return;
+
+	LoadoutComp->SelectSlot(SlotIdx);
+}
+
 void ADefenseCharacter::DoMove(float Right, float Forward)
 {
+	if (!StatusComp->IsAlive()) return;
+
 	if (GetController() != nullptr)
 	{
 		// find out which way is forward
@@ -135,6 +178,8 @@ void ADefenseCharacter::DoMove(float Right, float Forward)
 
 void ADefenseCharacter::DoLook(float Yaw, float Pitch)
 {
+	if (!StatusComp->IsAlive()) return;
+
 	if (GetController() != nullptr)
 	{
 		// add yaw and pitch input to controller
@@ -145,6 +190,8 @@ void ADefenseCharacter::DoLook(float Yaw, float Pitch)
 
 void ADefenseCharacter::DoJumpStart()
 {
+	if (!StatusComp->IsAlive()) return;
+
 	// signal the character to jump
 	Jump();
 }
@@ -157,12 +204,20 @@ void ADefenseCharacter::DoJumpEnd()
 
 void ADefenseCharacter::HandleLClick()
 {
+	if (!StatusComp->IsAlive()) return;
+
 	if (BuildComp && BuildComp->HasSelectedTrap())
 	{
 		BuildComp->BuildTrap();
 		return;
 	}
+	
+	Attack();
+}
 
+void ADefenseCharacter::HandleLClickTriggered()
+{
+	if (BuildComp && BuildComp->HasSelectedTrap()) return;
 	Attack();
 }
 
@@ -173,16 +228,30 @@ void ADefenseCharacter::HandleRClick()
 	AltAttack();
 }
 
+void ADefenseCharacter::FireWeapon()
+{
+	Attack();
+}
+
 void ADefenseCharacter::Attack()
 {
+	if (!StatusComp->IsAlive()) return;
+
 	if (WeaponComp)
 	{
 		WeaponComp->Attack(EWeaponAttackType::Attack);
 	}
 }
 
+void ADefenseCharacter::NotifyFireWeapon()
+{
+	TimeSinceFiredWeapon = 0.f;
+}
+
 void ADefenseCharacter::AltAttack()
 {
+	if (!StatusComp->IsAlive()) return;
+
 	if (WeaponComp)
 	{
 		WeaponComp->Attack(EWeaponAttackType::AltAttack);
@@ -191,6 +260,8 @@ void ADefenseCharacter::AltAttack()
 
 void ADefenseCharacter::SellTrap()
 {
+	if (!StatusComp->IsAlive()) return;
+
 	if (BuildComp)
 	{
 		BuildComp->SellTrap();
@@ -198,7 +269,7 @@ void ADefenseCharacter::SellTrap()
 }
 
 float ADefenseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator,
-	AActor* DamageCauser)
+                                    AActor* DamageCauser)
 {
 	if (!HasAuthority()) { return 0.f; }
 	if (!StatusComp) { return 0.f; }
@@ -208,4 +279,59 @@ float ADefenseCharacter::TakeDamage(float DamageAmount, struct FDamageEvent cons
 	if (ActualDamage <= 0) { return 0.f; }
 	
 	return StatusComp->ApplyDamage(ActualDamage, DamageCauser);
+}
+
+void ADefenseCharacter::HandleLifeStateChanged(EPlayerLifeState NewLifeState)
+{
+	const bool bAlive = NewLifeState == EPlayerLifeState::Alive;
+	UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+	
+	if (bAlive)
+	{
+		if (AnimInstance && DeathMontage)
+		{
+			AnimInstance->Montage_Stop(0.15f, DeathMontage);
+		}
+
+		SetActorEnableCollision(true);
+		GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+		
+		// test 확인 후 제거
+		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}
+	else
+	{
+		GetCharacterMovement()->StopMovementImmediately();
+		GetCharacterMovement()->DisableMovement();
+
+		// Capsule, Mesh 등 이 Actor가 가진 충돌을 모두 끔
+		SetActorEnableCollision(false);
+		// test 확인 후 제거
+		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		
+		// death montage
+		if (AnimInstance && DeathMontage)
+		{
+			AnimInstance->Montage_Play(DeathMontage);
+		}
+		
+		// alert game mode
+		if (HasAuthority())
+		{
+			if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+			{
+				GameMode->NotifyPlayerDied(this);
+			}
+		}
+	}
+	
+	// 이동/시점 입력은 소유 클라이언트에서 차단
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		if (PlayerController->IsLocalController())
+		{
+			PlayerController->SetIgnoreMoveInput(!bAlive);
+			PlayerController->SetIgnoreLookInput(!bAlive);
+		}
+	}
 }

@@ -1,9 +1,12 @@
 #include "Traps/BuildComponent.h"
 
+#include "Characters/Player/DefensePlayerState.h"
+#include "DrawDebugHelpers.h"
+#include "EngineUtils.h"
 #include "Equipment/LoadoutComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
-#include "Traps/BuildGridSurface.h"
+#include "Traps/Grid/GridManager.h"
 #include "Traps/TrapBase.h"
 #include "Traps/TrapData.h"
 
@@ -38,43 +41,45 @@ void UBuildComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void UBuildComponent::BuildTrap()
 {
 	UTrapData* TrapData = GetSelectedTrapData();
-	if (!TrapData) return;
+	AGridManager* GridManager = FindGridManager();
+	if (!TrapData || !GridManager)
+	{
+		return;
+	}
 
 	FHitResult Hit;
-	ABuildGridSurface* BuildSurface = nullptr;
-	if (!TraceBuildTarget(Hit, BuildSurface) || !BuildSurface)
+	FTrapCellKey CellKey;
+	TArray<FTrapCellKey> FootprintCells;
+	if (!TraceBuildTarget(Hit)
+		|| !GridManager->TryGetCellKeyForHit(TrapData, Hit.GetComponent(), Hit.ImpactPoint, CellKey))
 	{
 		return;
 	}
 
-	const bool bCanPlace = BuildSurface->CanPlaceTrapAt(Hit.ImpactPoint);
-	if (!bCanPlace)
+	GridManager->GetTrapFootprintCells(CellKey, FootprintCells);
+	if (!GridManager->AreCellsAvailable(FootprintCells))
 	{
 		return;
 	}
 
-	BuildSurface->MarkSlotOccupiedLocally(Hit.ImpactPoint);
 	if (TrapPreviewActor)
 	{
 		TrapPreviewActor->SetActorHiddenInGame(true);
 	}
 
-	ServerRPC_RequestBuildTrap(BuildSurface, Hit.ImpactPoint);
+	ServerRPC_RequestBuildTrap(Hit.ImpactPoint);
 }
 
 void UBuildComponent::SellTrap()
 {
-	if (!HasSelectedTrap()) return;
-
 	FHitResult Hit;
-	ABuildGridSurface* BuildSurface = nullptr;
-	if (!TraceBuildTarget(Hit, BuildSurface) || !BuildSurface)
+	ATrapBase* Trap = TraceBuildTarget(Hit) ? Cast<ATrapBase>(Hit.GetActor()) : nullptr;
+	if (!Trap)
 	{
 		return;
 	}
 
-	BuildSurface->MarkSlotFreeLocally(Hit.ImpactPoint);
-	ServerRPC_RequestSellTrap(BuildSurface, Hit.ImpactPoint);
+	ServerRPC_RequestSellTrap(Trap);
 }
 
 UTrapData* UBuildComponent::GetSelectedTrapData() const
@@ -89,21 +94,19 @@ APawn* UBuildComponent::GetOwnerPawn() const
 	return Cast<APawn>(GetOwner());
 }
 
-bool UBuildComponent::TraceBuildTarget(FHitResult& OutHit, ABuildGridSurface*& OutBuildSurface) const
+bool UBuildComponent::TraceBuildTarget(FHitResult& OutHit) const
 {
-	OutBuildSurface = nullptr;
-
 	APawn* OwnerPawn = GetOwnerPawn();
 	AController* OwningController = OwnerPawn ? OwnerPawn->GetController() : nullptr;
 	UWorld* World = GetWorld();
-	if (!OwnerPawn || !OwningController || !World) return false;
+	if (!OwnerPawn || !OwningController || !World)
+	{
+		return false;
+	}
 
 	FVector ViewLocation;
 	FRotator ViewRotation;
 	OwningController->GetPlayerViewPoint(ViewLocation, ViewRotation);
-
-	const FVector Start = ViewLocation;
-	const FVector End = Start + ViewRotation.Vector() * BuildTraceRange;
 
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(TrapBuildTrace), false, OwnerPawn);
 	Params.AddIgnoredActor(OwnerPawn);
@@ -112,11 +115,50 @@ bool UBuildComponent::TraceBuildTarget(FHitResult& OutHit, ABuildGridSurface*& O
 		Params.AddIgnoredActor(TrapPreviewActor);
 	}
 
-	const bool bHit = World->LineTraceSingleByChannel(OutHit, Start, End, ECC_Visibility, Params);
-	if (!bHit) return false;
+	const FVector TraceEnd = ViewLocation + ViewRotation.Vector() * BuildTraceRange;
+	const bool bHit = World->LineTraceSingleByChannel(
+		OutHit,
+		ViewLocation,
+		TraceEnd,
+		ECC_Visibility,
+		Params
+	);
 
-	OutBuildSurface = Cast<ABuildGridSurface>(OutHit.GetActor());
-	return true;
+#if ENABLE_DRAW_DEBUG
+	// DrawDebugLine(
+	// 	World,
+	// 	ViewLocation,
+	// 	bHit ? OutHit.ImpactPoint : TraceEnd,
+	// 	bHit ? FColor::Green : FColor::Red,
+	// 	false,
+	// 	0.f,
+	// 	0,
+	// 	0.25f
+	// );
+
+	// if (bHit)
+	// {
+	// 	DrawDebugPoint(World, OutHit.ImpactPoint, 6.f, FColor::Red, false, 0.f);
+	// }
+#endif
+
+	return bHit;
+}
+
+AGridManager* UBuildComponent::FindGridManager() const
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	for (TActorIterator<AGridManager> It(World); It; ++It)
+	{
+		return *It;
+	}
+
+	return nullptr;
 }
 
 void UBuildComponent::UpdateTrapPreview()
@@ -146,51 +188,42 @@ void UBuildComponent::UpdateTrapPreview()
 		if (TrapPreviewActor)
 		{
 			TrapPreviewActor->SetReplicates(false);
-			TrapPreviewActor->SetPreviewMode(true);
+			TrapPreviewActor->InitializePreviewTrap(TrapData);
 			TrapPreviewActor->SetActorHiddenInGame(true);
 		}
 	}
 
-	if (!TrapPreviewActor) return;
+	if (!TrapPreviewActor)
+	{
+		return;
+	}
 
 	FHitResult Hit;
-	ABuildGridSurface* BuildSurface = nullptr;
-	if (!TraceBuildTarget(Hit, BuildSurface))
+	FTrapCellKey CellKey;
+	AGridManager* GridManager = FindGridManager();
+	TArray<FTrapCellKey> FootprintCells;
+	if (!GridManager
+		|| !TraceBuildTarget(Hit)
+		|| !GridManager->TryGetCellKeyForHit(TrapData, Hit.GetComponent(), Hit.ImpactPoint, CellKey))
 	{
-		if (!TrapPreviewActor->IsHidden())
-		{
-			TrapPreviewActor->SetActorHiddenInGame(true);
-		}
+		TrapPreviewActor->SetActorHiddenInGame(true);
 		return;
 	}
 
-	if (!BuildSurface)
+	GridManager->GetTrapFootprintCells(CellKey, FootprintCells);
+	if (!GridManager->AreCellsAvailable(FootprintCells))
 	{
-		if (!TrapPreviewActor->IsHidden())
-		{
-			TrapPreviewActor->SetActorHiddenInGame(true);
-		}
+		TrapPreviewActor->SetActorHiddenInGame(true);
 		return;
 	}
 
-	FVector PreviewLocation = Hit.ImpactPoint;
-	const bool bCanPlace = BuildSurface->CanPlaceTrapAt(Hit.ImpactPoint, nullptr, &PreviewLocation);
-	if (!bCanPlace)
-	{
-		if (!TrapPreviewActor->IsHidden())
-		{
-			TrapPreviewActor->SetActorHiddenInGame(true);
-		}
-		return;
-	}
+	const FTransform PreviewTransform = GridManager->GetTrapFootprintTransform(CellKey);
+	TrapPreviewActor->SetActorTransform(PreviewTransform);
+	TrapPreviewActor->SetActorHiddenInGame(false);
 
-	if (TrapPreviewActor->IsHidden())
-	{
-		TrapPreviewActor->SetActorHiddenInGame(false);
-	}
-
-	TrapPreviewActor->SetActorLocation(PreviewLocation);
-	TrapPreviewActor->SetActorRotation(BuildSurface->GetActorRotation());
+#if ENABLE_DRAW_DEBUG
+	// DrawDebugPoint(World, PreviewTransform.GetLocation(), 10.f, FColor::Yellow, false, 0.f);
+#endif
 }
 
 void UBuildComponent::DestroyTrapPreview()
@@ -202,20 +235,93 @@ void UBuildComponent::DestroyTrapPreview()
 	}
 }
 
-void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation)
+void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(FVector_NetQuantize HitLocation)
 {
 	UTrapData* TrapData = GetSelectedTrapData();
 	APawn* OwnerPawn = GetOwnerPawn();
 	AController* OwningController = OwnerPawn ? OwnerPawn->GetController() : nullptr;
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !BuildSurface || !TrapData) return;
+	ADefensePlayerState* PlayerState = OwnerPawn ? OwnerPawn->GetPlayerState<ADefensePlayerState>() : nullptr;
+	AGridManager* GridManager = FindGridManager();
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !TrapData || !TrapData->TrapClass
+		|| !OwnerPawn || !PlayerState || !GridManager)
+	{
+		return;
+	}
 
-	BuildSurface->TryPlaceTrap(TrapData, HitLocation, OwningController);
+	if (FVector::DistSquared(OwnerPawn->GetActorLocation(), HitLocation) > FMath::Square(BuildTraceRange))
+	{
+		return;
+	}
+
+	FTrapCellKey CellKey;
+	TArray<FTrapCellKey> FootprintCells;
+	if (!GridManager->TryGetCellKeyAtWorldLocation(TrapData, HitLocation, CellKey))
+	{
+		return;
+	}
+
+	GridManager->GetTrapFootprintCells(CellKey, FootprintCells);
+	if (!GridManager->AreCellsAvailable(FootprintCells))
+	{
+		return;
+	}
+
+	const int32 TrapCost = FMath::Max(0, TrapData->Cost);
+	if (!PlayerState->TrySpendCoin(TrapCost))
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = OwningController ? OwningController->GetPawn() : nullptr;
+	SpawnParams.Instigator = OwningController ? OwningController->GetPawn() : nullptr;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	const FTransform SpawnTransform = GridManager->GetTrapFootprintTransform(CellKey);
+
+	ATrapBase* SpawnedTrap = GetWorld()->SpawnActor<ATrapBase>(
+		TrapData->TrapClass,
+		SpawnTransform,
+		SpawnParams
+	);
+
+	if (!SpawnedTrap || !GridManager->TryOccupyCells(FootprintCells, SpawnedTrap))
+	{
+		if (SpawnedTrap)
+		{
+			SpawnedTrap->Destroy();
+		}
+		PlayerState->RefundCoin(TrapCost);
+		return;
+	}
+
+	SpawnedTrap->InitializePlacedTrap(TrapData, PlayerState, FootprintCells);
 }
 
-void UBuildComponent::ServerRPC_RequestSellTrap_Implementation(ABuildGridSurface* BuildSurface, FVector_NetQuantize HitLocation)
+void UBuildComponent::ServerRPC_RequestSellTrap_Implementation(ATrapBase* Trap)
 {
-	UTrapData* TrapData = GetSelectedTrapData();
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !BuildSurface || !TrapData) return;
+	APawn* OwnerPawn = GetOwnerPawn();
+	AGridManager* GridManager = FindGridManager();
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !OwnerPawn || !GridManager
+		|| !GridManager->IsTrapRegistered(Trap))
+	{
+		return;
+	}
 
-	BuildSurface->TryRemoveTrap(HitLocation);
+	if (FVector::DistSquared(OwnerPawn->GetActorLocation(), Trap->GetActorLocation()) > FMath::Square(BuildTraceRange))
+	{
+		return;
+	}
+
+	ADefensePlayerState* RefundTarget = Trap->GetOwnerPS();
+	const UTrapData* TrapData = Trap->GetSourceTrapData();
+	const int32 RefundCoin = TrapData ? FMath::Max(0, TrapData->Cost) : 0;
+
+	GridManager->ReleaseTrap(Trap);
+	Trap->Destroy();
+
+	if (RefundTarget)
+	{
+		RefundTarget->RefundCoin(RefundCoin);
+	}
 }

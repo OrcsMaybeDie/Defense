@@ -12,6 +12,7 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
+class UAnimMontage; // Death
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -28,6 +29,7 @@ class ADefenseCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
+private:
 	/** Camera boom positioning the camera behind the character */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	USpringArmComponent* CameraBoom;
@@ -49,7 +51,6 @@ class ADefenseCharacter : public ACharacter
 	TObjectPtr<UBuildComponent> BuildComp;
 
 protected:
-
 	/** Jump Input Action */
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* JumpAction;
@@ -67,36 +68,43 @@ protected:
 	UInputAction* MouseLookAction;
 	
 	UPROPERTY(EditAnywhere, Category="Input")
-	TObjectPtr<UInputAction> LClickAction;
+	TObjectPtr<UInputAction> IA_LClick;
 
 	UPROPERTY(EditAnywhere, Category="Input")
-	TObjectPtr<UInputAction> RClickAction;
+	TObjectPtr<UInputAction> IA_RClick;
 
 	UPROPERTY(EditAnywhere, Category="Input")
-	TObjectPtr<UInputAction> SellAction;
+	TObjectPtr<UInputAction> IA_Sell;
+	
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> IA_LoadoutIdx;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Anim")
+	TObjectPtr<UAnimMontage> DeathMontage;
+	
 public:
-
 	/** Constructor */
 	ADefenseCharacter();	
 
 protected:
-
+	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 
 	/** Initialize input action bindings */
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
-protected:
 
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
 
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
+	
+	UFUNCTION()
+	void HandleLifeStateChanged(EPlayerLifeState NewLifeState);
+	
+	void SelectLoadoutIdx(const FInputActionValue& Value);
 
 public:
-
 	/** Handles move inputs from either controls or UI interfaces */
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoMove(float Right, float Forward);
@@ -117,26 +125,31 @@ public:
 	void HandleLClick();
 
 	UFUNCTION(BlueprintCallable, Category="Input")
+	void HandleLClickTriggered();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
 	void HandleRClick();
 
+	UFUNCTION(BlueprintCallable, Category="Input")
+	void FireWeapon();
+	
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void Attack();	
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void AltAttack();
 
-	UFUNCTION(BlueprintCallable, Category="Build")
+	UFUNCTION(BlueprintCallable, Category="Input")
 	void SellTrap();
 	
 public:
-
 	/** Returns CameraBoom subobject **/
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 	
-	FORCEINLINE class UStatusComponent* GetStatComp() const { return StatusComp; }
-	FORCEINLINE class ULoadoutComponent* GetLoadoutComp() const { return LoadoutComp; }
+	FORCEINLINE class UStatusComponent* GetStatusComp() const { return StatusComp; }
+	FORCEINLINE class ULoadoutComponent* GetLoadoutComponent() const { return LoadoutComp; }
 	FORCEINLINE class UBuildComponent* GetBuildComp() const { return BuildComp; }
 	
 	// test
@@ -144,5 +157,11 @@ public:
 	
 	UFUNCTION(BlueprintImplementableEvent, Category="Weapon")
 	void OnAttackAccepted(EWeaponAttackType AttackType);
+
+	UPROPERTY(BlueprintReadOnly, Category="Weapon")
+	float TimeSinceFiredWeapon = 999.f;
+
+	UFUNCTION(BlueprintCallable, Category="Weapon")
+	void NotifyFireWeapon();
 };
 

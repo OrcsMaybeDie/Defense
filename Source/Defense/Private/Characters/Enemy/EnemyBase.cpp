@@ -6,18 +6,18 @@
 #include "StateTreeEvents.h"
 #include "Characters/Enemy/EnemyAnim.h"
 #include "Characters/Enemy/AI/EnemyController.h"
+#include "Characters/Enemy/Data/EnemyData.h"
 #include "Characters/Player/DefenseCharacter.h"
 #include "Components/CapsuleComponent.h"
-#include "Engine/OverlapResult.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/StateTreeAIComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "GameManager/DefenseGameMode.h"
+#include "GameManager/DestinationActor.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
-#include "Perception/AIPerceptionComponent.h"
-#include "Perception/AISenseConfig_Sight.h"
-#include "Perception/AISense_Sight.h"
 #include "UI/EnemyHPUI.h"
 
 namespace
@@ -38,6 +38,29 @@ namespace
 			return TEXT("Unknown");
 		}
 	}
+
+	const TCHAR* LexToString(const EEnemyState State)
+	{
+		switch (State)
+		{
+		case EEnemyState::Idle:
+			return TEXT("Idle");
+		case EEnemyState::Patrol:
+			return TEXT("Patrol");
+		case EEnemyState::Chase:
+			return TEXT("Chase");
+		case EEnemyState::Damage:
+			return TEXT("Damage");
+		case EEnemyState::Attack:
+			return TEXT("Attack");
+		case EEnemyState::Destroy:
+			return TEXT("Destroy");
+		case EEnemyState::Die:
+			return TEXT("Die");
+		default:
+			return TEXT("Unknown");
+		}
+	}
 }
 
 // Sets default values
@@ -45,20 +68,7 @@ AEnemyBase::AEnemyBase()
 {
 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
-
-	AIComp = CreateDefaultSubobject<UAIPerceptionComponent>("AIPerception");
-	SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>("AI Sight config");
-
-	SightConfig->Implementation = UAISense_Sight::StaticClass();
-	SightConfig->SightRadius = 600.0f;
-	SightConfig->LoseSightRadius = 800.0f;
-	SightConfig->PeripheralVisionAngleDegrees = 180.0f;
-	SightConfig->DetectionByAffiliation.bDetectEnemies = true;
-	SightConfig->DetectionByAffiliation.bDetectNeutrals = true;
-	SightConfig->DetectionByAffiliation.bDetectFriendlies = true;
-
-	AIComp->ConfigureSense(*SightConfig);
-	AIComp->SetDominantSense(SightConfig->GetSenseImplementation());
+	
 	HpComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("HpComp"));
 	HpComp->SetupAttachment(RootComponent);
 }
@@ -67,6 +77,7 @@ AEnemyBase::AEnemyBase()
 void AEnemyBase::BeginPlay()
 {
 	Super::BeginPlay();
+	ApplyEnemyData();
 	HpComp->SetVisibility(false);
 	EnemyController = Cast<AEnemyController>(GetController());
 	AnimInst = Cast<UEnemyAnim>(GetMesh()->GetAnimInstance());
@@ -76,21 +87,31 @@ void AEnemyBase::BeginPlay()
 	// 서버에서만 AIPerception이 동작하도록 / 클라이언트에서는 비활성화하고 HPUI 정의
 	if (!HasAuthority())
 	{
-		if (AIComp)
-		{
-			AIComp->Deactivate();
-			AIComp->SetComponentTickEnabled(false);
-			HPUI = Cast<UEnemyHPUI>(HpComp->GetWidget());
-		}
+		bHpUIVisible = false;
+		HpComp->SetVisibility(false);
+		HPUI = Cast<UEnemyHPUI>(HpComp->GetWidget());
+	}
+	else
+	{
+		GameMode = Cast<ADefenseGameMode>(GetWorld()->GetAuthGameMode());
+		DestinationActor = Cast<ADestinationActor>(
+	UGameplayStatics::GetActorOfClass(GetWorld(), ADestinationActor::StaticClass())
+);
+	}
+	
+}
+
+void AEnemyBase::ApplyEnemyData()
+{
+	if (!EnemyData)
+	{
 		return;
 	}
-	if (AIComp)
-	{
-		AIComp->OnTargetPerceptionUpdated.AddDynamic(
-			this,
-			&AEnemyBase::OnTargetPerceptionUpdated
-		);
-	}
+	EnemyType = EnemyData->EnemyType;
+	MaxHP = EnemyData->MaxHP;
+	KillCoinReward = EnemyData->KillCoinReward;
+	PreviewMoveSpeed = EnemyData->PreviewMoveSpeed;
+	CombatMoveSpeed = EnemyData->CombatMoveSpeed;
 }
 
 // Called every frame
@@ -111,9 +132,9 @@ void AEnemyBase::Tick(float DeltaTime)
 	}
 
 	const FVector CamLoc = PlayerController->PlayerCameraManager->GetCameraLocation();
-	const FVector Dir = CamLoc - HpComp->GetComponentLocation();
-
-	HpComp->SetWorldRotation(Dir.ToOrientationRotator());
+	FVector Dir = CamLoc - HpComp->GetComponentLocation();
+	Dir.Z = 0;
+	HpComp->SetWorldRotation(Dir.GetSafeNormal().ToOrientationRotator());
 }
 
 // Called to bind functionality to input
@@ -165,11 +186,11 @@ void AEnemyBase::SetPreview()
 		EnemyMesh = GetMesh();
 	}
 
-	if (!EnemyController)
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
 	{
-		EnemyController = Cast<AEnemyController>(GetController());
+		MovementComponent->MaxWalkSpeed = PreviewMoveSpeed;
 	}
-
+	
 	//UE_LOG(LogTemp, Warning, TEXT("Enemy SetPreview | Enemy=%s Mode=%s(%d) NetMode=%d HasAuthority=%d Mesh=%s PreviewMats=%s/%s"),
 		//*GetNameSafe(this),
 		//LexToString(EnemyMode),
@@ -180,46 +201,59 @@ void AEnemyBase::SetPreview()
 		//*GetNameSafe(PreviewMaterial0),
 		//*GetNameSafe(PreviewMaterial1));
 
-	// 틱 처리
-	SetActorTickEnabled(true);
 	// 그리기 처리
 	SetActorHiddenInGame(false);
-	// 충돌 처리
-	SetActorEnableCollision(true);
-	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
-	{
-		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-		CapsuleComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
-	}
-	
-	if (EnemyMesh)
-	{
-		EnemyMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-	}
-	
+
 	if(!IsRunningDedicatedServer())
 	{
 		if (EnemyMesh)
 		{
-			if (PreviewMaterial0)
+			if (PreviewMaterial)
 			{
-				EnemyMesh->SetMaterial(0, PreviewMaterial0);
-			}
-			if (PreviewMaterial1)
-			{
-				EnemyMesh->SetMaterial(1, PreviewMaterial1);
+				EnemyMesh->SetMaterial(0, PreviewMaterial);
+				EnemyMesh->SetMaterial(1, PreviewMaterial);
 			}
 		}
+		// 틱 처리
+		SetActorTickEnabled(true);
+		
+		bHpUIVisible = false;
+		HpComp->SetVisibility(false);
 	}
-	else
-	{
+
+	
+	// 서버에서 처리	
+	if (HasAuthority())
+	{	if (!EnemyController)
+		{
+			EnemyController = Cast<AEnemyController>(GetController());
+		}
+		
 		if (EnemyController && EnemyController->StateTreeAIComp)
 		{
 			EnemyController->StateTreeAIComp->StartLogic();
 			EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
 		}
+		
+		
 	}
+	
+	// 충돌 처리
+	SetActorEnableCollision(true);
+	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
+	{
+		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+	}
+	
+	if (EnemyMesh)
+	{
+		EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+		EnemyMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+		EnemyMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	}
+	
+	
 }
 
 void AEnemyBase::SetCombat()
@@ -227,6 +261,11 @@ void AEnemyBase::SetCombat()
 	if (!EnemyMesh)
 	{
 		EnemyMesh = GetMesh();
+	}
+
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->MaxWalkSpeed = CombatMoveSpeed;
 	}
 
 	//UE_LOG(LogTemp, Warning, TEXT("Enemy SetCombat | Enemy=%s Mode=%s(%d) NetMode=%d HasAuthority=%d CombatMats=%s/%s"),
@@ -237,46 +276,49 @@ void AEnemyBase::SetCombat()
 		//HasAuthority() ? 1 : 0,
 		//*GetNameSafe(CombatMaterial0),
 		//*GetNameSafe(CombatMaterial1));
-
+	
 	if (!IsRunningDedicatedServer())
 	{
 		if (EnemyMesh)
 		{
-			if (CombatMaterial0)
+			if (CombatMaterial)
 			{
-				EnemyMesh->SetMaterial(0, CombatMaterial0);
-			}
-			if (CombatMaterial1)
-			{
-				EnemyMesh->SetMaterial(1, CombatMaterial1);
+				EnemyMesh->SetMaterial(0, CombatMaterial);
+				EnemyMesh->SetMaterial(1, CombatMaterial);
 			}
 		}
-		else
+		bHpUIVisible = false;
+		HpComp->SetVisibility(false);
+		SetActorTickEnabled(true); // tick에는 ui 회전만 있어서 데디서버가 아닌 곳에서 켜지게 함.
+	}
+	
+	if (HasAuthority())
+	{
+		if (EnemyController && EnemyController->StateTreeAIComp)
 		{
-			if (EnemyController && EnemyController->StateTreeAIComp)
-			{
-				EnemyController->StateTreeAIComp->StartLogic();
-				EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
-			}
+			EnemyController->StateTreeAIComp->StartLogic();
+			EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
 		}
 	}
-
+	
 	SetActorEnableCollision(true);
 	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
 	{
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-		CapsuleComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
+		//CapsuleComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	}
+	
+	if (EnemyMesh)
+	{
+		//EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		//EnemyMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	}
+	
 }
 
 void AEnemyBase::SetInactive()
 {
-	if (!EnemyController)
-	{
-		EnemyController = Cast<AEnemyController>(GetController());
-	}
-
 	//UE_LOG(LogTemp, Warning, TEXT("Enemy SetInactive | Enemy=%s Mode=%s(%d) NetMode=%d HasAuthority=%d"),
 		//*GetNameSafe(this),
 		//LexToString(EnemyMode),
@@ -286,6 +328,11 @@ void AEnemyBase::SetInactive()
 
 	if (HasAuthority())
 	{
+		if (!EnemyController)
+		{
+			EnemyController = Cast<AEnemyController>(GetController());
+		}
+		
 		if (EnemyController && EnemyController->StateTreeAIComp)
 		{
 			EnemyController->StateTreeAIComp->StopLogic(TEXT("EnemyMode : Inactive"));
@@ -296,10 +343,6 @@ void AEnemyBase::SetInactive()
 		
 	}
 	
-	// 틱 처리
-	SetActorTickEnabled(false);
-	// 그리기 처리
-	SetActorHiddenInGame(true);
 	// 충돌 처리
 	SetActorEnableCollision(false);
 	
@@ -307,51 +350,23 @@ void AEnemyBase::SetInactive()
 	{
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	}
-}
-
-// AIPerception으로 감지 후 업데이트
-void AEnemyBase::OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
-{
-	if (!HasAuthority())
-	{
-		return;
-	}
 	
-	if (EnemyMode != EEnemyMode::Combat)
+	if (EnemyMesh)
 	{
-		return;
+		//EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+		EnemyMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 	}
-
-	ADefenseCharacter* PerceivedCharacter = Cast<ADefenseCharacter>(Actor);
-	if (!PerceivedCharacter)
-	{
-		return;
-	}
-
-	//UE_LOG(LogTemp, Warning, TEXT("Enemy Perception | Enemy=%s Actor=%s Sensed=%d Distance=%.1f State=%d"),
-		//*GetNameSafe(this),
-		//*GetNameSafe(Actor),
-		//Stimulus.WasSuccessfullySensed() ? 1 : 0,
-		//GetDistanceTo(Actor),
-		//static_cast<int32>(EnemyState));
-
-	if (Stimulus.WasSuccessfullySensed())
-	{
-		if (EnemyState == EEnemyState::Patrol)
+	// 그리기 처리
+	SetActorHiddenInGame(true);
+	
+	if (!IsRunningDedicatedServer())
+	{ // 틱 처리
+		SetActorTickEnabled(false);
+		if (HpComp)
 		{
-			Target = PerceivedCharacter;
-			SendStateTreeEvent(FName("AI.Event.TargetFind"));
+			bHpUIVisible = false;
+			HpComp->SetVisibility(false);
 		}
-	}
-	else
-	{
-		if (Target != PerceivedCharacter)
-		{
-			return;
-		}
-		
-		Target = nullptr;
-		SendStateTreeEvent(TEXT("AI.Event.TargetLost"));
 	}
 }
 
@@ -394,6 +409,8 @@ void AEnemyBase::MulticastRPC_DieMotion_Implementation()
 	{
 		return;
 	}
+	HpComp->SetVisibility(false);
+	bHpUIVisible = false;
 	AnimInst->PlayDieMotion();
 }
 
@@ -418,7 +435,18 @@ void AEnemyBase::OnRep_UpdateUI()
 	{
 		return;
 	}
-	if (!bHpUIVisible)
+	
+	if (EnemyMode != EEnemyMode::Combat)
+	{
+		return;
+	}
+	
+	if (CurHP >= MaxHP)
+	{
+		return;
+	}
+	
+	if (!bHpUIVisible &&  EnemyState != EEnemyState::Die)
 	{
 		bHpUIVisible = true;
 		HpComp->SetVisibility(true);
@@ -439,7 +467,7 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		return 0.f;
 	}
 
-	if (EnemyState == EEnemyState::Die)
+	if (EnemyState == EEnemyState::Die || EnemyState == EEnemyState::Destroy)
 	{
 		return 0.f;
 	}
@@ -471,7 +499,24 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	
 	if (CurHP <= 0.0f)
 	{
+		GameMode->AwardEnemyKillCoin(this, DamageCauser, EventInstigator);
+		
+		// 재화 얻어지나 테스트--------------------
+		/*if (APawn* CauserPawn = Cast<APawn>(DamageCauser))
+		{
+			AController* CauserController = CauserPawn->GetController();
+
+			if (CauserController)
+			{
+				// 여기서 컨트롤러 사용
+				auto* ps = CauserController->GetPlayerState<ADefensePlayerState>();
+				UE_LOG(LogTemp, Error, TEXT("Coin : %d"), ps->GetCoin());
+			}
+		}*/
+		//----------------------------------------------
+		
 		SendStateTreeEvent(FName("AI.Event.Die"));
+		bHpUIVisible = false;
 	}
 	else
 	{
@@ -479,93 +524,5 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	}
 
 	return ActualDamage;
-}
-
-
-
-void AEnemyBase::AttackTarget()
-{
-	if (!HasAuthority())
-	{
-		return;
-	}
-
-	UWorld* World = GetWorld();
-	if (!World)
-	{
-		return;
-	}
-
-	TArray<FOverlapResult> OverlapResults;
-	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(EnemyAttackTarget), false, this);
-	QueryParams.AddIgnoredActor(this);
-
-	const bool bHasOverlap = World->OverlapMultiByObjectType(
-		OverlapResults,
-		GetActorLocation(),
-		FQuat::Identity,
-		FCollisionObjectQueryParams(ECC_Pawn),
-		FCollisionShape::MakeSphere(AttackDist),
-		QueryParams
-	);
-
-	if (!bHasOverlap)
-	{
-		return;
-	}
-
-	const FVector EnemyLocation = GetActorLocation();
-	FVector EnemyForward = GetActorForwardVector();
-	EnemyForward.Z = 0.0f;
-	EnemyForward.Normalize();
-
-	AActor* ClosestTarget = nullptr;
-	const float AttackDistSq = AttackDist * AttackDist;
-	float ClosestDistSq = AttackDistSq;
-
-	for (const FOverlapResult& OverlapResult : OverlapResults)
-	{
-		AActor* FoundTarget = OverlapResult.GetActor();
-		if (!IsValid(FoundTarget) || !FoundTarget->IsA<ADefenseCharacter>())
-		{
-			continue;
-		}
-
-		FVector ToTarget = FoundTarget->GetActorLocation() - EnemyLocation;
-		ToTarget.Z = 0.0f;
-		const float DistSq = ToTarget.SizeSquared();
-		if (DistSq <= UE_KINDA_SMALL_NUMBER)
-		{
-			continue;
-		}
-
-		const FVector DirectionToTarget = ToTarget.GetSafeNormal();
-		if (FVector::DotProduct(EnemyForward, DirectionToTarget) <= 0.0f)
-		{
-			continue;
-		}
-
-		if (DistSq <= ClosestDistSq)
-		{
-			ClosestTarget = FoundTarget;
-			ClosestDistSq = DistSq;
-		}
-	}
-
-	if (ClosestTarget)
-	{
-		UGameplayStatics::ApplyDamage(ClosestTarget, DamageNum, GetController(), this, UDamageType::StaticClass());
-	}
-}
-
-
-void AEnemyBase::MulticastRPC_AttackMotion_Implementation()
-{
-	// 데디 서버에서는 리턴
-	if (IsRunningDedicatedServer())
-	{
-		return;
-	}
-	AnimInst->PlayAttackMotion();
 }
 

@@ -29,6 +29,16 @@ void UStatusComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	RestoreMana(ManaRegenPerSec * DeltaTime);
 }
 
+bool UStatusComponent::IsAlive() const
+{
+	return LifeState == EPlayerLifeState::Alive;
+}
+
+EPlayerLifeState UStatusComponent::GetLifeState() const
+{
+	return LifeState;
+}
+
 
 void UStatusComponent::OnRep_Health()
 {
@@ -36,10 +46,50 @@ void UStatusComponent::OnRep_Health()
 	OnHealthChanged.Broadcast(Health, MaxHealth);
 }
 
-void UStatusComponent::Heal(float Amount)
+void UStatusComponent::SetHealth(float NewHP)
 {
+	const float ClampedHP = FMath::Clamp(NewHP, 0.f, MaxHealth);
+
+	if (FMath::IsNearlyEqual(Health, ClampedHP)) return;
+
+	Health = ClampedHP;
+
+	OnHealthChanged.Broadcast(Health, MaxHealth);
 }
 
+void UStatusComponent::Heal(float Amount)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
+	if (!IsAlive() || Amount <= 0.f) return;
+
+	SetHealth(Health + Amount);
+}
+
+void UStatusComponent::Revive()
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
+	if (IsAlive()) return;
+
+	// GameMode의 리스폰 처리에서만 호출
+	SetHealth(MaxHealth);
+	SetLifeState(EPlayerLifeState::Alive);
+}
+
+void UStatusComponent::SetLifeState(EPlayerLifeState NewLifeState)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
+	if (LifeState == NewLifeState) return;
+
+	LifeState = NewLifeState;
+
+	// 서버에서는 RepNotify가 자동 호출되지 않으므로 직접 알림
+	OnLifeStateChanged.Broadcast(LifeState);
+}
+
+void UStatusComponent::OnRep_LifeState()
+{
+	OnLifeStateChanged.Broadcast(LifeState);
+}
 
 void UStatusComponent::OnRep_Mana()
 {
@@ -88,17 +138,17 @@ void UStatusComponent::RestoreMana(float Amount)
 float UStatusComponent::ApplyDamage(float Amount, AActor* DamageCauser)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority()) return 0.f;
+	if (!IsAlive()) return 0.f;
 	if (Amount <= 0.f) return 0.f;
 
 	const float OldHealth = Health;
-	Health = FMath::Clamp(Health - Amount, 0.f, MaxHealth);
+	SetHealth(Health - Amount);
 
 	const float ActualDamage = OldHealth - Health;
 
-	if (!FMath::IsNearlyZero(ActualDamage))
+	if (Health <= 0.f)
 	{
-		// Server-side broadcast keeps listen-server tests and any server-side listeners on the same change path as clients.
-		OnHealthChanged.Broadcast(Health, MaxHealth);
+		SetLifeState(EPlayerLifeState::Dead);
 	}
 
 	return ActualDamage;
@@ -110,5 +160,6 @@ void UStatusComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty
 	
 	DOREPLIFETIME(UStatusComponent, Health);
 	DOREPLIFETIME(UStatusComponent, Mana);
+	DOREPLIFETIME(UStatusComponent, LifeState);
 }
 

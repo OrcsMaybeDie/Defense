@@ -4,6 +4,7 @@
 #include "Characters/Enemy/EnemyAnim.h"
 
 #include "Characters/Enemy/EnemyBase.h"
+#include "Characters/Enemy/EnemyDestroy.h"
 
 void UEnemyAnim::NativeInitializeAnimation()
 {
@@ -14,6 +15,11 @@ void UEnemyAnim::NativeInitializeAnimation()
 void UEnemyAnim::PlayAttackMotion()
 {
 	Montage_Play(AttackMontage);
+}
+
+void UEnemyAnim::PlayDestroyMotion()
+{
+	Montage_Play(DestroyMontage);
 }
 
 void UEnemyAnim::PlayDamageMotion()
@@ -28,8 +34,17 @@ void UEnemyAnim::PlayDieMotion()
 
 void UEnemyAnim::AnimNotify_Hit()
 {
+	// Damage is applied by the authoritative attack StateTree task.
+}
+
+void UEnemyAnim::AnimNotify_Destroy()
+{
 	if (Enemy && Enemy->HasAuthority())
 	{
-		Enemy->AttackTarget();
+		auto* EnemyDestroy = Cast<AEnemyDestroy>(Enemy);
+		if (EnemyDestroy)
+		{
+			EnemyDestroy->DestroyTargetTrap();
+		}
 	}
 }

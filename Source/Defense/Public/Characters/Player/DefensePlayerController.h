@@ -43,6 +43,8 @@ protected:
 	/** Gameplay initialization */
 	virtual void BeginPlay() override;
 
+	virtual void OnRep_PlayerState() override;
+
 	/** Gameplay cleanup */
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -55,11 +57,21 @@ protected:
 	// Ready
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<class UInputAction> ReadyAction;
-	
-	void ToggleReady();
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<class UInputAction> IA_ESC;
 	
 	UFUNCTION(Server, Reliable)
-	void ServerRPC_SetReady(bool bReady);
+	void ServerRPC_RequestReady();
+
+	UFUNCTION(Server, Reliable)
+	void ServerRPC_RequestGameEndRetry();
+
+	UFUNCTION(Server, Reliable)
+	void ServerRPC_RequestReturnToIntroMap();
+
+	UFUNCTION(Server, Reliable)
+	void ServerRPC_SubmitClientIdentity(const FString& ClientIdentity);
 	
 	// UI
 	UPROPERTY(EditDefaultsOnly, Category="UI")
@@ -67,4 +79,41 @@ protected:
 	
 	UPROPERTY()
 	TObjectPtr<UUserWidget> HUDWidget;
+
+	UPROPERTY(EditDefaultsOnly, Category="UI")
+	TSubclassOf<class UESCUI> ESCUIClass;
+
+	UPROPERTY()
+	TObjectPtr<UESCUI> ESCUI;
+	
+public:
+	void RequestReady();
+	void RequestGameEndRetry();
+	void RequestReturnToIntroMap();
+	void QuitGame();
+	bool IsGameHostPlayer() const;
+	void ToggleESCUI();
+	void SubmitClientIdentity();
+	
+	// 게임 끝났을 때 UI
+	UPROPERTY(EditAnywhere, Category="UI")
+	TSubclassOf<class UGameEndUI> GameEndUIClass;
+	
+	UPROPERTY()
+	TObjectPtr<UGameEndUI> GameEndUI;
+	
+	// GameEndUI
+	UFUNCTION(Client, Reliable)
+	void ClientRPC_ShowGameEndUI(bool bGameClear);
+	
+	// 게임 다시 시작할 때 커서 및 입력모드 되돌리기
+	UFUNCTION(Client, Reliable)
+	void ClientRPC_HideGameEndUI();
+
+	UFUNCTION(Client, Reliable)
+	void ClientRPC_ShowEndLoadingUI();
+
+	UFUNCTION(Client, Reliable)
+	void ClientRPC_ShowESCLoadingUI();
+	
 };

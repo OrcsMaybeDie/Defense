@@ -5,8 +5,65 @@
 
 #include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Enemy/AI/EnemyController.h"
+#include "Characters/Enemy/Data/WaveData.h"
+#include "GameManager/DefenseGameInstance.h"
+#include "GameManager/Data/MapConfigData.h"
+
+void UEnemyPoolSubsystem::OnWorldBeginPlay(UWorld& InWorld)
+{
+	Super::OnWorldBeginPlay(InWorld);
+
+	if (bIsPoolInitialized || !InWorld.GetAuthGameMode())
+	{
+		return;
+	}
+
+	const UDefenseGameInstance* DefenseGameInstance = InWorld.GetGameInstance<UDefenseGameInstance>();
+	const UMapConfigData* SelectedMapConfigData = DefenseGameInstance
+		? DefenseGameInstance->GetSelectedMapConfigData()
+		: nullptr;
+
+	if (!SelectedMapConfigData)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Pool] Missing MapConfigData"));
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Pool] Init from WaveData: %s"), *GetNameSafe(SelectedMapConfigData->WaveData));
+	InitPoolFromWaveData(SelectedMapConfigData->WaveData);
+}
 
 void UEnemyPoolSubsystem::InitPool(TSubclassOf<AEnemyBase> factory, int32 initSize)
+{
+	InitPool(factory, initSize, FVector(0, 0, -1000), FRotator::ZeroRotator);
+}
+
+void UEnemyPoolSubsystem::InitPoolFromWaveData(UWaveData* WaveData)
+{
+	if (!WaveData || bIsPoolInitialized)
+	{
+		return;
+	}
+
+	TMap<TSubclassOf<AEnemyBase>, int32> RequiredPoolCounts;
+	WaveData->BuildRequiredPoolCounts(RequiredPoolCounts);
+
+	UE_LOG(LogTemp, Warning, TEXT("[Pool] Classes=%d Extra=%d"), RequiredPoolCounts.Num(), WaveData->ExtraPoolCount);
+
+	for (const TPair<TSubclassOf<AEnemyBase>, int32>& RequiredPoolCount : RequiredPoolCounts)
+	{
+		InitPool(
+			RequiredPoolCount.Key,
+			RequiredPoolCount.Value,
+			WaveData->PoolInitLocation,
+			WaveData->PoolInitRotator
+		);
+	}
+
+	bIsPoolInitialized = true;
+}
+
+void UEnemyPoolSubsystem::InitPool(TSubclassOf<AEnemyBase> factory, int32 initSize, FVector initLocation, FRotator initRotation)
 {
 	
 	UWorld* World = GetWorld();
@@ -30,7 +87,7 @@ void UEnemyPoolSubsystem::InitPool(TSubclassOf<AEnemyBase> factory, int32 initSi
 	
 	for (int32 i = 0; i < initSize; i++)
 	{
-		if(AEnemyBase* enemy = World->SpawnActor<AEnemyBase>(factory, FVector::ZeroVector, FRotator::ZeroRotator))
+		if(AEnemyBase* enemy = World->SpawnActor<AEnemyBase>(factory, initLocation, initRotation))
 		{
 			//UE_LOG(LogTemp, Warning, TEXT("EnemyPool InitPool spawned | Enemy=%s Index=%d"),
 				//*GetNameSafe(enemy),
@@ -90,10 +147,10 @@ TObjectPtr<AEnemyBase> UEnemyPoolSubsystem::SpawnFromPool(TSubclassOf<AEnemyBase
 		return nullptr;
 	}
 	enemy->SetActorLocationAndRotation(location, rotation);
-	enemy->CurHP = enemy->MaxHP;
 	enemy->EnemyState = EEnemyState::Idle;
 	enemy->Target = nullptr;
 	enemy->EnemyMode = EEnemyMode::Preview;
+	enemy->CurHP = enemy->MaxHP;
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPool SpawnFromPool set mode | Enemy=%s EnemyMode=Preview HasAuthority=%d"),
 		//*GetNameSafe(enemy),
 		//enemy->HasAuthority() ? 1 : 0);
@@ -127,7 +184,7 @@ void UEnemyPoolSubsystem::ReturnToPool(TObjectPtr<AEnemyBase> enemy)
 
 	FPooledEnemyArray& Pool = EnemyPools.FindOrAdd(enemy->GetClass());
 	
-	enemy->SetActorLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
+	enemy->SetActorLocationAndRotation(FVector(0,0,-1000), FRotator::ZeroRotator);
 	enemy->MulticastRPC_StopAllMontages();
 	enemy->bHpUIVisible = false;
 	enemy->EnemyMode = EEnemyMode::Inactive;
@@ -156,5 +213,6 @@ void UEnemyPoolSubsystem::Deinitialize()
 	}
 	
 	EnemyPools.Empty();
+	bIsPoolInitialized = false;
 	Super::Deinitialize();
 }

@@ -9,7 +9,26 @@
 
 void UDestinationUI::UpdateUI(int32 newScore)
 {
-	DestinationCount->SetText(FText::AsNumber(newScore));
+	if (DestinationCount)
+	{
+		DestinationCount->SetText(FText::AsNumber(newScore));
+	}
+}
+
+void UDestinationUI::UpdateCurrentWave(int32 NewCurrentWave)
+{
+	if (Text_CurWave)
+	{
+		Text_CurWave->SetText(FText::AsNumber(NewCurrentWave));
+	}
+}
+
+void UDestinationUI::UpdateMaxWave(int32 NewMaxWave)
+{
+	if (Text_MaxWave)
+	{
+		Text_MaxWave->SetText(FText::AsNumber(NewMaxWave));
+	}
 }
 
 void UDestinationUI::NativeConstruct()
@@ -27,6 +46,7 @@ void UDestinationUI::NativeDestruct()
 		if (ADefenseGameState* DefenseGS = World->GetGameState<ADefenseGameState>())
 		{
 			DefenseGS->OnDestScoreChanged.RemoveDynamic(this, &UDestinationUI::UpdateUI);
+			DefenseGS->OnCurrentWaveChanged.RemoveDynamic(this, &UDestinationUI::UpdateCurrentWave);
 		}
 	}
 
@@ -61,5 +81,12 @@ void UDestinationUI::TryBindGameState()
 		DefenseGS->OnDestScoreChanged.AddDynamic(this, &UDestinationUI::UpdateUI);
 	}
 
+	if (!DefenseGS->OnCurrentWaveChanged.IsAlreadyBound(this, &UDestinationUI::UpdateCurrentWave))
+	{
+		DefenseGS->OnCurrentWaveChanged.AddDynamic(this, &UDestinationUI::UpdateCurrentWave);
+	}
+
 	UpdateUI(DefenseGS->DestScore);
+	UpdateCurrentWave(DefenseGS->CurrentWave);
+	UpdateMaxWave(DefenseGS->MaxWave);
 }
