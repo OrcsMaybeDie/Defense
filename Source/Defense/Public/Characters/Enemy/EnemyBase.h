@@ -41,6 +41,7 @@ public:
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:
 	// Called every frame
@@ -78,10 +79,13 @@ public:
 	
 	UFUNCTION()
 	void OnRep_UpdateMode();
+
+	void SetEnemyMode(EEnemyMode NewMode);
 	
 	virtual void SetPreview();
 	virtual void SetCombat();
 	virtual void SetInactive();
+	virtual void OnEnteredPatrol();
 	
 	UPROPERTY()
 	TObjectPtr<class UMeshComponent> EnemyMesh;

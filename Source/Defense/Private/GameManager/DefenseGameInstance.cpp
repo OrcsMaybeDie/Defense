@@ -76,10 +76,21 @@ FString UDefenseGameInstance::GetIntroMapPackageName() const
 	return IntroMap.ToSoftObjectPath().GetLongPackageName();
 }
 
-void UDefenseGameInstance::SaveIntroPlayerRoles(APlayerState* HostPlayerState, APlayerState* GuestPlayerState)
+void UDefenseGameInstance::SaveIntroPlayerRoles(
+	APlayerState* HostPlayerState,
+	const TArray<APlayerState*>& GuestPlayerStates)
 {
 	SavedHostPlayerId = MakeTravelPlayerId(HostPlayerState);
-	SavedGuestPlayerId = MakeTravelPlayerId(GuestPlayerState);
+	SavedGuestPlayerIds.Empty();
+
+	for (const APlayerState* GuestPlayerState : GuestPlayerStates)
+	{
+		const FString GuestPlayerId = MakeTravelPlayerId(GuestPlayerState);
+		if (!GuestPlayerId.IsEmpty())
+		{
+			SavedGuestPlayerIds.AddUnique(GuestPlayerId);
+		}
+	}
 }
 
 bool UDefenseGameInstance::IsSavedHostPlayerState(const APlayerState* PlayerState) const
@@ -89,12 +100,12 @@ bool UDefenseGameInstance::IsSavedHostPlayerState(const APlayerState* PlayerStat
 
 bool UDefenseGameInstance::IsSavedGuestPlayerState(const APlayerState* PlayerState) const
 {
-	return !SavedGuestPlayerId.IsEmpty() && MakeTravelPlayerId(PlayerState) == SavedGuestPlayerId;
+	return SavedGuestPlayerIds.Contains(MakeTravelPlayerId(PlayerState));
 }
 
-bool UDefenseGameInstance::HasSavedGuestPlayerId() const
+int32 UDefenseGameInstance::GetSavedPlayablePlayerCount() const
 {
-	return !SavedGuestPlayerId.IsEmpty();
+	return (SavedHostPlayerId.IsEmpty() ? 0 : 1) + SavedGuestPlayerIds.Num();
 }
 
 void UDefenseGameInstance::ShowFullWarning()

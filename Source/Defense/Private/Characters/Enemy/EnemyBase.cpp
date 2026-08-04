@@ -7,6 +7,7 @@
 #include "Characters/Enemy/EnemyAnim.h"
 #include "Characters/Enemy/AI/EnemyController.h"
 #include "Characters/Enemy/Data/EnemyData.h"
+#include "Characters/Enemy/EnemyPoolSubsystem.h"
 #include "Characters/Player/DefenseCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -98,7 +99,24 @@ void AEnemyBase::BeginPlay()
 	UGameplayStatics::GetActorOfClass(GetWorld(), ADestinationActor::StaticClass())
 );
 	}
-	
+
+	if (UEnemyPoolSubsystem* EnemyPool = GetWorld()->GetSubsystem<UEnemyPoolSubsystem>())
+	{
+		EnemyPool->RegisterEnemy(this);
+	}
+}
+
+void AEnemyBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (UEnemyPoolSubsystem* EnemyPool = World->GetSubsystem<UEnemyPoolSubsystem>())
+		{
+			EnemyPool->UnregisterEnemy(this);
+		}
+	}
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void AEnemyBase::ApplyEnemyData()
@@ -177,6 +195,20 @@ void AEnemyBase::OnRep_UpdateMode()
 	{
 		SetInactive();
 	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UEnemyPoolSubsystem* EnemyPool = World->GetSubsystem<UEnemyPoolSubsystem>())
+		{
+			EnemyPool->NotifyEnemyModeChanged(this);
+		}
+	}
+}
+
+void AEnemyBase::SetEnemyMode(const EEnemyMode NewMode)
+{
+	EnemyMode = NewMode;
+	OnRep_UpdateMode();
 }
 
 void AEnemyBase::SetPreview()
@@ -368,6 +400,10 @@ void AEnemyBase::SetInactive()
 			HpComp->SetVisibility(false);
 		}
 	}
+}
+
+void AEnemyBase::OnEnteredPatrol()
+{
 }
 
 // Gameplay Tag 이벤트 보내기

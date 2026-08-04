@@ -24,6 +24,12 @@ class DEFENSE_API UEnemyData : public UDataAsset
 	GENERATED_BODY()
 
 public:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Minimap")
+	FVector2D Size = FVector2D(6.0f, 6.0f);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Minimap")
+	FLinearColor Color = FLinearColor::Red;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Enemy|Stat")
 	EEnemyType EnemyType = EEnemyType::Attack;
 	

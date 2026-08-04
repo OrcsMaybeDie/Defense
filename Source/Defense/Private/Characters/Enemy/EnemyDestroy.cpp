@@ -9,11 +9,11 @@
 #include "Engine/OverlapResult.h"
 #include "Traps/TrapBase.h"
 
-// namespace
-// {
-// 	constexpr float DestroySearchDebugTime = 1.0f;
-// 	constexpr int32 DestroySearchDebugSegments = 24;
-// }
+/*namespace
+{
+	constexpr float DestroySearchDebugTime = 1.0f;
+	constexpr int32 DestroySearchDebugSegments = 24;
+}*/
 
 // Sets default values
 AEnemyDestroy::AEnemyDestroy()
@@ -59,6 +59,16 @@ void AEnemyDestroy::SetInactive()
 	Super::SetInactive();
 	ClearDestroyTryTimer();
 	TargetTraps.Empty();
+}
+
+void AEnemyDestroy::OnEnteredPatrol()
+{
+	Super::OnEnteredPatrol();
+
+	if (bDestroyTryPending)
+	{
+		SendDestroyEvent();
+	}
 }
 
 void AEnemyDestroy::ApplyEnemyData()
@@ -130,7 +140,7 @@ bool AEnemyDestroy::TryFindDestroyTarget()
 
 	if (!bHasOverlap)
 	{
-		// Multicast_DrawDestroySearchDebug(SearchCenter, DestroyRadius, false);
+		//Multicast_DrawDestroySearchDebug(SearchCenter, DestroyRadius, false);
 		return false;
 	}
 
@@ -145,28 +155,28 @@ bool AEnemyDestroy::TryFindDestroyTarget()
 		TargetTraps.AddUnique(FoundTrap);
 	}
 
-	// Multicast_DrawDestroySearchDebug(SearchCenter, DestroyRadius, !TargetTraps.IsEmpty());
+	//Multicast_DrawDestroySearchDebug(SearchCenter, DestroyRadius, !TargetTraps.IsEmpty());
 
 	return !TargetTraps.IsEmpty();
 }
 
-// void AEnemyDestroy::Multicast_DrawDestroySearchDebug_Implementation(FVector SearchCenter, float SearchRadius, bool bFoundTrap)
-// {
-// 	if (UWorld* World = GetWorld())
-// 	{
-// 		DrawDebugSphere(
-// 			World,
-// 			SearchCenter,
-// 			SearchRadius,
-// 			DestroySearchDebugSegments,
-// 			bFoundTrap ? FColor::Red : FColor::Green,
-// 			false,
-// 			DestroySearchDebugTime,
-// 			0,
-// 			2.f
-// 		);
-// 	}
-// }
+/*void AEnemyDestroy::Multicast_DrawDestroySearchDebug_Implementation(FVector SearchCenter, float SearchRadius, bool bFoundTrap)
+{
+	if (UWorld* World = GetWorld())
+	{
+		DrawDebugSphere(
+			World,
+			SearchCenter,
+			SearchRadius,
+			DestroySearchDebugSegments,
+			bFoundTrap ? FColor::Red : FColor::Green,
+			false,
+			DestroySearchDebugTime,
+			0,
+			2.f
+		);
+	}
+}*/
 
 void AEnemyDestroy::DestroyTargetTrap()
 {
@@ -209,6 +219,7 @@ void AEnemyDestroy::ScheduleNextDestroyTry(float Cooldown)
 
 	const float ClampedCooldown = FMath::Max(0.f, Cooldown);
 	NextDestroyTryTime = World->GetTimeSeconds() + ClampedCooldown;
+	bDestroyTryPending = false;
 
 	World->GetTimerManager().ClearTimer(DestroyTryTimerHandle);
 	World->GetTimerManager().SetTimer(
@@ -222,6 +233,8 @@ void AEnemyDestroy::ScheduleNextDestroyTry(float Cooldown)
 
 void AEnemyDestroy::ClearDestroyTryTimer()
 {
+	bDestroyTryPending = false;
+
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(DestroyTryTimerHandle);
@@ -235,6 +248,13 @@ void AEnemyDestroy::SendDestroyEvent()
 		return;
 	}
 
+	if (EnemyState != EEnemyState::Patrol)
+	{
+		bDestroyTryPending = true;
+		return;
+	}
+
+	bDestroyTryPending = false;
 	SendStateTreeEvent(FName("AI.Event.Destroy"));
 }
 
