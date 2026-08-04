@@ -64,7 +64,7 @@ protected:
 
 	bool IsPlaced() const { return RuntimeState == ETrapRuntimeState::Placed; }
 	void ConfigureFromTrapData(UTrapData* TrapData);
-	void ApplyTrapMeshScale();
+	void CenterTrapMeshOnRoot();
 	void ApplyTrapCollision();
 	void ApplyPreviewVisual();
 	void SyncDamageAreaToMesh();
