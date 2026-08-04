@@ -28,12 +28,17 @@ ADefenseCharacter::ADefenseCharacter ()
 		
 	// Don't rotate when the controller rotates. Let that just affect the camera.
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = true;
+	bUseControllerRotationYaw = false; // 캐릭터가 컨트롤러 회전을 따라가지 않음
 	bUseControllerRotationRoll = false;
 
 	// Configure character movement
+	
+	// 이동 방향이 아니라 카메라 정면을 기준으로 회전
 	GetCharacterMovement()->bOrientRotationToMovement = false;
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
+	GetCharacterMovement()->bUseControllerDesiredRotation = false;
+	
+	// 방향을 바꿀 때 회전 속도
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f); 
 
 	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
 	// instead of recompiling to adjust them
@@ -80,7 +85,25 @@ void ADefenseCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	TimeSinceFiredWeapon += DeltaSeconds;
+	TimeSinceFiredWeapon += DeltaSeconds; // Lyra?
+	
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+
+	// CharacterMovement의 입력 결과 재사용
+	const bool bHasMoveInput =
+		MoveComp && !MoveComp->GetCurrentAcceleration().IsNearlyZero();
+
+	const bool bRecentlyAttacked =
+		TimeSinceFiredWeapon <= ViewFollowTime;
+
+	const bool bShouldFaceControlYaw =
+		StatusComp
+		&& StatusComp->IsAlive()
+		&& (bHasMoveInput || bRecentlyAttacked);
+	
+	// 이동 및 공격 회전은 CharacterMovement가 담당
+	MoveComp->bUseControllerDesiredRotation =
+		bShouldFaceControlYaw;
 }
 
 void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
