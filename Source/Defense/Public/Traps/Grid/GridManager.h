@@ -94,15 +94,19 @@ public:
 
 protected:
 	
-	// 이 Actor의 Location이 World Grid의 원점이 됨
-	// Rotation은 (0,0,0), Scale은 (1,1,1) 사용
+	// 모든 설치면이 공유하는 Snap 간격
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid", meta=(ClampMin="1.0"))
 	float CellSize = 100.f;
+
+	// 등록된 설치면 Bounds에서 자동 계산되는 World Grid 원점
+	// 설치면이 없는 축은 이 Actor의 Location을 기본값으로 사용
+	FVector GridOrigin = FVector::ZeroVector;
 	
 	// 설치 가능한 모든 Cell 주소
 	// 모듈 경계가 달라도 동일한 주소라면 같은 Cell. Module ID가 Key에 없기 때문에 경계 설치가 가능
 	TSet<FTrapCellKey> ValidCells; 
 	TArray<TWeakObjectPtr<UGridSurfaceComponent>> RegisteredSurfaces;
+	TMap<FObjectKey, TArray<TWeakObjectPtr<UGridSurfaceComponent>>> SurfacesByPrimitive;
 
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Trap Grid")
 	int32 RegisteredValidCellCount = 0;
@@ -117,10 +121,25 @@ protected:
 
 	void RegisterWorldGridSurfaces();
 	
-	// GridSurface 하나를 Valid Cell 목록으로 등록
+	// GridSurface 부모 Primitive의 Bounds를 Valid Cell 목록으로 변환
 	bool BuildCellKeysForSurface(
 		const UGridSurfaceComponent* Surface,
 		TArray<FTrapCellKey>& OutCellKeys
+	) const;
+
+	void AppendCellKeysForPlane(
+		const FBox& WorldBounds,
+		ETrapPlaneAxis PlaneAxis,
+		ETrapPlaneNormal PlaneNormal,
+		TArray<FTrapCellKey>& OutCellKeys
+	) const;
+
+	bool ResolveSurfacePlaneAtLocation(
+		const UGridSurfaceComponent* Surface,
+		const FVector& WorldLocation,
+		ETrapPlaneAxis& OutPlaneAxis,
+		ETrapPlaneNormal& OutPlaneNormal,
+		FVector& OutSurfaceLocation
 	) const;
 
 	// 조준 위치를 선택된 Trap의 Footprint Anchor로 변환

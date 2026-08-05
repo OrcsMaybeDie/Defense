@@ -12,7 +12,7 @@ namespace
 {
 	constexpr float PlaneCoordinateUnitCm = 0.1f;
 	constexpr float AxisAlignedThreshold = 0.999f;
-	constexpr float GridAlignmentToleranceCm = 0.1f;
+	constexpr float SurfaceSizeQuantizationToleranceCm = 5.f;
 	constexpr float SurfaceHitPlaneToleranceCm = 25.f;
 
 	int32 ToPlaneCoordinateKey(const float CoordinateCm)
@@ -69,19 +69,19 @@ namespace
 		return false;
 	}
 
-	bool IsSurfaceTypeCompatible(const ETrapGridSurface SurfaceType, const ETrapPlaneAxis PlaneAxis, const ETrapPlaneNormal PlaneNormal)
+	bool IsAxisAlignedTransform(const FTransform& Transform)
 	{
-		switch (SurfaceType)
-		{
-		case ETrapGridSurface::Floor:
-			return PlaneAxis == ETrapPlaneAxis::Z && PlaneNormal == ETrapPlaneNormal::Positive;
-		case ETrapGridSurface::Ceiling:
-			return PlaneAxis == ETrapPlaneAxis::Z && PlaneNormal == ETrapPlaneNormal::Negative;
-		case ETrapGridSurface::Wall:
-			return PlaneAxis == ETrapPlaneAxis::X || PlaneAxis == ETrapPlaneAxis::Y;
-		default:
-			return false;
-		}
+		ETrapPlaneAxis AxisX;
+		ETrapPlaneAxis AxisY;
+		ETrapPlaneAxis AxisZ;
+		ETrapPlaneNormal Normal;
+
+		return ResolveWorldPlane(Transform.GetUnitAxis(EAxis::X), AxisX, Normal)
+			&& ResolveWorldPlane(Transform.GetUnitAxis(EAxis::Y), AxisY, Normal)
+			&& ResolveWorldPlane(Transform.GetUnitAxis(EAxis::Z), AxisZ, Normal)
+			&& AxisX != AxisY
+			&& AxisX != AxisZ
+			&& AxisY != AxisZ;
 	}
 }
 
@@ -119,7 +119,7 @@ FTrapCellKey AGridManager::WorldToCellKey(
 	Result.PlaneNormal = PlaneNormal;
 	
 	const float SafeCellSize = FMath::Max(CellSize, 1.f);
-	const FVector RelativeLocation = WorldLocation - GetActorLocation();
+	const FVector RelativeLocation = WorldLocation - GridOrigin;
 	
 	Result.PlaneCoordinate = ToPlaneCoordinateKey(GetPlaneCoordinate(RelativeLocation, PlaneAxis));
 	
@@ -187,7 +187,7 @@ FVector AGridManager::CellKeyToWorldCenter(const FTrapCellKey& CellKey) const
 		break;
 	}
 	
-	return GetActorLocation() + RelativeCenter;
+	return GridOrigin + RelativeCenter;
 }
 
 void AGridManager::RegisterValidCells(const TArray<FTrapCellKey>& CellKeys)
@@ -208,6 +208,21 @@ void AGridManager::RegisterWorldGridSurfaces()
 		return;
 	}
 
+	TArray<UGridSurfaceComponent*> CandidateSurfaces;
+	GridOrigin = GetActorLocation();
+	bool bHasGridOriginX = false;
+	bool bHasGridOriginY = false;
+	bool bHasGridOriginZ = false;
+
+	auto IncludeGridOrigin = [](double Value, double& OriginAxis, bool& bHasOriginAxis)
+	{
+		if (!bHasOriginAxis || Value < OriginAxis)
+		{
+			OriginAxis = Value;
+			bHasOriginAxis = true;
+		}
+	};
+
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		TInlineComponentArray<UGridSurfaceComponent*> SurfaceComponents;
@@ -215,18 +230,60 @@ void AGridManager::RegisterWorldGridSurfaces()
 
 		for (UGridSurfaceComponent* Surface : SurfaceComponents)
 		{
-			TArray<FTrapCellKey> CellKeys;
-			if (BuildCellKeysForSurface(Surface, CellKeys))
+			const UPrimitiveComponent* TargetPrimitive = Surface ? Surface->GetTargetPrimitive() : nullptr;
+			if (!Surface || !Surface->bEnabled || !TargetPrimitive
+				|| !IsAxisAlignedTransform(TargetPrimitive->GetComponentTransform()))
 			{
-				RegisteredSurfaces.Add(Surface);
-				RegisterValidCells(CellKeys);
+				continue;
 			}
+
+			const FBox WorldBounds = TargetPrimitive->Bounds.GetBox();
+			if (!WorldBounds.IsValid)
+			{
+				continue;
+			}
+
+			CandidateSurfaces.Add(Surface);
+
+			switch (Surface->SurfaceType)
+			{
+			case ETrapGridSurface::Floor:
+			case ETrapGridSurface::Ceiling:
+				IncludeGridOrigin(WorldBounds.Min.X, GridOrigin.X, bHasGridOriginX);
+				IncludeGridOrigin(WorldBounds.Min.Y, GridOrigin.Y, bHasGridOriginY);
+				break;
+
+			case ETrapGridSurface::Wall:
+				if (WorldBounds.GetSize().X <= WorldBounds.GetSize().Y)
+				{
+					IncludeGridOrigin(WorldBounds.Min.Y, GridOrigin.Y, bHasGridOriginY);
+				}
+				else
+				{
+					IncludeGridOrigin(WorldBounds.Min.X, GridOrigin.X, bHasGridOriginX);
+				}
+				IncludeGridOrigin(WorldBounds.Min.Z, GridOrigin.Z, bHasGridOriginZ);
+				break;
+
+			default:
+				break;
+			}
+		}
+	}
+
+	for (UGridSurfaceComponent* Surface : CandidateSurfaces)
+	{
+		TArray<FTrapCellKey> CellKeys;
+		if (BuildCellKeysForSurface(Surface, CellKeys))
+		{
+			RegisteredSurfaces.Add(Surface);
+			SurfacesByPrimitive.FindOrAdd(FObjectKey(Surface->GetTargetPrimitive())).Add(Surface);
+			RegisterValidCells(CellKeys);
 		}
 	}
 }
 
-// GridSurface 하나를 Valid Cell 목록으로 등록
-// (Surface 하나를 월드 Grid의 FTrapCellKey 배열로 변환)
+// 부모 Primitive의 World Bounds를 양자화해 Valid Cell을 생성
 bool AGridManager::BuildCellKeysForSurface(
 	const UGridSurfaceComponent* Surface,
 	TArray<FTrapCellKey>& OutCellKeys
@@ -234,85 +291,226 @@ bool AGridManager::BuildCellKeysForSurface(
 {
 	OutCellKeys.Reset();
 
-	if (!Surface || !Surface->bEnabled)
+	const UPrimitiveComponent* TargetPrimitive = Surface ? Surface->GetTargetPrimitive() : nullptr;
+	if (!Surface || !Surface->bEnabled || !TargetPrimitive
+		|| !IsAxisAlignedTransform(TargetPrimitive->GetComponentTransform()))
 	{
 		return false;
 	}
 
-	// Scale이 (1,1,1)이 아니면 실패
-	const FTransform SurfaceTransform = Surface->GetComponentTransform();
-	if (!SurfaceTransform.GetScale3D().Equals(FVector::OneVector, KINDA_SMALL_NUMBER))
+	const FBox WorldBounds = TargetPrimitive->Bounds.GetBox();
+	if (!WorldBounds.IsValid)
 	{
 		return false;
 	}
 
-	// X/Y 방향 Cell 개수 계산
+	switch (Surface->SurfaceType)
+	{
+	case ETrapGridSurface::Floor:
+		AppendCellKeysForPlane(WorldBounds, ETrapPlaneAxis::Z, ETrapPlaneNormal::Positive, OutCellKeys);
+		break;
+
+	case ETrapGridSurface::Ceiling:
+		AppendCellKeysForPlane(WorldBounds, ETrapPlaneAxis::Z, ETrapPlaneNormal::Negative, OutCellKeys);
+		break;
+
+	case ETrapGridSurface::Wall:
+	{
+		// 수평 Bounds 중 짧은 축을 벽 두께로 보고 양쪽 면을 모두 등록
+		const FVector BoundsSize = WorldBounds.GetSize();
+		const ETrapPlaneAxis WallPlaneAxis = BoundsSize.X <= BoundsSize.Y
+			? ETrapPlaneAxis::X
+			: ETrapPlaneAxis::Y;
+
+		AppendCellKeysForPlane(WorldBounds, WallPlaneAxis, ETrapPlaneNormal::Negative, OutCellKeys);
+		AppendCellKeysForPlane(WorldBounds, WallPlaneAxis, ETrapPlaneNormal::Positive, OutCellKeys);
+		break;
+	}
+
+	default:
+		break;
+	}
+
+	return !OutCellKeys.IsEmpty();
+}
+
+void AGridManager::AppendCellKeysForPlane(
+	const FBox& WorldBounds,
+	ETrapPlaneAxis PlaneAxis,
+	ETrapPlaneNormal PlaneNormal,
+	TArray<FTrapCellKey>& OutCellKeys
+) const
+{
+	const FVector BoundsCenter = WorldBounds.GetCenter();
+	const FVector BoundsSize = WorldBounds.GetSize();
 	const float SafeCellSize = FMath::Max(CellSize, 1.f);
-	const FVector2D SurfaceSize = Surface->SurfaceSizeCm;
-	const float CellCountUFloat = SurfaceSize.X / SafeCellSize;
-	const float CellCountVFloat = SurfaceSize.Y / SafeCellSize;
-	const int32 CellCountU = FMath::RoundToInt(CellCountUFloat);
-	const int32 CellCountV = FMath::RoundToInt(CellCountVFloat);
 
-	// 정수로 나누어떨어지지 않으면 실패 (반쪽 Cell -> 현재 Grid 규칙으로 정의 X)
-	if (
-		CellCountU <= 0
-		|| CellCountV <= 0
-		|| !FMath::IsNearlyEqual(CellCountUFloat, static_cast<float>(CellCountU))
-		|| !FMath::IsNearlyEqual(CellCountVFloat, static_cast<float>(CellCountV))
-	)
+	float CenterU = 0.f;
+	float CenterV = 0.f;
+	float SizeU = 0.f;
+	float SizeV = 0.f;
+	float PlaneCoordinate = 0.f;
+
+	switch (PlaneAxis)
 	{
-		return false;
+	case ETrapPlaneAxis::X:
+		CenterU = BoundsCenter.Y - GridOrigin.Y;
+		CenterV = BoundsCenter.Z - GridOrigin.Z;
+		SizeU = BoundsSize.Y;
+		SizeV = BoundsSize.Z;
+		PlaneCoordinate = (PlaneNormal == ETrapPlaneNormal::Positive ? WorldBounds.Max.X : WorldBounds.Min.X) - GridOrigin.X;
+		break;
+
+	case ETrapPlaneAxis::Y:
+		CenterU = BoundsCenter.X - GridOrigin.X;
+		CenterV = BoundsCenter.Z - GridOrigin.Z;
+		SizeU = BoundsSize.X;
+		SizeV = BoundsSize.Z;
+		PlaneCoordinate = (PlaneNormal == ETrapPlaneNormal::Positive ? WorldBounds.Max.Y : WorldBounds.Min.Y) - GridOrigin.Y;
+		break;
+
+	case ETrapPlaneAxis::Z:
+	default:
+		CenterU = BoundsCenter.X - GridOrigin.X;
+		CenterV = BoundsCenter.Y - GridOrigin.Y;
+		SizeU = BoundsSize.X;
+		SizeV = BoundsSize.Y;
+		PlaneCoordinate = (PlaneNormal == ETrapPlaneNormal::Positive ? WorldBounds.Max.Z : WorldBounds.Min.Z) - GridOrigin.Z;
+		break;
 	}
-	
-	// Surface local +Z 검사 (Floor/Wall/Ceiling 평면 축, 바깥 방향 결정)
-	// SurfaceType과 실제 회전이 일치하는지 검사
-	ETrapPlaneAxis PlaneAxis;
-	ETrapPlaneNormal PlaneNormal;
-	if (!ResolveWorldPlane(SurfaceTransform.GetUnitAxis(EAxis::Z), PlaneAxis, PlaneNormal)
-		|| !IsSurfaceTypeCompatible(Surface->SurfaceType, PlaneAxis, PlaneNormal))
+
+	// 허용 오차보다 큰 나머지 영역은 불완전 Cell로 보고 등록하지 않음
+	const int32 CellCountU = FMath::FloorToInt((SizeU + SurfaceSizeQuantizationToleranceCm) / SafeCellSize);
+	const int32 CellCountV = FMath::FloorToInt((SizeV + SurfaceSizeQuantizationToleranceCm) / SafeCellSize);
+	if (CellCountU <= 0 || CellCountV <= 0)
 	{
-		return false;
+		return;
 	}
 
-	// Surface의 가로·세로 방향 - Wall에서도 같은 코드로 Cell을 만들 수 있는 핵심
-	const FVector WorldAxisU = SurfaceTransform.GetUnitAxis(EAxis::X);
-	const FVector WorldAxisV = SurfaceTransform.GetUnitAxis(EAxis::Y);
+	// Bounds 중심에 가장 가까운 연속 Cell 범위를 선택
+	const int32 StartCellU = FMath::RoundToInt(CenterU / SafeCellSize - static_cast<float>(CellCountU) * 0.5f);
+	const int32 StartCellV = FMath::RoundToInt(CenterV / SafeCellSize - static_cast<float>(CellCountV) * 0.5f);
 
-	// 각 X/Y Cell 순회
 	for (int32 UIndex = 0; UIndex < CellCountU; ++UIndex)
 	{
-		const float OffsetU = -SurfaceSize.X * 0.5f + (UIndex + 0.5f) * SafeCellSize;
-
 		for (int32 VIndex = 0; VIndex < CellCountV; ++VIndex)
 		{
-			const float OffsetV = -SurfaceSize.Y * 0.5f + (VIndex + 0.5f) * SafeCellSize;
-			
-			// Cell 중심의 월드 좌표 계산
-			const FVector WorldCellCenter = SurfaceTransform.GetLocation()
-				+ WorldAxisU * OffsetU
-				+ WorldAxisV * OffsetV;
-
-			// 월드 Grid 주소 생성
-			const FTrapCellKey CellKey = WorldToCellKey(
-				WorldCellCenter,
-				PlaneAxis,
-				PlaneNormal
-			);
-
-			// CellKey를 다시 월드 중심으로 바꿨을 때, 원래 계산한 Cell 중심과 일치하지 않으면 실패 -> GridSurface가 100cm 월드 Grid에 정확히 정렬되었는가? 를 보장
-			if (!CellKeyToWorldCenter(CellKey).Equals(WorldCellCenter, GridAlignmentToleranceCm))
-			{
-				OutCellKeys.Reset();
-				return false;
-			}
-
-			// OutCellKeys에 추가
+			FTrapCellKey CellKey;
+			CellKey.PlaneAxis = PlaneAxis;
+			CellKey.PlaneNormal = PlaneNormal;
+			CellKey.PlaneCoordinate = ToPlaneCoordinateKey(PlaneCoordinate);
+			CellKey.Cell = FIntPoint(StartCellU + UIndex, StartCellV + VIndex);
 			OutCellKeys.Add(CellKey);
 		}
 	}
+}
 
-	return true;
+bool AGridManager::ResolveSurfacePlaneAtLocation(
+	const UGridSurfaceComponent* Surface,
+	const FVector& WorldLocation,
+	ETrapPlaneAxis& OutPlaneAxis,
+	ETrapPlaneNormal& OutPlaneNormal,
+	FVector& OutSurfaceLocation
+) const
+{
+	const UPrimitiveComponent* TargetPrimitive = Surface ? Surface->GetTargetPrimitive() : nullptr;
+	if (!Surface || !Surface->bEnabled || !TargetPrimitive
+		|| !IsAxisAlignedTransform(TargetPrimitive->GetComponentTransform()))
+	{
+		return false;
+	}
+
+	const FBox WorldBounds = TargetPrimitive->Bounds.GetBox();
+	if (!WorldBounds.IsValid)
+	{
+		return false;
+	}
+
+	auto IsWithinBounds = [](float Value, float Min, float Max)
+	{
+		return Value >= Min && Value <= Max;
+	};
+
+	OutSurfaceLocation = WorldLocation;
+
+	switch (Surface->SurfaceType)
+	{
+	case ETrapGridSurface::Floor:
+		if (!IsWithinBounds(WorldLocation.X, WorldBounds.Min.X, WorldBounds.Max.X)
+			|| !IsWithinBounds(WorldLocation.Y, WorldBounds.Min.Y, WorldBounds.Max.Y)
+			|| FMath::Abs(WorldLocation.Z - WorldBounds.Max.Z) > SurfaceHitPlaneToleranceCm)
+		{
+			return false;
+		}
+
+		OutPlaneAxis = ETrapPlaneAxis::Z;
+		OutPlaneNormal = ETrapPlaneNormal::Positive;
+		OutSurfaceLocation.Z = WorldBounds.Max.Z;
+		return true;
+
+	case ETrapGridSurface::Ceiling:
+		if (!IsWithinBounds(WorldLocation.X, WorldBounds.Min.X, WorldBounds.Max.X)
+			|| !IsWithinBounds(WorldLocation.Y, WorldBounds.Min.Y, WorldBounds.Max.Y)
+			|| FMath::Abs(WorldLocation.Z - WorldBounds.Min.Z) > SurfaceHitPlaneToleranceCm)
+		{
+			return false;
+		}
+
+		OutPlaneAxis = ETrapPlaneAxis::Z;
+		OutPlaneNormal = ETrapPlaneNormal::Negative;
+		OutSurfaceLocation.Z = WorldBounds.Min.Z;
+		return true;
+
+	case ETrapGridSurface::Wall:
+	{
+		const FVector BoundsSize = WorldBounds.GetSize();
+		OutPlaneAxis = BoundsSize.X <= BoundsSize.Y ? ETrapPlaneAxis::X : ETrapPlaneAxis::Y;
+
+		if (OutPlaneAxis == ETrapPlaneAxis::X)
+		{
+			if (!IsWithinBounds(WorldLocation.Y, WorldBounds.Min.Y, WorldBounds.Max.Y)
+				|| !IsWithinBounds(WorldLocation.Z, WorldBounds.Min.Z, WorldBounds.Max.Z))
+			{
+				return false;
+			}
+
+			const float NegativeDistance = FMath::Abs(WorldLocation.X - WorldBounds.Min.X);
+			const float PositiveDistance = FMath::Abs(WorldLocation.X - WorldBounds.Max.X);
+			if (FMath::Min(NegativeDistance, PositiveDistance) > SurfaceHitPlaneToleranceCm)
+			{
+				return false;
+			}
+
+			OutPlaneNormal = PositiveDistance <= NegativeDistance
+				? ETrapPlaneNormal::Positive
+				: ETrapPlaneNormal::Negative;
+			OutSurfaceLocation.X = OutPlaneNormal == ETrapPlaneNormal::Positive ? WorldBounds.Max.X : WorldBounds.Min.X;
+			return true;
+		}
+
+		if (!IsWithinBounds(WorldLocation.X, WorldBounds.Min.X, WorldBounds.Max.X)
+			|| !IsWithinBounds(WorldLocation.Z, WorldBounds.Min.Z, WorldBounds.Max.Z))
+		{
+			return false;
+		}
+
+		const float NegativeDistance = FMath::Abs(WorldLocation.Y - WorldBounds.Min.Y);
+		const float PositiveDistance = FMath::Abs(WorldLocation.Y - WorldBounds.Max.Y);
+		if (FMath::Min(NegativeDistance, PositiveDistance) > SurfaceHitPlaneToleranceCm)
+		{
+			return false;
+		}
+
+		OutPlaneNormal = PositiveDistance <= NegativeDistance
+			? ETrapPlaneNormal::Positive
+			: ETrapPlaneNormal::Negative;
+		OutSurfaceLocation.Y = OutPlaneNormal == ETrapPlaneNormal::Positive ? WorldBounds.Max.Y : WorldBounds.Min.Y;
+		return true;
+	}
+
+	default:
+		return false;
+	}
 }
 
 // Hit 위치를 Trap Footprint의 시작 Cell(Anchor)로 변환
@@ -335,33 +533,20 @@ bool AGridManager::TryGetCellKeyForSurface(
 		return false;
 	}
 
-	// Hit된 월드 위치를 Surface의 Local 좌표로 변환
-	const FTransform SurfaceTransform = Surface->GetComponentTransform();
-	const FVector LocalLocation = SurfaceTransform.InverseTransformPosition(WorldLocation);
-	
-	// 정말 이 GridSurface 내부를 조준했는가?를 판단
-	const FVector2D SurfaceHalfSize = Surface->SurfaceSizeCm * 0.5f;
-	const float PlaneDistanceCm = FMath::Abs(LocalLocation.Z);
-
-	if (
-		PlaneDistanceCm > SurfaceHitPlaneToleranceCm
-		|| FMath::Abs(LocalLocation.X) > SurfaceHalfSize.X
-		|| FMath::Abs(LocalLocation.Y) > SurfaceHalfSize.Y
-	)
-	{
-		return false;
-	}
-
 	ETrapPlaneAxis PlaneAxis;
 	ETrapPlaneNormal PlaneNormal;
-	if (!ResolveWorldPlane(SurfaceTransform.GetUnitAxis(EAxis::Z), PlaneAxis, PlaneNormal))
+	FVector SurfaceLocation;
+	if (!ResolveSurfacePlaneAtLocation(
+		Surface,
+		WorldLocation,
+		PlaneAxis,
+		PlaneNormal,
+		SurfaceLocation
+	))
 	{
 		return false;
 	}
 
-	const FVector SurfaceLocation = SurfaceTransform.TransformPosition(
-		FVector(LocalLocation.X, LocalLocation.Y, 0.f)
-	);
 	const FTrapCellKey RequestedAnchor = WorldToTrapAnchorCellKey(
 		SurfaceLocation,
 		PlaneAxis,
@@ -415,7 +600,7 @@ FTrapCellKey AGridManager::WorldToTrapAnchorCellKey(
 {
 	FTrapCellKey AnchorCell = WorldToCellKey(WorldLocation, PlaneAxis, PlaneNormal);
 	const float SafeCellSize = FMath::Max(GetCellSize(), 1.f);
-	const FVector RelativeLocation = WorldLocation - GetActorLocation();
+	const FVector RelativeLocation = WorldLocation - GridOrigin;
 
 	float CoordinateU = 0.f;
 	float CoordinateV = 0.f;
@@ -463,7 +648,13 @@ bool AGridManager::TryGetCellKeyForHit(
 		return false;
 	}
 
-	for (const TWeakObjectPtr<UGridSurfaceComponent>& SurfacePtr : RegisteredSurfaces)
+	const TArray<TWeakObjectPtr<UGridSurfaceComponent>>* SurfaceList = SurfacesByPrimitive.Find(FObjectKey(HitComponent));
+	if (!SurfaceList)
+	{
+		return false;
+	}
+
+	for (const TWeakObjectPtr<UGridSurfaceComponent>& SurfacePtr : *SurfaceList)
 	{
 		const UGridSurfaceComponent* Surface = SurfacePtr.Get();
 		if (!Surface || Surface->SurfaceType != TrapData->GridSurface)
@@ -471,8 +662,7 @@ bool AGridManager::TryGetCellKeyForHit(
 			continue;
 		}
 
-		if (Surface->GetAttachParent() == HitComponent
-		&& TryGetCellKeyForSurface(TrapData, Surface, HitLocation, OutCellKey))
+		if (TryGetCellKeyForSurface(TrapData, Surface, HitLocation, OutCellKey))
 		{
 			return true;
 		}
@@ -633,11 +823,20 @@ FTransform AGridManager::GetTrapFootprintTransform(
 		break;
 	}
 
-	// CellKey의 월드 축 규칙과 같은 방향을 사용
-	// X 평면 벽은 World +Y, 나머지는 World +X를 Trap local +X로 고정
-	const FVector TrapLocalForward = AnchorCell.PlaneAxis == ETrapPlaneAxis::X
-		? FVector::RightVector
-		: FVector::ForwardVector;
+	// 벽 양쪽 모두 Trap local +Y가 World +Z를 향하도록 local +X를 결정
+	FVector TrapLocalForward = FVector::ForwardVector;
+	if (AnchorCell.PlaneAxis == ETrapPlaneAxis::X)
+	{
+		TrapLocalForward = AnchorCell.PlaneNormal == ETrapPlaneNormal::Positive
+			? FVector::RightVector
+			: -FVector::RightVector;
+	}
+	else if (AnchorCell.PlaneAxis == ETrapPlaneAxis::Y)
+	{
+		TrapLocalForward = AnchorCell.PlaneNormal == ETrapPlaneNormal::Positive
+			? -FVector::ForwardVector
+			: FVector::ForwardVector;
+	}
 
 	const FQuat Rotation = FRotationMatrix::MakeFromXZ(
 		TrapLocalForward,
