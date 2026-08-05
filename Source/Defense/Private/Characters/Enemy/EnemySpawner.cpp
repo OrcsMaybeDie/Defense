@@ -317,7 +317,7 @@ void AEnemySpawner::SpawnCombatBatch()
 	}
 
 	const FEnemySpawnPlan& SpawnPlan = CurrentWaveSpawnPlans[CombatSpawnedCount];
-	AEnemyBase* Enemy = EnemyPool->SpawnFromPool(SpawnPlan.EnemyClass, GetActorLocation(), GetActorRotation(), false);
+	AEnemyBase* Enemy = EnemyPool->SpawnFromPool(SpawnPlan.EnemyClass, GetActorLocation(), GetActorRotation(), true);
 	if (!Enemy)
 	{
 		GetWorldTimerManager().ClearTimer(SpawnTimerHandle);

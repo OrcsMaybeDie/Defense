@@ -115,7 +115,7 @@ void UEnemyPoolSubsystem::InitPool(TSubclassOf<AEnemyBase> factory, int32 initSi
 		return;
 	}
 	
-	if (nullptr == factory || 0 == initSize)
+	if (nullptr == factory || initSize <= 0)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("EnemyPool InitPool skipped | Factory=%s InitSize=%d"),
 			//*GetNameSafe(factory),
@@ -129,14 +129,27 @@ void UEnemyPoolSubsystem::InitPool(TSubclassOf<AEnemyBase> factory, int32 initSi
 	
 	for (int32 i = 0; i < initSize; i++)
 	{
-		if(AEnemyBase* enemy = World->SpawnActor<AEnemyBase>(factory, initLocation, initRotation))
+		AEnemyBase* enemy = World->SpawnActor<AEnemyBase>(factory, initLocation, initRotation);
+		if (!enemy)
+		{
+			// 초기 생성이 실패하면 해당 슬롯에 대해 한 번 더 생성한다.
+			enemy = World->SpawnActor<AEnemyBase>(factory, initLocation, initRotation);
+		}
+
+		if (enemy)
 		{
 			//UE_LOG(LogTemp, Warning, TEXT("EnemyPool InitPool spawned | Enemy=%s Index=%d"),
 				//*GetNameSafe(enemy),
 				//i);
 			ReturnToPool(enemy);
 		}
-		
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("EnemyPool InitPool failed after retry | Factory=%s Index=%d/%d"),
+				*GetNameSafe(factory),
+				i + 1,
+				initSize);
+		}
 	}
 }
 

@@ -15,7 +15,7 @@
 
 namespace
 {
-	constexpr ECollisionChannel EnemyCollisionChannel = ECC_GameTraceChannel1;
+	constexpr ECollisionChannel BarricadeEnemyCollisionChannel = ECC_GameTraceChannel1;
 	constexpr ECollisionChannel BarricadeCollisionChannel = ECC_GameTraceChannel3;
 }
 
@@ -244,7 +244,7 @@ void ABarricade::NotifyNearbyWaitingRunEnemies()
 
 	TArray<FOverlapResult> OverlapResults;
 	FCollisionObjectQueryParams ObjectQueryParams;
-	ObjectQueryParams.AddObjectTypesToQuery(EnemyCollisionChannel);
+	ObjectQueryParams.AddObjectTypesToQuery(BarricadeEnemyCollisionChannel);
 
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(BarricadePatrolNotify), false, this);
 	QueryParams.AddIgnoredActor(this);
