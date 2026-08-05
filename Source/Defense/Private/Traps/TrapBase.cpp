@@ -17,7 +17,6 @@
 namespace
 {
 	constexpr ECollisionChannel EnemyCollisionChannel = ECC_GameTraceChannel1;
-	constexpr float TrapPlacedHeightScale = 1.f / 3.f;
 	constexpr float WallTraceRange = 1400.f;
 	constexpr float WallTraceStartOffset = 10.f;
 	constexpr float WallTraceDebugTime = 0.35f;
@@ -86,6 +85,7 @@ void ATrapBase::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
+	CenterTrapMeshOnRoot();
 	SyncDamageAreaToMesh();
 }
 
@@ -93,7 +93,7 @@ void ATrapBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	ApplyTrapMeshScale();
+	CenterTrapMeshOnRoot();
 	ApplyTrapCollision();
 
 	if (DamageArea)
@@ -139,7 +139,6 @@ void ATrapBase::InitializePreviewTrap(UTrapData* TrapData)
 	OverlappingEnemies.Empty();
 
 	ConfigureFromTrapData(TrapData);
-	ApplyTrapMeshScale();
 	StopDamageTimer();
 	ApplyTrapCollision();
 
@@ -165,7 +164,6 @@ void ATrapBase::InitializePlacedTrap(
 	OccupiedCells = InOccupiedCells;
 
 	ConfigureFromTrapData(TrapData);
-	ApplyTrapMeshScale();
 	ApplyTrapCollision();
 
 	if (DamageArea)
@@ -186,55 +184,26 @@ void ATrapBase::ConfigureFromTrapData(UTrapData* TrapData)
 	DamageInterval = TrapData->DamageInterval;
 }
 
-void ATrapBase::ApplyTrapMeshScale()
+void ATrapBase::CenterTrapMeshOnRoot()
 {
 	if (!Mesh || !Mesh->GetStaticMesh()) return;
-
-	AGridManager* GridManager = nullptr;
-	if (UWorld* World = GetWorld())
-	{
-		for (TActorIterator<AGridManager> It(World); It; ++It)
-		{
-			GridManager = *It;
-			break;
-		}
-	}
-	if (!GridManager) return;
 
 	FVector BoundsMin;
 	FVector BoundsMax;
 	Mesh->GetLocalBounds(BoundsMin, BoundsMax);
 
-	const FVector BoundsSize = BoundsMax - BoundsMin;
-	if (BoundsSize.X <= 0.f || BoundsSize.Y <= 0.f || BoundsSize.Z <= 0.f) return;
-
-	const float FootprintSizeCm = GridManager->GetTrapFootprintSizeCm();
-	FVector TargetScale(
-		FootprintSizeCm / BoundsSize.X,
-		FootprintSizeCm / BoundsSize.Y,
-		FMath::Min(FootprintSizeCm / BoundsSize.X, FootprintSizeCm / BoundsSize.Y)
-	);
-	if (RuntimeState == ETrapRuntimeState::Placed)
-	{
-		TargetScale.Z *= TrapPlacedHeightScale;
-	}
-
-	Mesh->SetRelativeScale3D(TargetScale);
-
-	// Actor 위치는 Grid가 정한 Trap 중심이다. Mesh pivot 위치와 무관하게
-	// Bounds 중심을 Root에 맞춰 시각적 중심과 논리 중심을 일치시킨다.
+	// Actor 원점 = Grid가 계산한 Footprint 중심
+	// 메시 크기: BP 설정을 유지, XY Bounds 중심: Actor 원점
 	const FVector BoundsCenter = (BoundsMin + BoundsMax) * 0.5f;
+	const FVector MeshScale = Mesh->GetRelativeScale3D();
 	FVector MeshLocation = Mesh->GetRelativeLocation();
-	MeshLocation.X = -BoundsCenter.X * TargetScale.X;
-	MeshLocation.Y = -BoundsCenter.Y * TargetScale.Y;
+	MeshLocation.X = -BoundsCenter.X * MeshScale.X;
+	MeshLocation.Y = -BoundsCenter.Y * MeshScale.Y;
 	Mesh->SetRelativeLocation(MeshLocation);
-
-	SyncDamageAreaToMesh();
 }
 
 void ATrapBase::OnRep_RuntimeState()
 {
-	ApplyTrapMeshScale();
 	ApplyTrapCollision();
 }
 

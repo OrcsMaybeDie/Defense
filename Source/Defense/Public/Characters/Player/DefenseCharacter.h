@@ -67,6 +67,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* MouseLookAction;
 	
+	/** 공격 후 캐릭터가 카메라 방향을 따라가는 시간 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Camera", meta=(ClampMin="0.0"))
+	float ViewFollowTime = 2.f;
+	
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputAction> IA_LClick;
 

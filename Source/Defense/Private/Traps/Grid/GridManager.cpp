@@ -5,6 +5,7 @@
 #include "EngineUtils.h"
 #include "Math/RotationMatrix.h"
 #include "Traps/Grid/GridSurfaceComponent.h"
+#include "Traps/TrapData.h"
 
 
 namespace
@@ -314,15 +315,22 @@ bool AGridManager::BuildCellKeysForSurface(
 	return true;
 }
 
-// Hit 위치를 Trap의 2×2 Footprint anchor로 해석
-// (Trap의 2×2 Footprint 시작 Cell로 변환)
+// Hit 위치를 Trap Footprint의 시작 Cell(Anchor)로 변환
+// 홀수/짝수 크기 모두 Footprint 중심이 조준 위치에 가장 가깝게 Snap
 bool AGridManager::TryGetCellKeyForSurface(
+	const UTrapData* TrapData,
 	const UGridSurfaceComponent* Surface,
 	const FVector& WorldLocation,
 	FTrapCellKey& OutCellKey
 ) const
 {
-	if (!Surface || !Surface->bEnabled)
+	if (!TrapData || !Surface || !Surface->bEnabled)
+	{
+		return false;
+	}
+
+	const FIntPoint Footprint = TrapData->FootprintCells;
+	if (Footprint.X <= 0 || Footprint.Y <= 0)
 	{
 		return false;
 	}
@@ -354,27 +362,38 @@ bool AGridManager::TryGetCellKeyForSurface(
 	const FVector SurfaceLocation = SurfaceTransform.TransformPosition(
 		FVector(LocalLocation.X, LocalLocation.Y, 0.f)
 	);
-	const FTrapCellKey RequestedAnchor = WorldToTrapAnchorCellKey(SurfaceLocation, PlaneAxis, PlaneNormal);
+	const FTrapCellKey RequestedAnchor = WorldToTrapAnchorCellKey(
+		SurfaceLocation,
+		PlaneAxis,
+		PlaneNormal,
+		Footprint
+	);
 	bool bFoundValidFootprint = false;
 	float BestDistanceSquared = TNumericLimits<float>::Max();
 
-	// Surface 경계에서는 Trap 외곽이 경계에 맞닿는 마지막 2x2 위치를 선택
+	// Surface 경계에서는 Trap 외곽이 경계에 맞닿는 마지막 위치를 선택
 	// 점유된 위치를 피해 이동하지는 X. 점유 여부는 호출자가 별도로 검사
-	for (int32 UOffset = -1; UOffset <= 1; ++UOffset)
+	const int32 SearchRadiusU = FMath::Max(1, (Footprint.X + 1) / 2);
+	const int32 SearchRadiusV = FMath::Max(1, (Footprint.Y + 1) / 2);
+
+	for (int32 UOffset = -SearchRadiusU; UOffset <= SearchRadiusU; ++UOffset)
 	{
-		for (int32 VOffset = -1; VOffset <= 1; ++VOffset)
+		for (int32 VOffset = -SearchRadiusV; VOffset <= SearchRadiusV; ++VOffset)
 		{
 			FTrapCellKey CandidateAnchor = RequestedAnchor;
 			CandidateAnchor.Cell += FIntPoint(UOffset, VOffset);
 
 			TArray<FTrapCellKey> CandidateFootprint;
-			GetTrapFootprintCells(CandidateAnchor, CandidateFootprint);
+			GetTrapFootprintCells(TrapData, CandidateAnchor, CandidateFootprint);
 			if (!AreCellsValid(CandidateFootprint))
 			{
 				continue;
 			}
 
-			const float DistanceSquared = FVector::DistSquared(GetTrapFootprintCenter(CandidateAnchor), SurfaceLocation);
+			const float DistanceSquared = FVector::DistSquared(
+				GetTrapFootprintCenter(TrapData, CandidateAnchor),
+				SurfaceLocation
+			);
 			if (DistanceSquared < BestDistanceSquared)
 			{
 				BestDistanceSquared = DistanceSquared;
@@ -390,38 +409,44 @@ bool AGridManager::TryGetCellKeyForSurface(
 FTrapCellKey AGridManager::WorldToTrapAnchorCellKey(
 	const FVector& WorldLocation,
 	ETrapPlaneAxis PlaneAxis,
-	ETrapPlaneNormal PlaneNormal
+	ETrapPlaneNormal PlaneNormal,
+	const FIntPoint& FootprintCells
 ) const
 {
 	FTrapCellKey AnchorCell = WorldToCellKey(WorldLocation, PlaneAxis, PlaneNormal);
 	const float SafeCellSize = FMath::Max(GetCellSize(), 1.f);
 	const FVector RelativeLocation = WorldLocation - GetActorLocation();
-	const int32 HalfFootprintCellCount = TrapFootprintCellCount / 2;
+
+	float CoordinateU = 0.f;
+	float CoordinateV = 0.f;
 
 	switch (PlaneAxis)
 	{
 	case ETrapPlaneAxis::X:
-		AnchorCell.Cell = FIntPoint(
-			FMath::RoundToInt(RelativeLocation.Y / SafeCellSize) - HalfFootprintCellCount,
-			FMath::RoundToInt(RelativeLocation.Z / SafeCellSize) - HalfFootprintCellCount
-		);
+		// X 평면 벽: World Y/Z가 Surface U/V
+		CoordinateU = RelativeLocation.Y;
+		CoordinateV = RelativeLocation.Z;
 		break;
 
 	case ETrapPlaneAxis::Y:
-		AnchorCell.Cell = FIntPoint(
-			FMath::RoundToInt(RelativeLocation.X / SafeCellSize) - HalfFootprintCellCount,
-			FMath::RoundToInt(RelativeLocation.Z / SafeCellSize) - HalfFootprintCellCount
-		);
+		// Y 평면 벽: World X/Z가 Surface U/V
+		CoordinateU = RelativeLocation.X;
+		CoordinateV = RelativeLocation.Z;
 		break;
 
 	case ETrapPlaneAxis::Z:
 	default:
-		AnchorCell.Cell = FIntPoint(
-			FMath::RoundToInt(RelativeLocation.X / SafeCellSize) - HalfFootprintCellCount,
-			FMath::RoundToInt(RelativeLocation.Y / SafeCellSize) - HalfFootprintCellCount
-		);
+		// 바닥/천장: World X/Y가 Surface U/V
+		CoordinateU = RelativeLocation.X;
+		CoordinateV = RelativeLocation.Y;
 		break;
 	}
+
+	// 홀수/짝수 Footprint 모두 중심이 조준 위치에 가장 가까운 Anchor를 계산
+	AnchorCell.Cell = FIntPoint(
+		FMath::RoundToInt(CoordinateU / SafeCellSize - static_cast<float>(FootprintCells.X) * 0.5f),
+		FMath::RoundToInt(CoordinateV / SafeCellSize - static_cast<float>(FootprintCells.Y) * 0.5f)
+	);
 
 	return AnchorCell;
 }
@@ -447,7 +472,7 @@ bool AGridManager::TryGetCellKeyForHit(
 		}
 
 		if (Surface->GetAttachParent() == HitComponent
-			&& TryGetCellKeyForSurface(Surface, HitLocation, OutCellKey))
+		&& TryGetCellKeyForSurface(TrapData, Surface, HitLocation, OutCellKey))
 		{
 			return true;
 		}
@@ -471,7 +496,7 @@ bool AGridManager::TryGetCellKeyAtWorldLocation(
 	{
 		const UGridSurfaceComponent* Surface = SurfacePtr.Get();
 		if (Surface && Surface->SurfaceType == TrapData->GridSurface
-			&& TryGetCellKeyForSurface(Surface, WorldLocation, OutCellKey))
+		&& TryGetCellKeyForSurface(TrapData, Surface, WorldLocation, OutCellKey))
 		{
 			return true;
 		}
@@ -516,15 +541,29 @@ bool AGridManager::AreCellsAvailable(const TArray<FTrapCellKey>& CellKeys) const
 }
 
 void AGridManager::GetTrapFootprintCells(
+	const UTrapData* TrapData,
 	const FTrapCellKey& AnchorCell,
 	TArray<FTrapCellKey>& OutCellKeys
 ) const
 {
-	OutCellKeys.Reset(TrapFootprintCellCount * TrapFootprintCellCount);
+	OutCellKeys.Reset();
 
-	for (int32 UIndex = 0; UIndex < TrapFootprintCellCount; ++UIndex)
+	if (!TrapData)
 	{
-		for (int32 VIndex = 0; VIndex < TrapFootprintCellCount; ++VIndex)
+		return;
+	}
+
+	const FIntPoint Footprint = TrapData->FootprintCells;
+	if (Footprint.X <= 0 || Footprint.Y <= 0)
+	{
+		return;
+	}
+
+	OutCellKeys.Reserve(Footprint.X * Footprint.Y);
+
+	for (int32 UIndex = 0; UIndex < Footprint.X; ++UIndex)
+	{
+		for (int32 VIndex = 0; VIndex < Footprint.Y; ++VIndex)
 		{
 			FTrapCellKey CellKey = AnchorCell;
 			CellKey.Cell += FIntPoint(UIndex, VIndex);
@@ -533,29 +572,42 @@ void AGridManager::GetTrapFootprintCells(
 	}
 }
 
-FVector AGridManager::GetTrapFootprintCenter(const FTrapCellKey& AnchorCell) const
+FVector AGridManager::GetTrapFootprintCenter(
+	const UTrapData* TrapData,
+	const FTrapCellKey& AnchorCell
+) const
 {
 	FVector Center = CellKeyToWorldCenter(AnchorCell);
-	const float Offset = (TrapFootprintCellCount - 1) * GetCellSize() * 0.5f;
+	if (!TrapData)
+	{
+		return Center;
+	}
+
+	const FIntPoint Footprint = TrapData->FootprintCells;
+	const float OffsetU = (Footprint.X - 1) * GetCellSize() * 0.5f;
+	const float OffsetV = (Footprint.Y - 1) * GetCellSize() * 0.5f;
 
 	switch (AnchorCell.PlaneAxis)
 	{
 	case ETrapPlaneAxis::X:
-		Center += FVector(0.f, Offset, Offset);
+		Center += FVector(0.f, OffsetU, OffsetV);
 		break;
 	case ETrapPlaneAxis::Y:
-		Center += FVector(Offset, 0.f, Offset);
+		Center += FVector(OffsetU, 0.f, OffsetV);
 		break;
 	case ETrapPlaneAxis::Z:
 	default:
-		Center += FVector(Offset, Offset, 0.f);
+		Center += FVector(OffsetU, OffsetV, 0.f);
 		break;
 	}
 
 	return Center;
 }
 
-FTransform AGridManager::GetTrapFootprintTransform(const FTrapCellKey& AnchorCell) const
+FTransform AGridManager::GetTrapFootprintTransform(
+	const UTrapData* TrapData,
+	const FTrapCellKey& AnchorCell
+) const
 {
 	FVector TrapLocalUp = FVector::UpVector;
 
@@ -594,7 +646,7 @@ FTransform AGridManager::GetTrapFootprintTransform(const FTrapCellKey& AnchorCel
 
 	return FTransform(
 		Rotation,
-		GetTrapFootprintCenter(AnchorCell),
+		GetTrapFootprintCenter(TrapData, AnchorCell),
 		FVector::OneVector
 	);
 }

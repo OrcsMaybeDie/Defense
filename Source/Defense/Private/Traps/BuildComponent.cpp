@@ -56,7 +56,7 @@ void UBuildComponent::BuildTrap()
 		return;
 	}
 
-	GridManager->GetTrapFootprintCells(CellKey, FootprintCells);
+	GridManager->GetTrapFootprintCells(TrapData, CellKey, FootprintCells);
 	if (!GridManager->AreCellsAvailable(FootprintCells))
 	{
 		return;
@@ -125,21 +125,22 @@ bool UBuildComponent::TraceBuildTarget(FHitResult& OutHit) const
 	);
 
 #if ENABLE_DRAW_DEBUG
-	// DrawDebugLine(
-	// 	World,
-	// 	ViewLocation,
-	// 	bHit ? OutHit.ImpactPoint : TraceEnd,
-	// 	bHit ? FColor::Green : FColor::Red,
-	// 	false,
-	// 	0.f,
-	// 	0,
-	// 	0.25f
-	// );
+	DrawDebugLine(
+		World,
+		ViewLocation,
+		bHit ? OutHit.ImpactPoint : TraceEnd,
+		bHit ? FColor::Green : FColor::Red,
+		false,
+		0.f,
+		0,
+		0.25f
+	);
 
-	// if (bHit)
-	// {
-	// 	DrawDebugPoint(World, OutHit.ImpactPoint, 6.f, FColor::Red, false, 0.f);
-	// }
+	if (bHit)
+	{
+		// Crosshair Trace가 실제로 맞은 위치
+		DrawDebugPoint(World, OutHit.ImpactPoint, 6.f, FColor::Red, false, 0.f);
+	}
 #endif
 
 	return bHit;
@@ -170,6 +171,12 @@ void UBuildComponent::UpdateTrapPreview()
 	{
 		DestroyTrapPreview();
 		return;
+	}
+
+	// 함정 프리뷰를 재사용 X
+	if (TrapPreviewActor && TrapPreviewActor->GetSourceTrapData() != TrapData)
+	{
+		DestroyTrapPreview();
 	}
 
 	if (!TrapPreviewActor)
@@ -210,19 +217,20 @@ void UBuildComponent::UpdateTrapPreview()
 		return;
 	}
 
-	GridManager->GetTrapFootprintCells(CellKey, FootprintCells);
+	GridManager->GetTrapFootprintCells(TrapData, CellKey, FootprintCells);
 	if (!GridManager->AreCellsAvailable(FootprintCells))
 	{
 		TrapPreviewActor->SetActorHiddenInGame(true);
 		return;
 	}
 
-	const FTransform PreviewTransform = GridManager->GetTrapFootprintTransform(CellKey);
+	const FTransform PreviewTransform = GridManager->GetTrapFootprintTransform(TrapData, CellKey);
 	TrapPreviewActor->SetActorTransform(PreviewTransform);
 	TrapPreviewActor->SetActorHiddenInGame(false);
 
 #if ENABLE_DRAW_DEBUG
-	// DrawDebugPoint(World, PreviewTransform.GetLocation(), 10.f, FColor::Yellow, false, 0.f);
+	// Grid가 계산한 Footprint 중심
+	DrawDebugPoint(World, PreviewTransform.GetLocation(), 10.f, FColor::Yellow, false, 0.f);
 #endif
 }
 
@@ -260,7 +268,7 @@ void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(FVector_NetQuant
 		return;
 	}
 
-	GridManager->GetTrapFootprintCells(CellKey, FootprintCells);
+	GridManager->GetTrapFootprintCells(TrapData, CellKey, FootprintCells);
 	if (!GridManager->AreCellsAvailable(FootprintCells))
 	{
 		return;
@@ -277,7 +285,7 @@ void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(FVector_NetQuant
 	SpawnParams.Instigator = OwningController ? OwningController->GetPawn() : nullptr;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	const FTransform SpawnTransform = GridManager->GetTrapFootprintTransform(CellKey);
+	const FTransform SpawnTransform = GridManager->GetTrapFootprintTransform(TrapData, CellKey);
 
 	ATrapBase* SpawnedTrap = GetWorld()->SpawnActor<ATrapBase>(
 		TrapData->TrapClass,
