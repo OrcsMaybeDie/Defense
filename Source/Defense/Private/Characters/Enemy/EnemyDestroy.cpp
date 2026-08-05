@@ -7,6 +7,7 @@
 #include "Characters/Enemy/Data/EnemyData.h"
 // #include "DrawDebugHelpers.h"
 #include "Engine/OverlapResult.h"
+#include "Traps/Barricade.h"
 #include "Traps/TrapBase.h"
 
 /*namespace
@@ -147,7 +148,7 @@ bool AEnemyDestroy::TryFindDestroyTarget()
 	for (const FOverlapResult& OverlapResult : OverlapResults)
 	{
 		AActor* FoundTrap = OverlapResult.GetActor();
-		if (!IsValid(FoundTrap) || !FoundTrap->IsA<ATrapBase>())
+		if (!IsValid(FoundTrap) || (!FoundTrap->IsA<ATrapBase>() && !FoundTrap->IsA<ABarricade>()))
 		{
 			continue;
 		}

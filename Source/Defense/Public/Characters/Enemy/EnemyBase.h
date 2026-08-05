@@ -22,6 +22,7 @@ enum class EEnemyState  : uint8 // State tree의 상태
 {
 	Idle,
 	Patrol,
+	Waiting,
 	Chase,
 	Damage,
 	Attack,
@@ -141,6 +142,15 @@ public:
 	// StateTree 조건과 실제 공격 판정에서 사용할 공격 거리
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Attack")
 	float AttackDist = 100.f;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Attack")
+	float BarricadeAttackDist = 100.f;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Attack")
+	float CurrentAttackDist = 100.f;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Attack")
+	float CurrentTargetDistance = MAX_flt;
 	
 	UPROPERTY()
 	TObjectPtr<class AEnemyController> EnemyController;
@@ -150,6 +160,8 @@ public:
 	// 문을 만든다면 문을 인식해서 부수게 하기 위해 일단 Actor로 지정
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Target")
 	TObjectPtr<AActor> Target;
+
+	void SetTarget(AActor* NewTarget);
 
 	FORCEINLINE class ADestinationActor* GetDestinationActor() const { return DestinationActor; }
 	

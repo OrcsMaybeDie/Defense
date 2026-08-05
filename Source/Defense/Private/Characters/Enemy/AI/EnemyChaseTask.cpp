@@ -6,26 +6,53 @@
 #include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Enemy/AI/EnemyController.h"
 #include "Navigation/PathFollowingComponent.h"
+#include "Traps/Barricade.h"
+
+namespace
+{
+	float CalculateTargetDistance(const AEnemyBase* Enemy)
+	{
+		if (!Enemy || !IsValid(Enemy->Target))
+		{
+			return MAX_flt;
+		}
+
+		if (const ABarricade* Barricade = Cast<ABarricade>(Enemy->Target))
+		{
+			return Barricade->GetDistanceToSurface(Enemy->GetActorLocation());
+		}
+
+		return Enemy->GetDistanceTo(Enemy->Target);
+	}
+}
 
 EStateTreeRunStatus FEnemyChaseTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	const FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	AEnemyBase* AIEnemy = GetAIEnemy(Context);
 	AEnemyController* AIController = GetAIController(Context);
-	if (!AIEnemy || !AIEnemy->Target || !AIController)
+	if (!AIEnemy || !IsValid(AIEnemy->Target) || !AIController)
 	{
+		if (AIEnemy)
+		{
+			AIEnemy->CurrentTargetDistance = MAX_flt;
+		}
+		InstanceData.MoveTarget.Reset();
 		return EStateTreeRunStatus::Failed;
 	}
 
 	if (AIEnemy->EnemyMode != EEnemyMode::Combat)
 	{
+		AIEnemy->CurrentTargetDistance = MAX_flt;
 		return EStateTreeRunStatus::Failed;
 	}
 
 	AIEnemy->EnemyState = EEnemyState::Chase;
+	AIEnemy->CurrentTargetDistance = CalculateTargetDistance(AIEnemy);
+	InstanceData.MoveTarget = AIEnemy->Target;
 
 	const EPathFollowingRequestResult::Type MoveResult = AIController->MoveToActor(
-		AIEnemy->Target,
+		InstanceData.MoveTarget.Get(),
 		InstanceData.AcceptanceRadius,
 		true,
 		true,
@@ -39,14 +66,54 @@ EStateTreeRunStatus FEnemyChaseTask::EnterState(FStateTreeExecutionContext& Cont
 
 EStateTreeRunStatus FEnemyChaseTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
 {
-	const AEnemyBase* AIEnemy = GetAIEnemy(Context);
-	return AIEnemy && AIEnemy->EnemyMode == EEnemyMode::Combat && AIEnemy->Target
-		? EStateTreeRunStatus::Running
-		: EStateTreeRunStatus::Failed;
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	AEnemyBase* AIEnemy = GetAIEnemy(Context);
+	AEnemyController* AIController = GetAIController(Context);
+	if (!AIEnemy || AIEnemy->EnemyMode != EEnemyMode::Combat || !IsValid(AIEnemy->Target) || !AIController)
+	{
+		if (AIEnemy)
+		{
+			AIEnemy->CurrentTargetDistance = MAX_flt;
+		}
+		InstanceData.MoveTarget.Reset();
+		return EStateTreeRunStatus::Failed;
+	}
+
+	AIEnemy->CurrentTargetDistance = CalculateTargetDistance(AIEnemy);
+
+	if (InstanceData.MoveTarget.Get() != AIEnemy->Target)
+	{
+		AIController->StopMovement();
+		InstanceData.MoveTarget = AIEnemy->Target;
+
+		const EPathFollowingRequestResult::Type MoveResult = AIController->MoveToActor(
+			InstanceData.MoveTarget.Get(),
+			InstanceData.AcceptanceRadius,
+			true,
+			true,
+			false
+		);
+
+		if (MoveResult == EPathFollowingRequestResult::Failed)
+		{
+			InstanceData.MoveTarget.Reset();
+			return EStateTreeRunStatus::Failed;
+		}
+	}
+
+	return EStateTreeRunStatus::Running;
 }
 
 void FEnemyChaseTask::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	InstanceData.MoveTarget.Reset();
+
+	if (AEnemyBase* AIEnemy = GetAIEnemy(Context))
+	{
+		AIEnemy->CurrentTargetDistance = MAX_flt;
+	}
+
 	if (AEnemyController* AIController = GetAIController(Context))
 	{
 		AIController->StopMovement();

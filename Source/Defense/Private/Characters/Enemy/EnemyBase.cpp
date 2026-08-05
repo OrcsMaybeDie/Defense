@@ -19,10 +19,13 @@
 #include "GameManager/DestinationActor.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
+#include "Traps/Barricade.h"
 #include "UI/EnemyHPUI.h"
 
 namespace
 {
+	constexpr ECollisionChannel BarricadeCollisionChannel = ECC_GameTraceChannel3;
+
 	const TCHAR* LexToString(const EEnemyMode Mode)
 	{
 		switch (Mode)
@@ -130,6 +133,14 @@ void AEnemyBase::ApplyEnemyData()
 	KillCoinReward = EnemyData->KillCoinReward;
 	PreviewMoveSpeed = EnemyData->PreviewMoveSpeed;
 	CombatMoveSpeed = EnemyData->CombatMoveSpeed;
+}
+
+void AEnemyBase::SetTarget(AActor* NewTarget)
+{
+	Target = NewTarget;
+	CurrentAttackDist = IsValid(Target) && Target->IsA<ABarricade>()
+		? BarricadeAttackDist
+		: AttackDist;
 }
 
 // Called every frame
@@ -276,6 +287,7 @@ void AEnemyBase::SetPreview()
 	{
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+		CapsuleComp->SetCollisionResponseToChannel(BarricadeCollisionChannel, ECR_Ignore);
 	}
 	
 	if (EnemyMesh)
@@ -339,6 +351,7 @@ void AEnemyBase::SetCombat()
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 		//CapsuleComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		CapsuleComp->SetCollisionResponseToChannel(BarricadeCollisionChannel, ECR_Block);
 	}
 	
 	if (EnemyMesh)

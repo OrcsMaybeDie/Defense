@@ -4,6 +4,7 @@
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
 
 #include "Characters/Enemy/EnemyBase.h"
+#include "Characters/Enemy/EnemyAttack.h"
 #include "Characters/Enemy/AI/EnemyController.h"
 #include "Characters/Enemy/Data/WaveData.h"
 #include "GameManager/DefenseGameInstance.h"
@@ -189,7 +190,11 @@ TObjectPtr<AEnemyBase> UEnemyPoolSubsystem::SpawnFromPool(TSubclassOf<AEnemyBase
 	}
 	enemy->SetActorLocationAndRotation(location, rotation);
 	enemy->EnemyState = EEnemyState::Idle;
-	enemy->Target = nullptr;
+	enemy->SetTarget(nullptr);
+	if (AEnemyAttack* AttackEnemy = Cast<AEnemyAttack>(enemy))
+	{
+		AttackEnemy->bLockedTarget = false;
+	}
 	enemy->CurHP = enemy->MaxHP;
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPool SpawnFromPool set mode | Enemy=%s EnemyMode=Preview HasAuthority=%d"),
 		//*GetNameSafe(enemy),
