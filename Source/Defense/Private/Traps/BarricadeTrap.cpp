@@ -1,0 +1,372 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#include "Traps/BarricadeTrap.h"
+
+#include "Characters/Enemy/Data/EnemyData.h"
+#include "Characters/Enemy/EnemyAttack.h"
+#include "Characters/Enemy/EnemyBase.h"
+#include "Components/BoxComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/OverlapResult.h"
+#include "Engine/World.h"
+
+namespace
+{
+	constexpr ECollisionChannel BarricadeEnemyCollisionChannel = ECC_GameTraceChannel1;
+}
+
+ABarricadeTrap::ABarricadeTrap()
+{
+	PrimaryActorTick.bCanEverTick = false;
+	SetCanBeDamaged(true);
+
+	Sensor = CreateDefaultSubobject<UBoxComponent>(TEXT("Sensor"));
+	Sensor->SetupAttachment(SceneRoot);
+	Sensor->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Sensor->SetCollisionObjectType(ECC_WorldDynamic);
+	Sensor->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Sensor->SetCollisionResponseToChannel(BarricadeEnemyCollisionChannel, ECR_Overlap);
+	Sensor->SetGenerateOverlapEvents(false);
+	Sensor->SetAutoActivate(false);
+	Sensor->SetCanEverAffectNavigation(false);
+
+	ApplyBoxExtents();
+}
+
+float ABarricadeTrap::TakeDamage(
+	const float DamageAmount,
+	const FDamageEvent& DamageEvent,
+	AController* EventInstigator,
+	AActor* DamageCauser
+)
+{
+	if (!HasAuthority() || !IsPlaced() || DamageAmount <= 0.0f || HP <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float AppliedDamage = FMath::Min(HP, DamageAmount);
+	Super::TakeDamage(AppliedDamage, DamageEvent, EventInstigator, DamageCauser);
+
+	HP -= AppliedDamage;
+	if (HP <= 0.0f)
+	{
+		HP = 0.0f;
+		Destroy();
+	}
+
+	return AppliedDamage;
+}
+
+float ABarricadeTrap::GetDistanceToSurface(const FVector& FromLocation) const
+{
+	if (!Mesh || !Mesh->GetStaticMesh())
+	{
+		return FVector::Distance(FromLocation, GetActorLocation());
+	}
+
+	FVector BoundsMin;
+	FVector BoundsMax;
+	Mesh->GetLocalBounds(BoundsMin, BoundsMax);
+
+	const FTransform& MeshTransform = Mesh->GetComponentTransform();
+	const FVector LocalLocation = MeshTransform.InverseTransformPosition(FromLocation);
+	const FVector ClosestLocalPoint(
+		FMath::Clamp(LocalLocation.X, BoundsMin.X, BoundsMax.X),
+		FMath::Clamp(LocalLocation.Y, BoundsMin.Y, BoundsMax.Y),
+		FMath::Clamp(LocalLocation.Z, BoundsMin.Z, BoundsMax.Z)
+	);
+
+	return FVector::Distance(FromLocation, MeshTransform.TransformPosition(ClosestLocalPoint));
+}
+
+void ABarricadeTrap::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	ApplyBoxExtents();
+}
+
+void ABarricadeTrap::BeginPlay()
+{
+	Super::BeginPlay();
+	ApplyBoxExtents();
+
+	if (Sensor)
+	{
+		Sensor->OnComponentBeginOverlap.AddUniqueDynamic(this, &ABarricadeTrap::OnSensorBeginOverlap);
+		Sensor->OnComponentEndOverlap.AddUniqueDynamic(this, &ABarricadeTrap::OnSensorEndOverlap);
+	}
+}
+
+void ABarricadeTrap::ApplyBoxExtents()
+{
+	if (DamageArea)
+	{
+		DamageArea->SetBoxExtent(FVector(50.0f, 50.0f, 50.0f));
+	}
+
+	if (Sensor)
+	{
+		Sensor->SetBoxExtent(FVector(55.f, 55.0f, 50.0f));
+	}
+}
+
+void ABarricadeTrap::InitializePlacedTrap(
+	UTrapData* TrapData,
+	ADefensePlayerState* InInstalledByPlayerState,
+	const TArray<FTrapCellKey>& InOccupiedCells
+)
+{
+	Super::InitializePlacedTrap(TrapData, InInstalledByPlayerState, InOccupiedCells);
+	ScheduleSensorActivation();
+}
+
+void ABarricadeTrap::ScheduleSensorActivation()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	if (SensorActivationDelay <= 0.0f)
+	{
+		ActivateSensor();
+	}
+	else
+	{
+		World->GetTimerManager().SetTimer(
+			SensorActivationTimer,
+			this,
+			&ABarricadeTrap::ActivateSensor,
+			SensorActivationDelay,
+			false
+		);
+	}
+}
+
+void ABarricadeTrap::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(SensorActivationTimer);
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
+void ABarricadeTrap::Destroyed()
+{
+	if (IsPlaced())
+	{
+		NotifyNearbyWaitingRunEnemies();
+		ReleaseAllEnemies();
+	}
+
+	Super::Destroyed();
+}
+
+void ABarricadeTrap::ActivateSensor()
+{
+	if (!Sensor || !IsPlaced())
+	{
+		return;
+	}
+
+	Sensor->SetGenerateOverlapEvents(true);
+	Sensor->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Sensor->Activate(true);
+	Sensor->UpdateOverlaps();
+}
+
+void ABarricadeTrap::EngageEnemy(AEnemyBase* Enemy)
+{
+	if (!IsValid(Enemy) || Enemy->EnemyMode != EEnemyMode::Combat)
+	{
+		return;
+	}
+
+	const TWeakObjectPtr<AEnemyBase> WeakEnemy(Enemy);
+	if (SensorOverlappingEnemies.Contains(WeakEnemy))
+	{
+		return;
+	}
+
+	SensorOverlappingEnemies.Add(WeakEnemy);
+
+	switch (Enemy->EnemyType)
+	{
+	case EEnemyType::Attack:
+		if (AEnemyAttack* AttackEnemy = Cast<AEnemyAttack>(Enemy))
+		{
+			AttackEnemy->bLockedTarget = true;
+			AttackEnemy->SetTarget(this);
+			AttackEnemy->SendStateTreeEvent(TEXT("AI.Event.TargetFind"));
+		}
+		break;
+
+	case EEnemyType::Run:
+		Enemy->EnemyState = EEnemyState::Waiting;
+		Enemy->SendStateTreeEvent(TEXT("AI.Event.Waiting"));
+		break;
+
+	case EEnemyType::Destroy:
+		break;
+	}
+}
+
+void ABarricadeTrap::ReleaseEnemy(AEnemyBase* Enemy)
+{
+	if (!IsValid(Enemy))
+	{
+		return;
+	}
+
+	switch (Enemy->EnemyType)
+	{
+	case EEnemyType::Attack:
+		if (AEnemyAttack* AttackEnemy = Cast<AEnemyAttack>(Enemy))
+		{
+			if (AttackEnemy->Target == this)
+			{
+				AttackEnemy->bLockedTarget = false;
+				AttackEnemy->SetTarget(nullptr);
+				AttackEnemy->SendStateTreeEvent(TEXT("AI.Event.Patrol"));
+			}
+		}
+		break;
+
+	case EEnemyType::Run:
+		Enemy->SendStateTreeEvent(TEXT("AI.Event.Patrol"));
+		break;
+
+	case EEnemyType::Destroy:
+		break;
+	}
+}
+
+void ABarricadeTrap::ReleaseAllEnemies()
+{
+	if (bReleasedEnemies || !HasAuthority())
+	{
+		return;
+	}
+
+	bReleasedEnemies = true;
+
+	for (const TWeakObjectPtr<AEnemyBase>& WeakEnemy : SensorOverlappingEnemies)
+	{
+		AEnemyBase* Enemy = WeakEnemy.Get();
+		if (IsValid(Enemy) && Enemy->EnemyType == EEnemyType::Attack)
+		{
+			ReleaseEnemy(Enemy);
+		}
+	}
+
+	SensorOverlappingEnemies.Empty();
+}
+
+void ABarricadeTrap::NotifyNearbyWaitingRunEnemies()
+{
+	if (!HasAuthority() || PatrolNotifyRadius <= 0.0f)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	TArray<FOverlapResult> OverlapResults;
+	FCollisionObjectQueryParams ObjectQueryParams;
+	ObjectQueryParams.AddObjectTypesToQuery(BarricadeEnemyCollisionChannel);
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(BarricadeTrapPatrolNotify), false, this);
+	QueryParams.AddIgnoredActor(this);
+
+	const bool bHasOverlaps = World->OverlapMultiByObjectType(
+		OverlapResults,
+		GetActorLocation(),
+		FQuat::Identity,
+		ObjectQueryParams,
+		FCollisionShape::MakeSphere(PatrolNotifyRadius),
+		QueryParams
+	);
+
+	if (!bHasOverlaps)
+	{
+		return;
+	}
+
+	TSet<TWeakObjectPtr<AEnemyBase>> NotifiedEnemies;
+	for (const FOverlapResult& OverlapResult : OverlapResults)
+	{
+		AEnemyBase* Enemy = Cast<AEnemyBase>(OverlapResult.GetActor());
+		if (!IsValid(Enemy)
+			|| Enemy->EnemyMode != EEnemyMode::Combat
+			|| Enemy->EnemyType != EEnemyType::Run
+			|| Enemy->EnemyState != EEnemyState::Waiting)
+		{
+			continue;
+		}
+
+		const TWeakObjectPtr<AEnemyBase> WeakEnemy(Enemy);
+		if (NotifiedEnemies.Contains(WeakEnemy))
+		{
+			continue;
+		}
+
+		NotifiedEnemies.Add(WeakEnemy);
+		Enemy->SendStateTreeEvent(TEXT("AI.Event.Patrol"));
+	}
+}
+
+void ABarricadeTrap::OnSensorBeginOverlap(
+	UPrimitiveComponent* OverlappedComponent,
+	AActor* OtherActor,
+	UPrimitiveComponent* OtherComp,
+	int32 OtherBodyIndex,
+	bool bFromSweep,
+	const FHitResult& SweepResult
+)
+{
+	if (!HasAuthority() || !IsPlaced() || bReleasedEnemies || !IsValid(OtherActor) || OtherActor == this)
+	{
+		return;
+	}
+
+	AEnemyBase* Enemy = Cast<AEnemyBase>(OtherActor);
+	if (!Enemy || Enemy->EnemyMode == EEnemyMode::Preview)
+	{
+		return;
+	}
+
+	EngageEnemy(Enemy);
+}
+
+void ABarricadeTrap::OnSensorEndOverlap(
+	UPrimitiveComponent* OverlappedComponent,
+	AActor* OtherActor,
+	UPrimitiveComponent* OtherComp,
+	int32 OtherBodyIndex
+)
+{
+	if (!HasAuthority() || !IsPlaced() || bReleasedEnemies)
+	{
+		return;
+	}
+
+	AEnemyBase* Enemy = Cast<AEnemyBase>(OtherActor);
+	if (!Enemy || Enemy->EnemyMode == EEnemyMode::Preview)
+	{
+		return;
+	}
+
+	const TWeakObjectPtr<AEnemyBase> WeakEnemy(Enemy);
+	if (SensorOverlappingEnemies.Remove(WeakEnemy) > 0)
+	{
+		ReleaseEnemy(Enemy);
+	}
+}

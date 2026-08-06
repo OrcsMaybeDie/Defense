@@ -20,6 +20,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 #include "Traps/Barricade.h"
+#include "Traps/BarricadeTrap.h"
 #include "UI/EnemyHPUI.h"
 
 namespace
@@ -138,7 +139,7 @@ void AEnemyBase::ApplyEnemyData()
 void AEnemyBase::SetTarget(AActor* NewTarget)
 {
 	Target = NewTarget;
-	CurrentAttackDist = IsValid(Target) && Target->IsA<ABarricade>()
+	CurrentAttackDist = IsValid(Target) && (Target->IsA<ABarricade>() || Target->IsA<ABarricadeTrap>())
 		? BarricadeAttackDist
 		: AttackDist;
 }

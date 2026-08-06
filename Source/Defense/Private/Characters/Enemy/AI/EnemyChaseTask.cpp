@@ -7,6 +7,7 @@
 #include "Characters/Enemy/AI/EnemyController.h"
 #include "Navigation/PathFollowingComponent.h"
 #include "Traps/Barricade.h"
+#include "Traps/BarricadeTrap.h"
 
 namespace
 {
@@ -20,6 +21,11 @@ namespace
 		if (const ABarricade* Barricade = Cast<ABarricade>(Enemy->Target))
 		{
 			return Barricade->GetDistanceToSurface(Enemy->GetActorLocation());
+		}
+
+		if (const ABarricadeTrap* BarricadeTrap = Cast<ABarricadeTrap>(Enemy->Target))
+		{
+			return BarricadeTrap->GetDistanceToSurface(Enemy->GetActorLocation());
 		}
 
 		return Enemy->GetDistanceTo(Enemy->Target);

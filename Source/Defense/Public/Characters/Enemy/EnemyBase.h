@@ -27,6 +27,9 @@ enum class EEnemyState  : uint8 // State tree의 상태
 	Damage,
 	Attack,
 	Destroy,
+	Stone,
+	StoneEnd,
+	StoneDie,
 	Die
 };
 
@@ -167,7 +170,7 @@ public:
 	
 	virtual void ApplyEnemyData();
 	
-	//------------------------------------------
+	//--------------석화------------------
 	
 
 };
