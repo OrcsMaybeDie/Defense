@@ -12,7 +12,7 @@
 
 namespace
 {
-	constexpr ECollisionChannel BarricadeEnemyCollisionChannel = ECC_GameTraceChannel1;
+	constexpr ECollisionChannel BarricadeTrapEnemyCollisionChannel = ECC_GameTraceChannel1;
 }
 
 ABarricadeTrap::ABarricadeTrap()
@@ -25,7 +25,7 @@ ABarricadeTrap::ABarricadeTrap()
 	Sensor->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Sensor->SetCollisionObjectType(ECC_WorldDynamic);
 	Sensor->SetCollisionResponseToAllChannels(ECR_Ignore);
-	Sensor->SetCollisionResponseToChannel(BarricadeEnemyCollisionChannel, ECR_Overlap);
+	Sensor->SetCollisionResponseToChannel(BarricadeTrapEnemyCollisionChannel, ECR_Overlap);
 	Sensor->SetGenerateOverlapEvents(false);
 	Sensor->SetAutoActivate(false);
 	Sensor->SetCanEverAffectNavigation(false);
@@ -281,7 +281,7 @@ void ABarricadeTrap::NotifyNearbyWaitingRunEnemies()
 
 	TArray<FOverlapResult> OverlapResults;
 	FCollisionObjectQueryParams ObjectQueryParams;
-	ObjectQueryParams.AddObjectTypesToQuery(BarricadeEnemyCollisionChannel);
+	ObjectQueryParams.AddObjectTypesToQuery(BarricadeTrapEnemyCollisionChannel);
 
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(BarricadeTrapPatrolNotify), false, this);
 	QueryParams.AddIgnoredActor(this);
