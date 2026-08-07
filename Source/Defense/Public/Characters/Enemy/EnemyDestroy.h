@@ -30,6 +30,7 @@ public:
 	virtual void SetPreview() override;
 	virtual void SetCombat() override;
 	virtual void SetInactive() override;
+	virtual void OnEnteredPatrol() override;
 	
 	virtual void ApplyEnemyData() override;
 	
@@ -45,8 +46,8 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void DestroyTargetTrap();
 
-	// UFUNCTION(NetMulticast, Unreliable)
-	// void Multicast_DrawDestroySearchDebug(FVector SearchCenter, float SearchRadius, bool bFoundTrap);
+	/*UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_DrawDestroySearchDebug(FVector SearchCenter, float SearchRadius, bool bFoundTrap);*/
 
 	void MarkDestroyFinished(bool bDestroyedTrap);
 	float GetDestroyDuration(float DefaultDuration = 1.2f) const;
@@ -76,6 +77,7 @@ public:
 	float NextDestroyTryTime = -1000000.f;
 
 	FTimerHandle DestroyTryTimerHandle;
+	bool bDestroyTryPending = false;
 	
 	
 };

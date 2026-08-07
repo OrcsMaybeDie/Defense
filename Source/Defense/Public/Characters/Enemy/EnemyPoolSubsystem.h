@@ -6,6 +6,10 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "EnemyPoolSubsystem.generated.h"
 
+class AEnemyBase;
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FEnemyRegistryEvent, AEnemyBase*);
+
 /**
  * 
  */
@@ -31,6 +35,17 @@ public:
 
 	UPROPERTY()
 	bool bIsPoolInitialized = false;
+
+	// 서버와 각 클라이언트의 로컬 World에 존재하는 전체 적 목록.
+	// 실제 풀의 Pop/Push와 관계없이 액터가 EndPlay될 때까지 유지된다.
+	const TSet<TWeakObjectPtr<AEnemyBase>>& GetAllEnemies() const { return AllEnemies; }
+	void RegisterEnemy(AEnemyBase* Enemy);
+	void UnregisterEnemy(AEnemyBase* Enemy);
+	void NotifyEnemyModeChanged(AEnemyBase* Enemy);
+
+	FEnemyRegistryEvent OnEnemyRegistered;
+	FEnemyRegistryEvent OnEnemyUnregistered;
+	FEnemyRegistryEvent OnEnemyModeChanged;
 	
 	// 초기화
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
@@ -44,5 +59,7 @@ public:
 	void ReturnToPool(TObjectPtr<AEnemyBase> enemy);
 	
 	virtual void Deinitialize() override;
-	
+
+private:
+	TSet<TWeakObjectPtr<AEnemyBase>> AllEnemies;
 };

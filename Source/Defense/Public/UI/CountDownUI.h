@@ -33,7 +33,6 @@ public:
 
 	UFUNCTION()
 	void UpdateCountdown(int32 RemainingSeconds);
-
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	void TryBindGameState();

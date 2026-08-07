@@ -43,6 +43,9 @@ public:
 	UFUNCTION()
 	void OnTargetPerceptionUpdated(AActor* Actor, struct FAIStimulus Stimulus);
 
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Target")
+	bool bLockedTarget = false;
+
 	// 애니메이션 재생
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastRPC_AttackMotion();

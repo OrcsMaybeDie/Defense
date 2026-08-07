@@ -22,10 +22,14 @@ enum class EEnemyState  : uint8 // State tree의 상태
 {
 	Idle,
 	Patrol,
+	Waiting,
 	Chase,
 	Damage,
 	Attack,
 	Destroy,
+	Stone,
+	StoneEnd,
+	StoneDie,
 	Die
 };
 
@@ -41,6 +45,7 @@ public:
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:
 	// Called every frame
@@ -78,10 +83,13 @@ public:
 	
 	UFUNCTION()
 	void OnRep_UpdateMode();
+
+	void SetEnemyMode(EEnemyMode NewMode);
 	
 	virtual void SetPreview();
 	virtual void SetCombat();
 	virtual void SetInactive();
+	virtual void OnEnteredPatrol();
 	
 	UPROPERTY()
 	TObjectPtr<class UMeshComponent> EnemyMesh;
@@ -137,6 +145,15 @@ public:
 	// StateTree 조건과 실제 공격 판정에서 사용할 공격 거리
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Attack")
 	float AttackDist = 100.f;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Attack")
+	float BarricadeAttackDist = 100.f;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Attack")
+	float CurrentAttackDist = 100.f;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Attack")
+	float CurrentTargetDistance = MAX_flt;
 	
 	UPROPERTY()
 	TObjectPtr<class AEnemyController> EnemyController;
@@ -147,11 +164,13 @@ public:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Target")
 	TObjectPtr<AActor> Target;
 
+	void SetTarget(AActor* NewTarget);
+
 	FORCEINLINE class ADestinationActor* GetDestinationActor() const { return DestinationActor; }
 	
 	virtual void ApplyEnemyData();
 	
-	//------------------------------------------
+	//--------------석화------------------
 	
 
 };

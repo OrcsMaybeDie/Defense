@@ -122,7 +122,7 @@ void AEnemyAttack::SetInactive()
 
 void AEnemyAttack::OnTargetPerceptionUpdated(AActor* Actor, struct FAIStimulus Stimulus)
 {
-if (!HasAuthority())
+	if (!HasAuthority() || bLockedTarget)
 	{
 		return;
 	}
@@ -175,7 +175,7 @@ if (!HasAuthority())
 	{
 		if (EnemyState == EEnemyState::Patrol)
 		{
-			Target = PerceivedCharacter;
+			SetTarget(PerceivedCharacter);
 			/*UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Target Updated | Enemy=%s NewTarget=%s EnemyState=%s Event=TargetFind"),
 				*GetNameSafe(this),
 				*GetNameSafe(Target),
@@ -206,7 +206,7 @@ if (!HasAuthority())
 			return;
 		}
 		
-		Target = nullptr;
+		SetTarget(nullptr);
 		/*UE_LOG(LogTemp, Warning, TEXT("Enemy Perception Target Updated | Enemy=%s NewTarget=None EnemyState=%s Event=TargetLost"),
 			*GetNameSafe(this),
 			LexToString(EnemyState)
@@ -235,6 +235,12 @@ void AEnemyAttack::AttackTarget()
 	UWorld* World = GetWorld();
 	if (!World)
 	{
+		return;
+	}
+
+	if (bLockedTarget && IsValid(Target))
+	{
+		UGameplayStatics::ApplyDamage(Target, DamageNum, GetController(), this, UDamageType::StaticClass());
 		return;
 	}
 
@@ -339,6 +345,8 @@ void AEnemyAttack::ApplyEnemyData()
 	if (const UEnemyAttackData* EnemyAttackData = Cast<UEnemyAttackData>(EnemyData))
 	{
 		AttackDist = EnemyAttackData->AttackDist;
+		BarricadeAttackDist = EnemyAttackData->BarricadeAttackDist;
+		SetTarget(Target);
 		DamageNum = EnemyAttackData->DamageNum;
 		AttackCooldown = EnemyAttackData->AttackCooldown;
 	}

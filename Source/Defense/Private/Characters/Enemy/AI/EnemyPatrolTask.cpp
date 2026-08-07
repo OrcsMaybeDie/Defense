@@ -29,6 +29,7 @@ EStateTreeRunStatus FEnemyPatrolTask::EnterState(FStateTreeExecutionContext& Con
 	}
 
 	AIEnemy->EnemyState = EEnemyState::Patrol;
+	AIEnemy->OnEnteredPatrol();
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPatrolTask EnterState | Enemy=%s Location=%s"),
 		//*GetNameSafe(AIEnemy),
 		//*AIEnemy->GetActorLocation().ToString());

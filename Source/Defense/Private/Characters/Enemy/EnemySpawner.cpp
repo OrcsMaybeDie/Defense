@@ -317,7 +317,7 @@ void AEnemySpawner::SpawnCombatBatch()
 	}
 
 	const FEnemySpawnPlan& SpawnPlan = CurrentWaveSpawnPlans[CombatSpawnedCount];
-	AEnemyBase* Enemy = EnemyPool->SpawnFromPool(SpawnPlan.EnemyClass, GetActorLocation(), GetActorRotation(), false);
+	AEnemyBase* Enemy = EnemyPool->SpawnFromPool(SpawnPlan.EnemyClass, GetActorLocation(), GetActorRotation(), true);
 	if (!Enemy)
 	{
 		GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
@@ -339,13 +339,12 @@ void AEnemySpawner::SpawnCombatBatch()
 		return;
 	}
 
-	Enemy->EnemyMode = EEnemyMode::Combat;
 	AddActiveEnemy(Enemy);
 	const bool bAppliedSpawnPlan = ApplySpawnPlanToEnemy(Enemy, CombatSpawnedCount);
 	AEnemyController* EnemyController = Cast<AEnemyController>(Enemy->GetController());
 	const bool bHasRouteBeforeRestart = EnemyController && EnemyController->EnemyRoute;
 	const bool bHasStateTree = EnemyController && EnemyController->StateTreeAIComp;
-	Enemy->SetCombat();
+	Enemy->SetEnemyMode(EEnemyMode::Combat);
 	RestartEnemyLogic(Enemy);
 	const bool bInitComplete = bAppliedSpawnPlan && bHasRouteBeforeRestart && bHasStateTree;
 	if (bInitComplete)

@@ -33,13 +33,14 @@ public:
 
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Intro|Session")
-	int32 MaxIntroPlayers = 2;
+	int32 MaxIntroPlayers = 3;
 
 	void AssignIntroRole(APlayerController* NewPlayer);
 	void EnsureDefaultMapSelected();
 	void PromoteGuestToHost();
 	void ClearGuest(AIntroPlayerState* GuestPlayerState);
 	void RefreshIntroPlayerRefs(AIntroPlayerState* IgnoredPlayerState = nullptr);
+	void RefreshGuestReadyState();
 	void ShowIntroLoadingForAllPlayers();
 	void TravelToPendingGameMap();
 
