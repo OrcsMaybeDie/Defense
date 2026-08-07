@@ -37,6 +37,8 @@ EStateTreeRunStatus FEnemyDestroyTask::EnterState(FStateTreeExecutionContext& Co
 	InstanceData.DestroyDuration = AIEnemy->GetDestroyDuration(InstanceData.DestroyDuration);
 
 	AIEnemy->EnemyState = EEnemyState::Destroy;
+	AIEnemy->ClearSuspendedAction();
+	AIEnemy->BeginTrackedAction(EEnemyState::Destroy, InstanceData.DestroyDuration);
 	AIEnemy->MulticastRPC_DestroyMotion();
 	return EStateTreeRunStatus::Running;
 }
@@ -49,8 +51,13 @@ EStateTreeRunStatus FEnemyDestroyTask::Tick(FStateTreeExecutionContext& Context,
 	{
 		return EStateTreeRunStatus::Failed;
 	}
+	if (AIEnemy->EnemyState != EEnemyState::Destroy)
+	{
+		return EStateTreeRunStatus::Running;
+	}
 
 	InstanceData.ElapsedTime += DeltaTime;
+	AIEnemy->UpdateTrackedAction(InstanceData.ElapsedTime, InstanceData.bDestroyFinished);
 
 	if (InstanceData.ElapsedTime < InstanceData.DestroyDuration)
 	{
@@ -62,6 +69,12 @@ EStateTreeRunStatus FEnemyDestroyTask::Tick(FStateTreeExecutionContext& Context,
 		InstanceData.bDestroyFinished = true;
 		AIEnemy->DestroyTargetTrap();
 		AIEnemy->MarkDestroyFinished(true);
+	}
+
+	AIEnemy->UpdateTrackedAction(InstanceData.ElapsedTime, InstanceData.bDestroyFinished);
+	if (InstanceData.ElapsedTime >= InstanceData.DestroyDuration)
+	{
+		AIEnemy->CompleteTrackedAction();
 	}
 
 	return EStateTreeRunStatus::Succeeded;

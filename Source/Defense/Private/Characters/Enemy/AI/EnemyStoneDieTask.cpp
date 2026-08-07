@@ -1,39 +1,36 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+#include "Characters/Enemy/AI/EnemyStoneDieTask.h"
 
-#include "Characters/Enemy/AI/EnemyDieTask.h"
-
-#include "StateTreeExecutionContext.h"
 #include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
-#include "Characters/Enemy/EnemySpawner.h"
 #include "GameManager/DefenseGameMode.h"
+#include "StateTreeExecutionContext.h"
 
-EStateTreeRunStatus FEnemyDieTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
+EStateTreeRunStatus FEnemyStoneDieTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	InstanceData.ElapsedTime = 0.f;
 	InstanceData.bReturnedToPool = false;
 
 	AEnemyBase* AIEnemy = GetAIEnemy(Context);
-	if (!AIEnemy)
+	if (!AIEnemy || !AIEnemy->HasAuthority())
 	{
 		return EStateTreeRunStatus::Failed;
 	}
-	
-	AIEnemy->EnemyState = EEnemyState::Die;
-	AIEnemy->EndStoneGameplay();
+
+	AIEnemy->EnemyState = EEnemyState::StoneDie;
+	AIEnemy->BeginStoneGameplay();
 	AIEnemy->CompleteTrackedAction();
 	AIEnemy->ClearSuspendedAction();
-	AIEnemy->MulticastRPC_DieMotion();
+	AIEnemy->MulticastRPC_StoneDieVisual();
 	return EStateTreeRunStatus::Running;
 }
 
-EStateTreeRunStatus FEnemyDieTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
+EStateTreeRunStatus FEnemyStoneDieTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	InstanceData.ElapsedTime += DeltaTime;
 
-	if (InstanceData.ElapsedTime < InstanceData.DamageDuration)
+	if (InstanceData.ElapsedTime < InstanceData.ReturnDelay)
 	{
 		return EStateTreeRunStatus::Running;
 	}
@@ -41,7 +38,6 @@ EStateTreeRunStatus FEnemyDieTask::Tick(FStateTreeExecutionContext& Context, con
 	if (!InstanceData.bReturnedToPool)
 	{
 		InstanceData.bReturnedToPool = true;
-
 		if (AEnemyBase* AIEnemy = GetAIEnemy(Context))
 		{
 			if (UWorld* World = AIEnemy->GetWorld())
@@ -63,8 +59,8 @@ EStateTreeRunStatus FEnemyDieTask::Tick(FStateTreeExecutionContext& Context, con
 }
 
 #if WITH_EDITOR
-FText FEnemyDieTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+FText FEnemyStoneDieTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
 {
-	return FText::FromString(TEXT("<b>Enemy Die</b>"));
+	return FText::FromString(TEXT("<b>Enemy Stone Die</b>"));
 }
 #endif

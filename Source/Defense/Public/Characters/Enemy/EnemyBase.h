@@ -17,7 +17,7 @@ enum class EEnemyMode  : uint8
 	Inactive UMETA(DisplayName = "Inactive") // state tree 멈추기, actor hidden, noCollision
 };
 
-UENUM()
+UENUM(BlueprintType)
 enum class EEnemyState  : uint8 // State tree의 상태
 {
 	Idle,
@@ -31,6 +31,26 @@ enum class EEnemyState  : uint8 // State tree의 상태
 	StoneEnd,
 	StoneDie,
 	Die
+};
+
+struct FEnemyActionProgressData
+{
+	bool bIsValid = false;
+	EEnemyState ActionState = EEnemyState::Idle;
+	float TotalDuration = 0.f;
+	float ElapsedTime = 0.f;
+	float RemainingTime = 0.f;
+	bool bActionTriggered = false;
+
+	void Reset()
+	{
+		bIsValid = false;
+		ActionState = EEnemyState::Idle;
+		TotalDuration = 0.f;
+		ElapsedTime = 0.f;
+		RemainingTime = 0.f;
+		bActionTriggered = false;
+	}
 };
 
 UCLASS()
@@ -68,6 +88,18 @@ public:
 	// State Tree 상태
 	UPROPERTY(Replicated,VisibleAnywhere,BlueprintReadOnly)
 	EEnemyState EnemyState;
+
+	FEnemyActionProgressData TrackedActionData;
+	FEnemyActionProgressData SuspendedActionData;
+
+	void BeginTrackedAction(EEnemyState ActionState, float TotalDuration);
+	void UpdateTrackedAction(float ElapsedTime, bool bActionTriggered);
+	void CompleteTrackedAction();
+	void ClearSuspendedAction();
+	bool TryEnterStone();
+	void BeginStoneGameplay();
+	void EndStoneGameplay();
+	void ResetStoneStateForPool();
 	
 	// 공격타입에 따라 공격상태일 때 다른 task 수행
 	UPROPERTY(VisibleAnywhere,BlueprintReadOnly)
@@ -99,6 +131,9 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<class UMaterialInterface> CombatMaterial;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Stone")
+	TObjectPtr<class UMaterialInterface> StoneMaterial;
 	
 	UPROPERTY()
 	TObjectPtr<class UEnemyAnim> AnimInst;
@@ -123,6 +158,15 @@ public:
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastRPC_StopAllMontages();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRPC_EnterStoneVisual();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRPC_ExitStoneVisual(bool bResumeMontage, bool bWaitForMovement);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRPC_StoneDieVisual();
 	
 	// UI 업데이트
 	UFUNCTION()
@@ -133,6 +177,7 @@ public:
 	
 	// 처음엔 HPBar가 안 보이고 맞으면 보이게 함
 	bool bHpUIVisible = false;
+	bool bDeathHandled = false;
 	
 	// 플레이어가 한 공격 받기
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
@@ -169,8 +214,28 @@ public:
 	FORCEINLINE class ADestinationActor* GetDestinationActor() const { return DestinationActor; }
 	
 	virtual void ApplyEnemyData();
+	void PrepareForRegularAnimation();
 	
 	//--------------석화------------------
-	
+
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<class UAnimMontage> SuspendedMontage = nullptr;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<class UMaterialInterface>> MaterialsBeforeStone;
+
+	float SuspendedMontagePosition = 0.f;
+	float SuspendedMontagePlayRate = 1.f;
+	float LocomotionResumeWaitTime = 0.f;
+	TEnumAsByte<EMovementMode> MovementModeBeforeStone = MOVE_Walking;
+	bool bStoneGameplayActive = false;
+	bool bStoneVisualActive = false;
+	bool bPendingLocomotionResume = false;
+
+	void EnterStoneVisual();
+	void ExitStoneVisual(bool bResumeMontage, bool bWaitForMovement);
+	void RestoreMaterialsBeforeStone();
+	void ResetStoneVisual();
 
 };

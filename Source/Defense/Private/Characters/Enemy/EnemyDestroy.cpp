@@ -92,7 +92,12 @@ void AEnemyDestroy::MulticastRPC_DestroyMotion_Implementation()
 	{
 		return;
 	}
-	AnimInst->PlayDestroyMotion();
+
+	PrepareForRegularAnimation();
+	if (AnimInst)
+	{
+		AnimInst->PlayDestroyMotion();
+	}
 }
 
 bool AEnemyDestroy::CanTryDestroy() const

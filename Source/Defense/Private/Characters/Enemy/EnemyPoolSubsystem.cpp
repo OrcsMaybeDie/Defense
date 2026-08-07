@@ -209,6 +209,7 @@ TObjectPtr<AEnemyBase> UEnemyPoolSubsystem::SpawnFromPool(TSubclassOf<AEnemyBase
 		AttackEnemy->bLockedTarget = false;
 	}
 	enemy->CurHP = enemy->MaxHP;
+	enemy->ResetStoneStateForPool();
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPool SpawnFromPool set mode | Enemy=%s EnemyMode=Preview HasAuthority=%d"),
 		//*GetNameSafe(enemy),
 		//enemy->HasAuthority() ? 1 : 0);
