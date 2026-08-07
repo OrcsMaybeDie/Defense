@@ -41,7 +41,7 @@ struct FTrapCellKey
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trap Grid")
 	ETrapPlaneAxis PlaneAxis = ETrapPlaneAxis::Z;
 	
-	// GridOrigin을 기준으로 한 설치 평면 좌표. 단위는 0.1cm(1mm).
+	// GridManager 위치를 기준으로 한 설치 평면 좌표. 단위는 0.1cm(1mm).
 	// 메시 윗면처럼 정수 cm가 아닌 설치면도 구분한다.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trap Grid")
 	int32 PlaneCoordinate = 0;
