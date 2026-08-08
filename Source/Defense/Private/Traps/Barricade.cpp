@@ -16,7 +16,7 @@
 namespace
 {
 	constexpr ECollisionChannel BarricadeEnemyCollisionChannel = ECC_GameTraceChannel1;
-	constexpr ECollisionChannel BarricadeCollisionChannel = ECC_GameTraceChannel3;
+	constexpr ECollisionChannel BarricadeObjectCollisionChannel = ECC_GameTraceChannel3;
 }
 
 ABarricade::ABarricade()
@@ -27,7 +27,7 @@ ABarricade::ABarricade()
 
 	Box = CreateDefaultSubobject<UBoxComponent>(TEXT("Box"));
 	SetRootComponent(Box);
-	Box->SetCollisionObjectType(BarricadeCollisionChannel);
+	Box->SetCollisionObjectType(BarricadeObjectCollisionChannel);
 	
 	Cube = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Cube"));
 	Cube->SetupAttachment(Box);
