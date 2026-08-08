@@ -147,13 +147,14 @@ void AEnemyBase::SetTarget(AActor* NewTarget)
 		: AttackDist;
 }
 
-void AEnemyBase::BeginTrackedAction(const EEnemyState ActionState, const float TotalDuration)
+void AEnemyBase::BeginTrackedAction(const EEnemyState ActionState, const float TotalDuration, const float TriggerTime)
 {
 	TrackedActionData.Reset();
 	TrackedActionData.bIsValid = true;
 	TrackedActionData.ActionState = ActionState;
 	TrackedActionData.TotalDuration = FMath::Max(0.f, TotalDuration);
 	TrackedActionData.RemainingTime = TrackedActionData.TotalDuration;
+	TrackedActionData.TriggerTime = FMath::Clamp(TriggerTime, 0.f, TrackedActionData.TotalDuration);
 }
 
 void AEnemyBase::UpdateTrackedAction(const float ElapsedTime, const bool bActionTriggered)

@@ -68,18 +68,31 @@ EStateTreeRunStatus FEnemyStoneEndTask::Tick(FStateTreeExecutionContext& Context
 	);
 	SuspendedAction.RemainingTime = FMath::Max(0.f, SuspendedAction.TotalDuration - SuspendedAction.ElapsedTime);
 
-	if (SuspendedAction.ActionState == EEnemyState::Attack && !SuspendedAction.bActionTriggered)
+	if (!SuspendedAction.bActionTriggered
+		&& (SuspendedAction.ActionState == EEnemyState::Attack
+			|| SuspendedAction.ActionState == EEnemyState::Destroy))
 	{
-		const float AttackTriggerTime = SuspendedAction.TotalDuration * 0.5f;
-		if (PreviousElapsedTime > AttackTriggerTime)
+		const float ActionTriggerTime = FMath::Clamp(
+			SuspendedAction.TriggerTime,
+			0.f,
+			SuspendedAction.TotalDuration
+		);
+		if (PreviousElapsedTime > ActionTriggerTime)
 		{
 			SuspendedAction.bActionTriggered = true;
 		}
-		else if (SuspendedAction.ElapsedTime >= AttackTriggerTime)
+		else if (SuspendedAction.ElapsedTime >= ActionTriggerTime)
 		{
-			if (AEnemyAttack* AttackEnemy = Cast<AEnemyAttack>(AIEnemy))
+			if (SuspendedAction.ActionState == EEnemyState::Attack)
 			{
-				AttackEnemy->AttackTarget();
+				if (AEnemyAttack* AttackEnemy = Cast<AEnemyAttack>(AIEnemy))
+				{
+					AttackEnemy->AttackTarget();
+				}
+			}
+			else if (AEnemyDestroy* DestroyEnemy = Cast<AEnemyDestroy>(AIEnemy))
+			{
+				DestroyEnemy->DestroyTargetTrap();
 			}
 			SuspendedAction.bActionTriggered = true;
 		}
@@ -97,14 +110,12 @@ EStateTreeRunStatus FEnemyStoneEndTask::Tick(FStateTreeExecutionContext& Context
 			AttackEnemy->MarkAttackFinished();
 		}
 	}
-	else if (SuspendedAction.ActionState == EEnemyState::Destroy && !SuspendedAction.bActionTriggered)
+	else if (SuspendedAction.ActionState == EEnemyState::Destroy)
 	{
 		if (AEnemyDestroy* DestroyEnemy = Cast<AEnemyDestroy>(AIEnemy))
 		{
-			DestroyEnemy->DestroyTargetTrap();
 			DestroyEnemy->MarkDestroyFinished(true);
 		}
-		SuspendedAction.bActionTriggered = true;
 	}
 
 	AIEnemy->CompleteTrackedAction();

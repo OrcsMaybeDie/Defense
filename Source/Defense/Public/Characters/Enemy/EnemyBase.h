@@ -47,6 +47,7 @@ struct FEnemyActionProgressData
 	float TotalDuration = 0.f;
 	float ElapsedTime = 0.f;
 	float RemainingTime = 0.f;
+	float TriggerTime = 0.f;
 	bool bActionTriggered = false;
 
 	void Reset()
@@ -56,6 +57,7 @@ struct FEnemyActionProgressData
 		TotalDuration = 0.f;
 		ElapsedTime = 0.f;
 		RemainingTime = 0.f;
+		TriggerTime = 0.f;
 		bActionTriggered = false;
 	}
 };
@@ -99,7 +101,7 @@ public:
 	FEnemyActionProgressData TrackedActionData;
 	FEnemyActionProgressData SuspendedActionData;
 
-	void BeginTrackedAction(EEnemyState ActionState, float TotalDuration);
+	void BeginTrackedAction(EEnemyState ActionState, float TotalDuration, float TriggerTime = 0.f);
 	void UpdateTrackedAction(float ElapsedTime, bool bActionTriggered);
 	void CompleteTrackedAction();
 	void ClearSuspendedAction();

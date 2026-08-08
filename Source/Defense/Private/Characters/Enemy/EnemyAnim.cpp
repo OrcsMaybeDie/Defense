@@ -4,7 +4,6 @@
 #include "Characters/Enemy/EnemyAnim.h"
 
 #include "Characters/Enemy/EnemyBase.h"
-#include "Characters/Enemy/EnemyDestroy.h"
 
 void UEnemyAnim::NativeInitializeAnimation()
 {
@@ -39,12 +38,5 @@ void UEnemyAnim::AnimNotify_Hit()
 
 void UEnemyAnim::AnimNotify_Destroy()
 {
-	if (Enemy && Enemy->HasAuthority())
-	{
-		auto* EnemyDestroy = Cast<AEnemyDestroy>(Enemy);
-		if (EnemyDestroy)
-		{
-			EnemyDestroy->DestroyTargetTrap();
-		}
-	}
+	// Trap destruction is handled by the authoritative destroy StateTree task.
 }
