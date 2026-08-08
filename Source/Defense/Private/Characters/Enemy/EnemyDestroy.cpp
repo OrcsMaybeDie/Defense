@@ -132,6 +132,7 @@ bool AEnemyDestroy::TryFindDestroyTarget()
 
 	FCollisionObjectQueryParams ObjectQueryParams;
 	ObjectQueryParams.AddObjectTypesToQuery(ECC_WorldDynamic);
+	ObjectQueryParams.AddObjectTypesToQuery(ECC_GameTraceChannel3);
 
 	const FVector SearchCenter = GetActorLocation() + GetActorTransform().TransformVectorNoScale(DestroySearchOffset);
 

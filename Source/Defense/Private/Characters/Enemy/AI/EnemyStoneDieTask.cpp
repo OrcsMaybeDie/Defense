@@ -16,6 +16,10 @@ EStateTreeRunStatus FEnemyStoneDieTask::EnterState(FStateTreeExecutionContext& C
 	{
 		return EStateTreeRunStatus::Failed;
 	}
+	if (!AIEnemy->TryMarkDeathTaskStarted(EEnemyPendingDeathType::Stone))
+	{
+		return EStateTreeRunStatus::Failed;
+	}
 
 	AIEnemy->EnemyState = EEnemyState::StoneDie;
 	AIEnemy->BeginStoneGameplay();

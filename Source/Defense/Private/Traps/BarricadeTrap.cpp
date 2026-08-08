@@ -102,12 +102,12 @@ void ABarricadeTrap::ApplyBoxExtents()
 {
 	if (DamageArea)
 	{
-		DamageArea->SetBoxExtent(FVector(50.0f, 50.0f, 50.0f));
+		DamageArea->SetBoxExtent(FVector(100.0f, 100.0f, 100.0f));
 	}
 
 	if (Sensor)
 	{
-		Sensor->SetBoxExtent(FVector(55.f, 55.0f, 50.0f));
+		Sensor->SetBoxExtent(FVector(52.f, 52.0f, 50.0f));
 	}
 }
 
@@ -206,11 +206,9 @@ void ABarricadeTrap::EngageEnemy(AEnemyBase* Enemy)
 		break;
 
 	case EEnemyType::Run:
+	case EEnemyType::Destroy:
 		Enemy->EnemyState = EEnemyState::Waiting;
 		Enemy->SendStateTreeEvent(TEXT("AI.Event.Waiting"));
-		break;
-
-	case EEnemyType::Destroy:
 		break;
 	}
 }
@@ -237,10 +235,8 @@ void ABarricadeTrap::ReleaseEnemy(AEnemyBase* Enemy)
 		break;
 
 	case EEnemyType::Run:
-		Enemy->SendStateTreeEvent(TEXT("AI.Event.Patrol"));
-		break;
-
 	case EEnemyType::Destroy:
+		Enemy->SendStateTreeEvent(TEXT("AI.Event.Patrol"));
 		break;
 	}
 }
@@ -306,7 +302,7 @@ void ABarricadeTrap::NotifyNearbyWaitingRunEnemies()
 		AEnemyBase* Enemy = Cast<AEnemyBase>(OverlapResult.GetActor());
 		if (!IsValid(Enemy)
 			|| Enemy->EnemyMode != EEnemyMode::Combat
-			|| Enemy->EnemyType != EEnemyType::Run
+			|| (Enemy->EnemyType != EEnemyType::Run && Enemy->EnemyType != EEnemyType::Destroy)
 			|| Enemy->EnemyState != EEnemyState::Waiting)
 		{
 			continue;

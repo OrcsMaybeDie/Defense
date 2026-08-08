@@ -14,6 +14,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Characters/Enemy/StoneFractureActor.h"
 #include "Components/StateTreeAIComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -251,9 +252,26 @@ void AEnemyBase::EndStoneGameplay()
 void AEnemyBase::ResetStoneStateForPool()
 {
 	bDeathHandled = false;
+	bDeathTaskStarted = false;
+	PendingDeathType = EEnemyPendingDeathType::None;
+	LastDeathRetryTime = -BIG_NUMBER;
 	TrackedActionData.Reset();
 	SuspendedActionData.Reset();
 	EndStoneGameplay();
+}
+
+bool AEnemyBase::TryMarkDeathTaskStarted(const EEnemyPendingDeathType DeathType)
+{
+	if (!HasAuthority()
+		|| !bDeathHandled
+		|| bDeathTaskStarted
+		|| PendingDeathType != DeathType)
+	{
+		return false;
+	}
+
+	bDeathTaskStarted = true;
+	return true;
 }
 
 // Called every frame
@@ -487,7 +505,7 @@ void AEnemyBase::SetCombat()
 	
 	if (EnemyMesh)
 	{
-		//EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 		//EnemyMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 	}
 	
@@ -574,6 +592,55 @@ void AEnemyBase::SendStateTreeEvent(FName EventTagName) const
 	StateTreeAI->SendStateTreeEvent(Event);	
 }
 
+void AEnemyBase::RetryPendingDeathTransition()
+{
+	if (!HasAuthority()
+		|| EnemyMode != EEnemyMode::Combat
+		|| !bDeathHandled
+		|| bDeathTaskStarted
+		|| PendingDeathType == EEnemyPendingDeathType::None)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const float CurrentTime = World->GetTimeSeconds();
+	if (CurrentTime - LastDeathRetryTime < DeathRetryInterval)
+	{
+		return;
+	}
+	LastDeathRetryTime = CurrentTime;
+
+	if (!EnemyController)
+	{
+		EnemyController = Cast<AEnemyController>(GetController());
+	}
+	if (EnemyController && EnemyController->StateTreeAIComp)
+	{
+		if (!EnemyController->StateTreeAIComp->IsRunning())
+		{
+			EnemyController->StateTreeAIComp->StartLogic();
+		}
+		EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
+	}
+
+	if (PendingDeathType == EEnemyPendingDeathType::Stone)
+	{
+		EnemyState = EEnemyState::StoneDie;
+		SendStateTreeEvent(TEXT("AI.Event.StoneDie"));
+	}
+	else
+	{
+		EnemyState = EEnemyState::Die;
+		SendStateTreeEvent(TEXT("AI.Event.Die"));
+	}
+}
+
 void AEnemyBase::MulticastRPC_DamageMotion_Implementation()
 {
 	// 데디 서버에서는 리턴
@@ -644,6 +711,31 @@ void AEnemyBase::MulticastRPC_StoneDieVisual_Implementation()
 
 	bPendingLocomotionResume = false;
 	LocomotionResumeWaitTime = 0.f;
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	if (!bStoneVisualActive)
+	{
+		EnterStoneVisual();
+	}
+
+	bool bFractureActivated = false;
+	if (SkeletalMesh && StoneFractureActorClass)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			if (UEnemyPoolSubsystem* EnemyPool = World->GetSubsystem<UEnemyPoolSubsystem>())
+			{
+				bFractureActivated = EnemyPool->SpawnStoneFractureFromPool(
+					StoneFractureActorClass,
+					SkeletalMesh) != nullptr;
+			}
+		}
+	}
+
+	// 에셋이나 매핑이 빠진 경우에는 기존 석화 포즈를 남겨 디버깅할 수 있게 한다.
+	if (bFractureActivated && SkeletalMesh)
+	{
+		SkeletalMesh->SetVisibility(false, true);
+	}
 	if (HpComp)
 	{
 		HpComp->SetVisibility(false);
@@ -850,7 +942,13 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		return 0.f;
 	}
 
-	if (bDeathHandled || EnemyState == EEnemyState::Die || EnemyState == EEnemyState::StoneDie)
+	if (bDeathHandled)
+	{
+		RetryPendingDeathTransition();
+		return 0.f;
+	}
+
+	if (EnemyState == EEnemyState::Die || EnemyState == EEnemyState::StoneDie)
 	{
 		return 0.f;
 	}
@@ -883,6 +981,11 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	if (CurHP <= 0.0f)
 	{
 		bDeathHandled = true;
+		bDeathTaskStarted = false;
+		PendingDeathType = EnemyState == EEnemyState::Stone
+			? EEnemyPendingDeathType::Stone
+			: EEnemyPendingDeathType::Normal;
+		LastDeathRetryTime = -BIG_NUMBER;
 		if (GameMode)
 		{
 			GameMode->AwardEnemyKillCoin(this, DamageCauser, EventInstigator);
@@ -902,16 +1005,7 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		}*/
 		//----------------------------------------------
 		
-		if (EnemyState == EEnemyState::Stone)
-		{
-			EnemyState = EEnemyState::StoneDie;
-			SendStateTreeEvent(TEXT("AI.Event.StoneDie"));
-		}
-		else
-		{
-			EnemyState = EEnemyState::Die;
-			SendStateTreeEvent(TEXT("AI.Event.Die"));
-		}
+		RetryPendingDeathTransition();
 		bHpUIVisible = false;
 	}
 	else if (EnemyState != EEnemyState::Stone)

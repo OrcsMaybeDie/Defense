@@ -33,6 +33,13 @@ enum class EEnemyState  : uint8 // State tree의 상태
 	Die
 };
 
+enum class EEnemyPendingDeathType : uint8
+{
+	None,
+	Normal,
+	Stone
+};
+
 struct FEnemyActionProgressData
 {
 	bool bIsValid = false;
@@ -100,6 +107,7 @@ public:
 	void BeginStoneGameplay();
 	void EndStoneGameplay();
 	void ResetStoneStateForPool();
+	bool TryMarkDeathTaskStarted(EEnemyPendingDeathType DeathType);
 	
 	// 공격타입에 따라 공격상태일 때 다른 task 수행
 	UPROPERTY(VisibleAnywhere,BlueprintReadOnly)
@@ -134,6 +142,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Stone")
 	TObjectPtr<class UMaterialInterface> StoneMaterial;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Stone|Fracture")
+	TSubclassOf<class AStoneFractureActor> StoneFractureActorClass;
 	
 	UPROPERTY()
 	TObjectPtr<class UEnemyAnim> AnimInst;
@@ -178,6 +189,8 @@ public:
 	// 처음엔 HPBar가 안 보이고 맞으면 보이게 함
 	bool bHpUIVisible = false;
 	bool bDeathHandled = false;
+	bool bDeathTaskStarted = false;
+	EEnemyPendingDeathType PendingDeathType = EEnemyPendingDeathType::None;
 	
 	// 플레이어가 한 공격 받기
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
@@ -204,6 +217,7 @@ public:
 	TObjectPtr<class AEnemyController> EnemyController;
 	
 	void SendStateTreeEvent(FName EventTagName) const;
+	void RetryPendingDeathTransition();
 
 	// 문을 만든다면 문을 인식해서 부수게 하기 위해 일단 Actor로 지정
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Target")
@@ -232,6 +246,8 @@ private:
 	bool bStoneGameplayActive = false;
 	bool bStoneVisualActive = false;
 	bool bPendingLocomotionResume = false;
+	float LastDeathRetryTime = -BIG_NUMBER;
+	static constexpr float DeathRetryInterval = 0.25f;
 
 	void EnterStoneVisual();
 	void ExitStoneVisual(bool bResumeMontage, bool bWaitForMovement);

@@ -1,31 +1,22 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
-#include "TimerManager.h"
-#include "MedusaTest.generated.h"
+#include "TrapBase.h"
+#include "Medusa.generated.h"
 
-class UBoxComponent;
 class USceneComponent;
-class UStaticMeshComponent;
 
 UCLASS()
-class DEFENSE_API AMedusaTest : public AActor
+class DEFENSE_API AMedusa : public ATrapBase
 {
 	GENERATED_BODY()
 
 public:
-	AMedusaTest();
+	AMedusa();
 
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Medusa|Components")
-	TObjectPtr<UBoxComponent> RootCollision;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Medusa|Components")
-	TObjectPtr<UStaticMeshComponent> Mesh;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Medusa|Components")
 	TObjectPtr<USceneComponent> GazeOrigin;
