@@ -183,15 +183,13 @@ protected:
 	bool FindClosestValidAnchor(
 		const UTrapData* TrapData,
 		const FVector& HitLocation,
-		ETrapPlaneAxis PlaneAxis,
-		ETrapPlaneNormal PlaneNormal,
+		const FTrapGridRegion& Region,
 		FTrapCellKey& OutCellKey
 	);
 
 	FTrapCellKey WorldToTrapAnchorCellKey(
 		const FVector& WorldLocation,
-		ETrapPlaneAxis PlaneAxis,
-		ETrapPlaneNormal PlaneNormal,
+		const FTrapGridRegion& Region,
 		const FIntPoint& FootprintCells
 	) const;
 

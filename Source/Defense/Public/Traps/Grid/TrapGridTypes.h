@@ -78,12 +78,15 @@ enum class ETrapPlaneNormal : uint8
 };
 
 
-/* World Trap Grid에서 Cell 하나를 식별하는 주소 */
-// 특정 레벨 모듈의 ID 사용 x -> 같은 평면의 인접 모듈들은 동일한 World Grid를 공유 가능
+/* Trap Grid에서 Cell 하나를 식별하는 주소 */
 USTRUCT(BlueprintType)
 struct FTrapCellKey
 {
 	GENERATED_BODY()
+
+	// 연결된 설치 영역 ID
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trap Grid")
+	FGuid RegionId;
 	
 	// 설치면에 수직인 월드 축
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trap Grid")
@@ -105,7 +108,8 @@ struct FTrapCellKey
 	// 두 주소가 완전히 같은지 검사
 	bool operator==(const FTrapCellKey& Other) const
 	{
-		return PlaneAxis == Other.PlaneAxis
+		return RegionId == Other.RegionId
+		&& PlaneAxis == Other.PlaneAxis
 		&& PlaneCoordinate == Other.PlaneCoordinate
 		&& PlaneNormal == Other.PlaneNormal
 		&& Cell == Other.Cell;
@@ -117,8 +121,9 @@ struct FTrapCellKey
 /* FTrapCellKey를 TSet 또는 TMap의 Key로 사용하기 위한 Hash 함수 */
 FORCEINLINE uint32 GetTypeHash(const FTrapCellKey& Key)
 {
-	uint32 Hash = GetTypeHash(static_cast<uint8>(Key.PlaneAxis));
+	uint32 Hash = GetTypeHash(Key.RegionId);
 	
+	Hash = HashCombineFast(Hash, GetTypeHash(static_cast<uint8>(Key.PlaneAxis)));
 	Hash = HashCombineFast(Hash, GetTypeHash(Key.PlaneCoordinate));
 	Hash = HashCombineFast(Hash, GetTypeHash(static_cast<uint8>(Key.PlaneNormal)));
 	Hash = HashCombineFast(Hash, GetTypeHash(Key.Cell));
