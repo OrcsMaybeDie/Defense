@@ -155,6 +155,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Stone|Visual")
 	bool bApplyDamageOverlayWhileStone = true;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Stone|Visual",
+		meta=(EditCondition="bApplyDamageOverlayWhileStone"))
+	bool bShowDamageOutlineWhileStone = false;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Stone|Fracture")
 	TSubclassOf<class AStoneFractureActor> StoneFractureActorClass;
 	

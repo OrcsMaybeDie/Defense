@@ -456,13 +456,7 @@ void AEnemyBase::SetPreview()
 			EnemyController = Cast<AEnemyController>(GetController());
 		}
 		
-		if (EnemyController && EnemyController->StateTreeAIComp)
-		{
-			EnemyController->StateTreeAIComp->StartLogic();
-			EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
-		}
-		
-		
+		// The spawner starts StateTree after possession and route setup are complete.
 	}
 	
 	// 충돌 처리
@@ -524,11 +518,7 @@ void AEnemyBase::SetCombat()
 	
 	if (HasAuthority())
 	{
-		if (EnemyController && EnemyController->StateTreeAIComp)
-		{
-			EnemyController->StateTreeAIComp->StartLogic();
-			EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
-		}
+		// The spawner starts StateTree after possession and route setup are complete.
 	}
 	
 	SetActorEnableCollision(true);
@@ -1151,16 +1141,23 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		RetryPendingDeathTransition();
 		bHpUIVisible = false;
 	}
-	else if (!bIsBurnDamage && EnemyState != EEnemyState::Stone)
+	else if (!bIsBurnDamage)
 	{
-		MulticastRPC_ShowDamageOutline();
+		if (EnemyState != EEnemyState::Stone || bShowDamageOutlineWhileStone)
+		{
+			MulticastRPC_ShowDamageOutline();
+		}
 
 		if (EnemyState == EEnemyState::StoneEnd)
 		{
 			ClearSuspendedAction();
 			EnemyState = EEnemyState::Damage;
 		}
-		SendStateTreeEvent(TEXT("AI.Event.Damage"));
+
+		if (EnemyState != EEnemyState::Stone)
+		{
+			SendStateTreeEvent(TEXT("AI.Event.Damage"));
+		}
 	}
 
 	return ActualDamage;
@@ -1363,7 +1360,9 @@ void AEnemyBase::SetBurnVisualActive(const bool bActive)
 
 void AEnemyBase::ShowDamageOutline()
 {
-	if (IsRunningDedicatedServer() || (bStoneVisualActive && !bApplyDamageOverlayWhileStone))
+	if (IsRunningDedicatedServer()
+		|| (bStoneVisualActive
+			&& (!bApplyDamageOverlayWhileStone || !bShowDamageOutlineWhileStone)))
 	{
 		return;
 	}
