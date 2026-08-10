@@ -32,11 +32,15 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Profile")
 	FOnUnlockedEquipmentChanged OnUnlockedEquipmentChanged;
 	
+	// 전체 장비 조회 (Trap, Weapon, Item)
+	UFUNCTION(BlueprintCallable, Category = "Profile")
+	TArray<UEquipmentData*> GetAllEquipmentData() const;
+	
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<UProfileSaveGame> CurrentProfile;
 	
 	void CreateNewProfile();
-	void InitializeDefaultUnlocks();
+	void InitializeDefaultUnlocks(); // 기본 해금 장비
 	bool SaveProfile();
 };

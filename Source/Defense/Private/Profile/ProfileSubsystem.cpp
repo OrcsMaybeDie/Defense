@@ -76,6 +76,33 @@ bool UProfileSubsystem::UnlockEquipment(const UEquipmentData* EquipmentData)
 	return false;
 }
 
+TArray<UEquipmentData*> UProfileSubsystem::GetAllEquipmentData() const
+{
+	TArray<UEquipmentData*> AllEquipmentData;
+	
+	UAssetManager& AssetManager = UAssetManager::Get();
+	
+	for (const FPrimaryAssetType& AssetType : EquipmentAssetTypes)
+	{
+		TArray<FPrimaryAssetId> AssetIds;
+		AssetManager.GetPrimaryAssetIdList(AssetType, AssetIds);
+		
+		for (const FPrimaryAssetId& AssetId : AssetIds)
+		{
+			const FSoftObjectPath AssetPath = AssetManager.GetPrimaryAssetPath(AssetId);
+			
+			UEquipmentData* EquipmentData = Cast<UEquipmentData>(AssetPath.TryLoad());
+		
+			if (EquipmentData)
+			{
+				AllEquipmentData.AddUnique(EquipmentData);
+			}
+		}
+	}
+	
+	return AllEquipmentData;
+}
+
 void UProfileSubsystem::CreateNewProfile()
 {
 	CurrentProfile = Cast<UProfileSaveGame>(
@@ -100,23 +127,13 @@ void UProfileSubsystem::InitializeDefaultUnlocks()
 	
 	CurrentProfile->UnlockedEquipmentIds.Reset();
 	
-	UAssetManager& AssetManager = UAssetManager::Get();
-	
-	for (const FPrimaryAssetType& AssetType : EquipmentAssetTypes)
+	// 전체 장비 조회
+	for (const UEquipmentData* EquipmentData : GetAllEquipmentData())
 	{
-		TArray<FPrimaryAssetId> AssetIds;
-		AssetManager.GetPrimaryAssetIdList(AssetType, AssetIds);
-		
-		for (const FPrimaryAssetId& AssetId : AssetIds)
+		if (EquipmentData && EquipmentData->bUnlockedByDefault)
 		{
-			const FSoftObjectPath AssetPath = AssetManager.GetPrimaryAssetPath(AssetId);
-			const UEquipmentData* EquipmentData = Cast<UEquipmentData>(AssetPath.TryLoad());
-			
-			if (EquipmentData && EquipmentData->bUnlockedByDefault)
-			{
-				CurrentProfile->UnlockedEquipmentIds.AddUnique(AssetId);
-			}
-
+			// 기본 해금 장비
+			CurrentProfile->UnlockedEquipmentIds.AddUnique(EquipmentData->GetPrimaryAssetId());
 		}
 	}
 }
