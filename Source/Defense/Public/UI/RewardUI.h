@@ -4,20 +4,20 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "EnemyHPUI.generated.h"
+#include "RewardUI.generated.h"
 
 /**
  * 
  */
 UCLASS()
-class DEFENSE_API UEnemyHPUI : public UUserWidget
+class DEFENSE_API URewardUI : public UUserWidget
 {
 	GENERATED_BODY()
-	
+
 public:
 	UPROPERTY(meta=(BindWidget))
-	TObjectPtr<class UProgressBar> HPBar;
-	
-	void UpdateHPBar(float Cur, float Max);
-	
+	TObjectPtr<class UTextBlock> RewardText;
+
+	UFUNCTION(BlueprintCallable, Category="Reward")
+	void SetRewardAmount(int32 RewardAmount);
 };

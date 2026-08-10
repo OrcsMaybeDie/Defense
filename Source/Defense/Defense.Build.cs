@@ -23,6 +23,7 @@ public class Defense : ModuleRules
 			"UMG",
 			"Slate",
 			"GameplayTags",
+			"Niagara",
 			"SlateCore"
 		});
 

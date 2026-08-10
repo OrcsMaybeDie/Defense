@@ -5,22 +5,28 @@
 
 #include "Characters/Enemy/EnemyAnim.h"
 #include "Characters/Enemy/Data/EnemyData.h"
-// #include "DrawDebugHelpers.h"
+#include "NiagaraComponent.h"
+#include "DrawDebugHelpers.h"
 #include "Engine/OverlapResult.h"
 #include "Traps/Barricade.h"
 #include "Traps/TrapBase.h"
 
-/*namespace
+namespace
 {
 	constexpr float DestroySearchDebugTime = 1.0f;
 	constexpr int32 DestroySearchDebugSegments = 24;
-}*/
+}
 
 // Sets default values
 AEnemyDestroy::AEnemyDestroy()
 {
 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+
+	DestroyEffectComponent = CreateDefaultSubobject<UNiagaraComponent>(TEXT("DestroyEffectComponent"));
+	DestroyEffectComponent->SetupAttachment(RootComponent);
+	DestroyEffectComponent->SetAutoActivate(false);
+	DestroyEffectComponent->SetAutoDestroy(false);
 }
 
 // Called when the game starts or when spawned
@@ -60,6 +66,11 @@ void AEnemyDestroy::SetInactive()
 	Super::SetInactive();
 	ClearDestroyTryTimer();
 	TargetTraps.Empty();
+
+	if (DestroyEffectComponent)
+	{
+		DestroyEffectComponent->DeactivateImmediate();
+	}
 }
 
 void AEnemyDestroy::OnEnteredPatrol()
@@ -98,6 +109,22 @@ void AEnemyDestroy::MulticastRPC_DestroyMotion_Implementation()
 	{
 		AnimInst->PlayDestroyMotion();
 	}
+}
+
+void AEnemyDestroy::MulticastRPC_PlayDestroyEffect_Implementation(
+	const FVector EffectLocation,
+	const float EffectRadius
+)
+{
+	if (IsRunningDedicatedServer() || !DestroyEffectComponent || !DestroyEffectComponent->GetAsset())
+	{
+		return;
+	}
+
+	DestroyEffectComponent->DeactivateImmediate();
+	DestroyEffectComponent->SetWorldLocation(EffectLocation);
+	DestroyEffectComponent->SetVariableFloat(DestroyRadiusParameterName, EffectRadius);
+	DestroyEffectComponent->Activate(true);
 }
 
 bool AEnemyDestroy::CanTryDestroy() const
@@ -147,7 +174,10 @@ bool AEnemyDestroy::TryFindDestroyTarget()
 
 	if (!bHasOverlap)
 	{
-		//Multicast_DrawDestroySearchDebug(SearchCenter, DestroyRadius, false);
+		if (bDrawDestroySearchDebug)
+		{
+			Multicast_DrawDestroySearchDebug(SearchCenter, DestroyRadius, false);
+		}
 		return false;
 	}
 
@@ -162,12 +192,15 @@ bool AEnemyDestroy::TryFindDestroyTarget()
 		TargetTraps.AddUnique(FoundTrap);
 	}
 
-	//Multicast_DrawDestroySearchDebug(SearchCenter, DestroyRadius, !TargetTraps.IsEmpty());
+	if (bDrawDestroySearchDebug)
+	{
+		Multicast_DrawDestroySearchDebug(SearchCenter, DestroyRadius, !TargetTraps.IsEmpty());
+	}
 
 	return !TargetTraps.IsEmpty();
 }
 
-/*void AEnemyDestroy::Multicast_DrawDestroySearchDebug_Implementation(FVector SearchCenter, float SearchRadius, bool bFoundTrap)
+void AEnemyDestroy::Multicast_DrawDestroySearchDebug_Implementation(FVector SearchCenter, float SearchRadius, bool bFoundTrap)
 {
 	if (UWorld* World = GetWorld())
 	{
@@ -183,7 +216,7 @@ bool AEnemyDestroy::TryFindDestroyTarget()
 			2.f
 		);
 	}
-}*/
+}
 
 void AEnemyDestroy::DestroyTargetTrap()
 {
@@ -191,6 +224,16 @@ void AEnemyDestroy::DestroyTargetTrap()
 	{
 		return;
 	}
+
+	// 모션 시작 후 이동했을 수 있으므로 실제 타격 시점의 위치에서 파괴 대상을 다시 찾는다.
+	if (!TryFindDestroyTarget())
+	{
+		return;
+	}
+
+	const FVector SearchCenter = GetActorLocation()
+		+ GetActorTransform().TransformVectorNoScale(DestroySearchOffset);
+	MulticastRPC_PlayDestroyEffect(SearchCenter, DestroyRadius);
 
 	for (AActor* TargetTrap : TargetTraps)
 	{

@@ -6,25 +6,32 @@
 #include "Animation/AnimMontage.h"
 #include "StateTreeEvents.h"
 #include "Characters/Enemy/EnemyAnim.h"
+#include "Characters/Enemy/BurnDamageType.h"
 #include "Characters/Enemy/AI/EnemyController.h"
 #include "Characters/Enemy/Data/EnemyData.h"
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
 #include "Characters/Player/DefenseCharacter.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/TextBlock.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Characters/Enemy/StoneFractureActor.h"
 #include "Components/StateTreeAIComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Engine/DamageEvents.h"
 #include "GameFramework/PlayerController.h"
 #include "GameManager/DefenseGameMode.h"
 #include "GameManager/DestinationActor.h"
 #include "Kismet/GameplayStatics.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
 #include "Traps/Barricade.h"
 #include "Traps/BarricadeTrap.h"
 #include "UI/EnemyHPUI.h"
+#include "UI/RewardUI.h"
+#include "Blueprint/UserWidget.h"
 
 namespace
 {
@@ -79,6 +86,16 @@ AEnemyBase::AEnemyBase()
 	
 	HpComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("HpComp"));
 	HpComp->SetupAttachment(RootComponent);
+
+	RewardPopupAnchor = CreateDefaultSubobject<USceneComponent>(TEXT("RewardPopupAnchor"));
+	RewardPopupAnchor->SetupAttachment(RootComponent);
+	RewardPopupAnchor->SetRelativeLocation(FVector(0.f, 0.f, 150.f));
+
+	RewardComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("RewardComp"));
+	RewardComp->SetupAttachment(RewardPopupAnchor);
+	RewardComp->SetWidgetSpace(EWidgetSpace::Screen);
+	RewardComp->SetDrawAtDesiredSize(true);
+	RewardComp->SetVisibility(false);
 }
 
 // Called when the game starts or when spawned
@@ -87,10 +104,13 @@ void AEnemyBase::BeginPlay()
 	Super::BeginPlay();
 	ApplyEnemyData();
 	HpComp->SetVisibility(false);
+	RewardPopupInitialRelativeLocation = RewardComp->GetRelativeLocation();
+	ResetRewardPopup();
 	EnemyController = Cast<AEnemyController>(GetController());
 	AnimInst = Cast<UEnemyAnim>(GetMesh()->GetAnimInstance());
 	EnemyMesh = GetMesh();
 	CurHP = MaxHP;
+	InitializeDamageOverlay();
 	
 	// 서버에서만 AIPerception이 동작하도록 / 클라이언트에서는 비활성화하고 HPUI 정의
 	if (!HasAuthority())
@@ -115,6 +135,11 @@ void AEnemyBase::BeginPlay()
 
 void AEnemyBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ClearBurnTimers();
+	ClearDamageOutline();
+	SetBurnVisualActive(false);
+	RestoreDamageOverlay();
+
 	if (UWorld* World = GetWorld())
 	{
 		if (UEnemyPoolSubsystem* EnemyPool = World->GetSubsystem<UEnemyPoolSubsystem>())
@@ -279,6 +304,7 @@ bool AEnemyBase::TryMarkDeathTaskStarted(const EEnemyPendingDeathType DeathType)
 void AEnemyBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	UpdateRewardPopup(DeltaTime);
 
 	if (!IsRunningDedicatedServer() && bPendingLocomotionResume)
 	{
@@ -324,6 +350,7 @@ void AEnemyBase::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& Out
 	DOREPLIFETIME(AEnemyBase, EnemyState);
 	DOREPLIFETIME(AEnemyBase, EnemyMode);
 	DOREPLIFETIME(AEnemyBase, CurHP);
+	DOREPLIFETIME(AEnemyBase, bIsBurning);
 	
 	
 }
@@ -370,6 +397,15 @@ void AEnemyBase::SetEnemyMode(const EEnemyMode NewMode)
 
 void AEnemyBase::SetPreview()
 {
+	ResetRewardPopup();
+	ClearDamageOutline();
+
+	if (HasAuthority())
+	{
+		EndBurnEffect();
+	}
+	SetBurnVisualActive(false);
+
 	ResetStoneVisual();
 
 	if (!EnemyMesh)
@@ -514,6 +550,15 @@ void AEnemyBase::SetCombat()
 
 void AEnemyBase::SetInactive()
 {
+	ResetRewardPopup();
+	ClearDamageOutline();
+
+	if (HasAuthority())
+	{
+		EndBurnEffect();
+	}
+	SetBurnVisualActive(false);
+
 	ResetStoneVisual();
 
 	//UE_LOG(LogTemp, Warning, TEXT("Enemy SetInactive | Enemy=%s Mode=%s(%d) NetMode=%d HasAuthority=%d"),
@@ -657,6 +702,29 @@ void AEnemyBase::MulticastRPC_DamageMotion_Implementation()
 	}
 }
 
+void AEnemyBase::MulticastRPC_BurnReaction_Implementation()
+{
+	if (IsRunningDedicatedServer() || bStoneVisualActive)
+	{
+		return;
+	}
+
+	if (!AnimInst)
+	{
+		AnimInst = Cast<UEnemyAnim>(GetMesh() ? GetMesh()->GetAnimInstance() : nullptr);
+	}
+
+	if (AnimInst)
+	{
+		AnimInst->PlayBurnReactionMotion();
+	}
+}
+
+void AEnemyBase::MulticastRPC_ShowDamageOutline_Implementation()
+{
+	ShowDamageOutline();
+}
+
 void AEnemyBase::MulticastRPC_DieMotion_Implementation()
 {
 	// 데디 서버에서는 리턴
@@ -732,7 +800,6 @@ void AEnemyBase::MulticastRPC_StoneDieVisual_Implementation()
 		}
 	}
 
-	// 에셋이나 매핑이 빠진 경우에는 기존 석화 포즈를 남겨 디버깅할 수 있게 한다.
 	if (bFractureActivated && SkeletalMesh)
 	{
 		SkeletalMesh->SetVisibility(false, true);
@@ -742,6 +809,74 @@ void AEnemyBase::MulticastRPC_StoneDieVisual_Implementation()
 		HpComp->SetVisibility(false);
 	}
 	bHpUIVisible = false;
+}
+
+void AEnemyBase::MulticastRPC_ShowRewardPopup_Implementation()
+{
+	ShowRewardPopup();
+}
+
+void AEnemyBase::ShowRewardPopup()
+{
+	if (IsRunningDedicatedServer() || !RewardComp)
+	{
+		return;
+	}
+
+	RewardComp->InitWidget();
+	UUserWidget* RewardWidget = RewardComp->GetWidget();
+	RewardUI = Cast<URewardUI>(RewardWidget);
+	if (RewardUI)
+	{
+		RewardUI->SetRewardAmount(KillCoinReward);
+	}
+	else if (RewardWidget)
+	{
+		// WBP_RewardUI가 아직 URewardUI를 부모로 사용하지 않아도 이름으로 연결한다.
+		if (UTextBlock* RewardText = Cast<UTextBlock>(RewardWidget->GetWidgetFromName(TEXT("RewardText"))))
+		{
+			RewardText->SetText(FText::AsNumber(KillCoinReward));
+		}
+	}
+
+	RewardPopupElapsedTime = 0.f;
+	bRewardPopupPlaying = true;
+	RewardComp->SetRelativeLocation(RewardPopupInitialRelativeLocation);
+	RewardComp->SetVisibility(true);
+}
+
+void AEnemyBase::UpdateRewardPopup(const float DeltaTime)
+{
+	if (!bRewardPopupPlaying || !RewardComp || IsRunningDedicatedServer())
+	{
+		return;
+	}
+
+	RewardPopupElapsedTime += DeltaTime;
+	const float Duration = FMath::Max(RewardPopupDuration, UE_KINDA_SMALL_NUMBER);
+	const float Alpha = FMath::Clamp(RewardPopupElapsedTime / Duration, 0.f, 1.f);
+	const float EasedAlpha = FMath::InterpEaseOut(0.f, 1.f, Alpha, 2.f);
+	RewardComp->SetRelativeLocation(
+		RewardPopupInitialRelativeLocation + FVector(0.f, 0.f, RewardPopupRiseHeight * EasedAlpha)
+	);
+
+	if (Alpha >= 1.f)
+	{
+		ResetRewardPopup();
+	}
+}
+
+void AEnemyBase::ResetRewardPopup()
+{
+	bRewardPopupPlaying = false;
+	RewardPopupElapsedTime = 0.f;
+	RewardUI = nullptr;
+
+	if (RewardComp)
+	{
+		RewardComp->SetRelativeLocation(RewardPopupInitialRelativeLocation);
+		RewardComp->SetVisibility(false);
+	}
 }
 
 void AEnemyBase::PrepareForRegularAnimation()
@@ -799,6 +934,7 @@ void AEnemyBase::EnterStoneVisual()
 	bPendingLocomotionResume = false;
 	LocomotionResumeWaitTime = 0.f;
 	bStoneVisualActive = true;
+	UpdateDamageOverlayForStoneState();
 	SkeletalMesh->bPauseAnims = true;
 }
 
@@ -817,6 +953,7 @@ void AEnemyBase::ExitStoneVisual(const bool bResumeMontage, const bool bWaitForM
 
 	RestoreMaterialsBeforeStone();
 	bStoneVisualActive = false;
+	UpdateDamageOverlayForStoneState();
 
 	if (bWaitForMovement)
 	{
@@ -876,6 +1013,7 @@ void AEnemyBase::ResetStoneVisual()
 
 	RestoreMaterialsBeforeStone();
 	bStoneVisualActive = false;
+	UpdateDamageOverlayForStoneState();
 	bPendingLocomotionResume = false;
 	LocomotionResumeWaitTime = 0.f;
 
@@ -967,6 +1105,8 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	}
 
 	CurHP = FMath::Max(0.f, CurHP - ActualDamage);
+	const UClass* DamageTypeClass = DamageEvent.DamageTypeClass.Get();
+	const bool bIsBurnDamage = DamageTypeClass && DamageTypeClass->IsChildOf(UBurnDamageType::StaticClass());
 
 	/*ADefenseCharacter* AttackingCharacter = Cast<ADefenseCharacter>(DamageCauser);
 	if (!AttackingCharacter && EventInstigator)
@@ -981,6 +1121,7 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	
 	if (CurHP <= 0.0f)
 	{
+		EndBurnEffect();
 		bDeathHandled = true;
 		bDeathTaskStarted = false;
 		PendingDeathType = EnemyState == EEnemyState::Stone
@@ -991,6 +1132,7 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		{
 			GameMode->AwardEnemyKillCoin(this, DamageCauser, EventInstigator);
 		}
+		MulticastRPC_ShowRewardPopup();
 		
 		// 재화 얻어지나 테스트--------------------
 		/*if (APawn* CauserPawn = Cast<APawn>(DamageCauser))
@@ -1009,8 +1151,10 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		RetryPendingDeathTransition();
 		bHpUIVisible = false;
 	}
-	else if (EnemyState != EEnemyState::Stone)
+	else if (!bIsBurnDamage && EnemyState != EEnemyState::Stone)
 	{
+		MulticastRPC_ShowDamageOutline();
+
 		if (EnemyState == EEnemyState::StoneEnd)
 		{
 			ClearSuspendedAction();
@@ -1020,5 +1164,290 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	}
 
 	return ActualDamage;
+}
+
+void AEnemyBase::ApplyBurnEffect(
+	const float Duration,
+	const float DamageInterval,
+	const float DamagePerTick,
+	AActor* DamageCauser
+)
+{
+	if (!HasAuthority()
+		|| EnemyMode != EEnemyMode::Combat
+		|| bDeathHandled
+		|| EnemyState == EEnemyState::Stone
+		|| EnemyState == EEnemyState::StoneDie
+		|| EnemyState == EEnemyState::Die
+		|| Duration <= 0.f
+		|| DamageInterval <= 0.f
+		|| DamagePerTick <= 0.f)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const bool bWasBurning = bIsBurning;
+	BurnDamagePerTick = DamagePerTick;
+	BurnEndTime = World->GetTimeSeconds() + Duration;
+	BurnDamageCauser = DamageCauser;
+	BurnEventInstigator = DamageCauser ? DamageCauser->GetInstigatorController() : nullptr;
+
+	if (!bWasBurning)
+	{
+		bIsBurning = true;
+		OnRep_IsBurning();
+	}
+
+	FTimerManager& TimerManager = World->GetTimerManager();
+	if (!TimerManager.IsTimerActive(BurnDamageTimerHandle)
+		|| !FMath::IsNearlyEqual(TimerManager.GetTimerRate(BurnDamageTimerHandle), DamageInterval))
+	{
+		TimerManager.SetTimer(
+			BurnDamageTimerHandle,
+			this,
+			&AEnemyBase::ApplyBurnDamageTick,
+			DamageInterval,
+			true,
+			DamageInterval
+		);
+	}
+
+	TimerManager.SetTimer(
+		BurnEndTimerHandle,
+		this,
+		&AEnemyBase::EndBurnEffect,
+		Duration,
+		false
+	);
+
+	// 첫 진입은 즉시 반응하고, 재진입은 지속시간만 갱신해 경계 중첩 피해를 막는다.
+	if (!bWasBurning)
+	{
+		ApplyBurnDamageTick();
+	}
+}
+
+void AEnemyBase::ApplyBurnDamageTick()
+{
+	if (!HasAuthority() || !bIsBurning || EnemyMode != EEnemyMode::Combat || bDeathHandled)
+	{
+		EndBurnEffect();
+		return;
+	}
+
+	if (const UWorld* World = GetWorld(); !World || World->GetTimeSeconds() >= BurnEndTime)
+	{
+		EndBurnEffect();
+		return;
+	}
+
+	AActor* DamageCauser = BurnDamageCauser.Get();
+	AController* EventInstigator = BurnEventInstigator.Get();
+	const float ActualDamage = UGameplayStatics::ApplyDamage(
+		this,
+		BurnDamagePerTick,
+		EventInstigator,
+		DamageCauser,
+		UBurnDamageType::StaticClass()
+	);
+
+	if (ActualDamage > 0.f && !bDeathHandled)
+	{
+		MulticastRPC_BurnReaction();
+	}
+}
+
+void AEnemyBase::EndBurnEffect()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	ClearBurnTimers();
+	BurnDamagePerTick = 0.f;
+	BurnEndTime = 0.f;
+	BurnDamageCauser.Reset();
+	BurnEventInstigator.Reset();
+
+	if (bIsBurning)
+	{
+		bIsBurning = false;
+		OnRep_IsBurning();
+	}
+}
+
+void AEnemyBase::ClearBurnTimers()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(BurnDamageTimerHandle);
+		World->GetTimerManager().ClearTimer(BurnEndTimerHandle);
+	}
+}
+
+void AEnemyBase::OnRep_IsBurning()
+{
+	SetBurnVisualActive(bIsBurning);
+}
+
+void AEnemyBase::InitializeDamageOverlay()
+{
+	if (IsRunningDedicatedServer() || (bStoneVisualActive && !bApplyDamageOverlayWhileStone))
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	if (!SkeletalMesh || !DamageOverlayMaterial)
+	{
+		return;
+	}
+
+	if (!DamageOverlayMID)
+	{
+		DamageOverlayMID = UMaterialInstanceDynamic::Create(DamageOverlayMaterial, this);
+		if (!DamageOverlayMID)
+		{
+			return;
+		}
+
+		DamageOverlayMID->SetScalarParameterValue(TEXT("BurnAmount"), bIsBurning ? 1.f : 0.f);
+		DamageOverlayMID->SetScalarParameterValue(TEXT("OutlineAmount"), 0.f);
+		DamageOverlayMID->SetVectorParameterValue(TEXT("BurnColor"), BurnColor);
+		DamageOverlayMID->SetScalarParameterValue(TEXT("BurnSpeed"), BurnPulseSpeed);
+	}
+
+	if (SkeletalMesh->GetOverlayMaterial() != DamageOverlayMID)
+	{
+		OverlayMaterialBeforeDamage = SkeletalMesh->GetOverlayMaterial();
+		SkeletalMesh->SetOverlayMaterial(DamageOverlayMID);
+	}
+}
+
+void AEnemyBase::SetBurnVisualActive(const bool bActive)
+{
+	if (IsRunningDedicatedServer())
+	{
+		return;
+	}
+
+	InitializeDamageOverlay();
+	if (DamageOverlayMID)
+	{
+		DamageOverlayMID->SetScalarParameterValue(TEXT("BurnAmount"), bActive ? 1.f : 0.f);
+		DamageOverlayMID->SetVectorParameterValue(TEXT("BurnColor"), BurnColor);
+		DamageOverlayMID->SetScalarParameterValue(TEXT("BurnSpeed"), BurnPulseSpeed);
+	}
+
+	if (bActive)
+	{
+		return;
+	}
+
+	if (!AnimInst)
+	{
+		AnimInst = Cast<UEnemyAnim>(GetMesh() ? GetMesh()->GetAnimInstance() : nullptr);
+	}
+	if (AnimInst)
+	{
+		AnimInst->StopBurnReactionMotion();
+	}
+}
+
+void AEnemyBase::ShowDamageOutline()
+{
+	if (IsRunningDedicatedServer() || (bStoneVisualActive && !bApplyDamageOverlayWhileStone))
+	{
+		return;
+	}
+
+	InitializeDamageOverlay();
+
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	UWorld* World = GetWorld();
+	if (!DamageOverlayMID || !SkeletalMesh || !World)
+	{
+		return;
+	}
+
+	if (!bDamageOutlineActive)
+	{
+		bRenderCustomDepthBeforeDamageOutline = SkeletalMesh->bRenderCustomDepth;
+	}
+	bDamageOutlineActive = true;
+	SkeletalMesh->SetRenderCustomDepth(true);
+	DamageOverlayMID->SetScalarParameterValue(TEXT("OutlineAmount"), 1.f);
+
+	World->GetTimerManager().SetTimer(
+		DamageOutlineTimerHandle,
+		this,
+		&AEnemyBase::ClearDamageOutline,
+		FMath::Max(DamageOutlineDuration, UE_KINDA_SMALL_NUMBER),
+		false
+	);
+}
+
+void AEnemyBase::ClearDamageOutline()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(DamageOutlineTimerHandle);
+	}
+
+	if (DamageOverlayMID)
+	{
+		DamageOverlayMID->SetScalarParameterValue(TEXT("OutlineAmount"), 0.f);
+	}
+
+	if (bDamageOutlineActive)
+	{
+		if (USkeletalMeshComponent* SkeletalMesh = GetMesh())
+		{
+			SkeletalMesh->SetRenderCustomDepth(bRenderCustomDepthBeforeDamageOutline);
+		}
+	}
+
+	bDamageOutlineActive = false;
+	bRenderCustomDepthBeforeDamageOutline = false;
+}
+
+void AEnemyBase::UpdateDamageOverlayForStoneState()
+{
+	if (IsRunningDedicatedServer())
+	{
+		return;
+	}
+
+	if (!bStoneVisualActive || bApplyDamageOverlayWhileStone)
+	{
+		InitializeDamageOverlay();
+		return;
+	}
+
+	ClearDamageOutline();
+	if (USkeletalMeshComponent* SkeletalMesh = GetMesh();
+		SkeletalMesh && SkeletalMesh->GetOverlayMaterial() == DamageOverlayMID)
+	{
+		SkeletalMesh->SetOverlayMaterial(OverlayMaterialBeforeDamage);
+	}
+}
+
+void AEnemyBase::RestoreDamageOverlay()
+{
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	if (SkeletalMesh && SkeletalMesh->GetOverlayMaterial() == DamageOverlayMID)
+	{
+		SkeletalMesh->SetOverlayMaterial(OverlayMaterialBeforeDamage);
+	}
+
+	OverlayMaterialBeforeDamage = nullptr;
+	DamageOverlayMID = nullptr;
 }
 

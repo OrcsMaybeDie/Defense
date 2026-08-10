@@ -31,6 +31,22 @@ void UEnemyAnim::PlayDieMotion()
 	Montage_Play(DieMontage);
 }
 
+void UEnemyAnim::PlayBurnReactionMotion()
+{
+	if (BurnReactionMontage && !Montage_IsPlaying(BurnReactionMontage))
+	{
+		Montage_Play(BurnReactionMontage);
+	}
+}
+
+void UEnemyAnim::StopBurnReactionMotion(const float BlendOutTime)
+{
+	if (BurnReactionMontage && Montage_IsActive(BurnReactionMontage))
+	{
+		Montage_Stop(BlendOutTime, BurnReactionMontage);
+	}
+}
+
 void UEnemyAnim::AnimNotify_Hit()
 {
 	// Damage is applied by the authoritative attack StateTree task.

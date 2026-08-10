@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "TimerManager.h"
 #include "EnemyBase.generated.h"
 
 enum class EEnemyType : uint8;
@@ -91,6 +92,12 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="Components")
 	TObjectPtr<class UWidgetComponent> HpComp;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	TObjectPtr<class USceneComponent> RewardPopupAnchor;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	TObjectPtr<class UWidgetComponent> RewardComp;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Data")
 	TObjectPtr<class UEnemyData> EnemyData;
 
@@ -145,6 +152,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Stone")
 	TObjectPtr<class UMaterialInterface> StoneMaterial;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Stone|Visual")
+	bool bApplyDamageOverlayWhileStone = true;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Stone|Fracture")
 	TSubclassOf<class AStoneFractureActor> StoneFractureActorClass;
 	
@@ -180,6 +190,9 @@ public:
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastRPC_StoneDieVisual();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRPC_ShowRewardPopup();
 	
 	// UI 업데이트
 	UFUNCTION()
@@ -196,11 +209,42 @@ public:
 	
 	// 플레이어가 한 공격 받기
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
+	// 화염 함정의 단일 진입점. 재호출 시 중첩하지 않고 수치와 지속시간을 갱신한다.
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="Enemy|Burn")
+	void ApplyBurnEffect(float Duration, float DamageInterval, float DamagePerTick, AActor* DamageCauser);
+
+	UPROPERTY(ReplicatedUsing=OnRep_IsBurning, VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Burn")
+	bool bIsBurning = false;
+
+	// 일반 피격 Outline과 Burn을 함께 구현한 통합 Overlay Material을 지정한다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Damage|Visual")
+	TObjectPtr<class UMaterialInterface> DamageOverlayMaterial;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Damage|Visual", meta=(ClampMin="0.01", Units="s"))
+	float DamageOutlineDuration = 0.15f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Damage|Visual|Burn")
+	FLinearColor BurnColor = FLinearColor(1.f, 0.02f, 0.01f, 1.f);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Damage|Visual|Burn", meta=(ClampMin="0.0"))
+	float BurnPulseSpeed = 6.f;
 	
 	// Data Asset에서 가져옴.
 	int32 KillCoinReward = 100;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Reward Popup", meta=(ClampMin="0.01", Units="s"))
+	float RewardPopupDuration = 1.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Reward Popup", meta=(ClampMin="0.0", Units="cm"))
+	float RewardPopupRiseHeight = 50.f;
+
 	float PreviewMoveSpeed = 200.f;
 	float CombatMoveSpeed = 600.f;
+
+	// 지정된 적만 별도의 경로 탐색 규칙을 사용한다. 비어 있으면 AIController 기본 필터를 사용한다.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TSubclassOf<class UNavigationQueryFilter> NavigationFilterClass;
 
 	// StateTree 조건과 실제 공격 판정에서 사용할 공격 거리
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Attack")
@@ -255,5 +299,55 @@ private:
 	void ExitStoneVisual(bool bResumeMontage, bool bWaitForMovement);
 	void RestoreMaterialsBeforeStone();
 	void ResetStoneVisual();
+	void ShowRewardPopup();
+	void UpdateRewardPopup(float DeltaTime);
+	void ResetRewardPopup();
+
+	UFUNCTION()
+	void OnRep_IsBurning();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastRPC_BurnReaction();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastRPC_ShowDamageOutline();
+
+	void ApplyBurnDamageTick();
+	void EndBurnEffect();
+	void InitializeDamageOverlay();
+	void SetBurnVisualActive(bool bActive);
+	void ShowDamageOutline();
+	void ClearDamageOutline();
+	void UpdateDamageOverlayForStoneState();
+	void RestoreDamageOverlay();
+	void ClearBurnTimers();
+
+	FTimerHandle BurnDamageTimerHandle;
+	FTimerHandle BurnEndTimerHandle;
+	FTimerHandle DamageOutlineTimerHandle;
+	float BurnDamagePerTick = 0.f;
+	float BurnEndTime = 0.f;
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<AActor> BurnDamageCauser;
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<class AController> BurnEventInstigator;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UMaterialInstanceDynamic> DamageOverlayMID;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UMaterialInterface> OverlayMaterialBeforeDamage;
+
+	bool bDamageOutlineActive = false;
+	bool bRenderCustomDepthBeforeDamageOutline = false;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class URewardUI> RewardUI;
+
+	FVector RewardPopupInitialRelativeLocation = FVector::ZeroVector;
+	float RewardPopupElapsedTime = 0.f;
+	bool bRewardPopupPlaying = false;
 
 };
