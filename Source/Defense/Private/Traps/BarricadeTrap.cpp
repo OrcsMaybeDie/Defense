@@ -6,6 +6,7 @@
 #include "Characters/Enemy/Data/EnemyData.h"
 #include "Characters/Enemy/EnemyAttack.h"
 #include "Characters/Enemy/EnemyBase.h"
+#include "Characters/Player/DefenseCharacter.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/WidgetComponent.h"
@@ -77,6 +78,11 @@ float ABarricadeTrap::TakeDamage(
 	AActor* DamageCauser
 )
 {
+	if (IsValid(Cast<ADefenseCharacter>(DamageCauser)))
+	{
+		return 0.0f;
+	}
+
 	if (!HasAuthority() || !IsPlaced() || DamageAmount <= 0.0f || HP <= 0.0f)
 	{
 		return 0.0f;
