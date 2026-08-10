@@ -10,7 +10,6 @@
 class ATrapBase;
 class USceneComponent;
 class UTrapData;
-enum class ETrapGridSurface : uint8;
 
 
 UCLASS()
@@ -23,6 +22,19 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap Grid")
 	TObjectPtr<USceneComponent> SceneRoot;
+
+	/* Region Bake */
+	UFUNCTION(CallInEditor, Category="Trap Grid|Region")
+	void BuildRegions();
+
+	UFUNCTION(CallInEditor, Category="Trap Grid|Region")
+	void ValidateRegions();
+
+	UFUNCTION(CallInEditor, Category="Trap Grid|Region")
+	void ClearRegions();
+
+	UFUNCTION(BlueprintPure, Category="Trap Grid|Region")
+	int32 GetBakedRegionCount() const { return BakedRegions.Num(); }
 
 	/* World Location ↔ Cell 변환 */
 	FTrapCellKey WorldToCellKey(const FVector& WorldLocation,
@@ -92,6 +104,18 @@ protected:
 	// 모든 설치면이 공유하는 Snap 간격
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid", meta=(ClampMin="1.0"))
 	float CellSize = 100.f;
+
+	// Editor에서 생성한 연결 설치 영역
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Trap Grid|Region")
+	TArray<FTrapGridRegion> BakedRegions;
+
+	// 서로 맞닿은 Surface로 판단할 최대 간격
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid|Region", meta=(ClampMin="0.0"))
+	float RegionConnectionTolerance = 2.f;
+
+	// 점 접촉만으로 Region이 합쳐지는 것을 막는 최소 접촉 길이
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid|Region", meta=(ClampMin="0.0"))
+	float RegionMinimumContactLength = 1.f;
 
 	// Collision 검사 결과 캐시. 두 Set에 모두 없으면 아직 검사하지 않은 Cell
 	TSet<FTrapCellKey> ValidCells;

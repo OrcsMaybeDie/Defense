@@ -2,16 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Equipment/EquipmentData.h"
+#include "Traps/Grid/TrapGridTypes.h"
 #include "TrapData.generated.h"
 
 class ATrapBase;
-UENUM(BlueprintType)
-enum class ETrapGridSurface : uint8
-{
-	Floor,
-	Wall,
-	Ceiling
-};
 
 UCLASS(BlueprintType)
 class DEFENSE_API UTrapData : public UEquipmentData
