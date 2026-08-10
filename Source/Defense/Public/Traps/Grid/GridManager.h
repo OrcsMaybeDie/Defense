@@ -36,6 +36,52 @@ public:
 	UFUNCTION(BlueprintPure, Category="Trap Grid|Region")
 	int32 GetBakedRegionCount() const { return BakedRegions.Num(); }
 
+	const FTrapGridRegion* FindRegionById(const FGuid& RegionId) const;
+
+	bool TryGetRegionForHit(
+		const FHitResult& Hit,
+		const FTrapGridRegion*& OutRegion
+	) const;
+
+	FVector2D WorldToRegionLocal(
+		const FTrapGridRegion& Region,
+		const FVector& WorldLocation
+	) const;
+
+	FVector RegionLocalToWorld(
+		const FTrapGridRegion& Region,
+		const FVector2D& LocalLocation,
+		float NormalOffset = 0.f
+	) const;
+
+	FIntPoint WorldToRegionCell(
+		const FTrapGridRegion& Region,
+		const FVector& WorldLocation
+	) const;
+
+	FVector RegionCellToWorldCenter(
+		const FTrapGridRegion& Region,
+		const FIntPoint& Cell
+	) const;
+
+	FIntPoint WorldToRegionAnchorCell(
+		const FTrapGridRegion& Region,
+		const FVector& WorldLocation,
+		const FIntPoint& FootprintCells
+	) const;
+
+	FVector GetRegionFootprintCenter(
+		const FTrapGridRegion& Region,
+		const FIntPoint& AnchorCell,
+		const FIntPoint& FootprintCells
+	) const;
+
+	FTransform GetRegionFootprintTransform(
+		const FTrapGridRegion& Region,
+		const FIntPoint& AnchorCell,
+		const FIntPoint& FootprintCells
+	) const;
+
 	/* World Location ↔ Cell 변환 */
 	FTrapCellKey WorldToCellKey(const FVector& WorldLocation,
 		ETrapPlaneAxis PlaneAxis,

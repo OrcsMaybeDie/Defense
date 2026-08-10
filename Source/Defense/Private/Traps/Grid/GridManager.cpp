@@ -577,6 +577,163 @@ void AGridManager::ClearRegions()
 #endif
 }
 
+const FTrapGridRegion* AGridManager::FindRegionById(const FGuid& RegionId) const
+{
+	if (!RegionId.IsValid())
+	{
+		return nullptr;
+	}
+
+	return BakedRegions.FindByPredicate([&RegionId](const FTrapGridRegion& Region)
+	{
+		return Region.RegionId == RegionId;
+	});
+}
+
+bool AGridManager::TryGetRegionForHit(
+	const FHitResult& Hit,
+	const FTrapGridRegion*& OutRegion
+) const
+{
+	OutRegion = nullptr;
+
+	const UPrimitiveComponent* HitComponent = Hit.GetComponent();
+	if (!Hit.bBlockingHit || !HitComponent)
+	{
+		return false;
+	}
+
+	const FVector HitNormal = Hit.ImpactNormal.GetSafeNormal();
+	for (const FTrapGridRegion& Region : BakedRegions)
+	{
+		if (!Region.SourceComponents.Contains(HitComponent)
+			|| FVector::DotProduct(HitNormal, Region.Normal) < AxisAlignedThreshold
+			|| !IsPlaceableHit(Hit, Region.SurfaceType))
+		{
+			continue;
+		}
+
+		const FVector RelativeLocation = Hit.ImpactPoint - Region.Origin;
+		const float PlaneDistance = FMath::Abs(FVector::DotProduct(RelativeLocation, Region.Normal));
+		const FVector2D LocalLocation = WorldToRegionLocal(Region, Hit.ImpactPoint);
+		if (PlaneDistance > SurfacePlaneTolerance
+			|| LocalLocation.X < -RegionConnectionTolerance
+			|| LocalLocation.Y < -RegionConnectionTolerance
+			|| LocalLocation.X > Region.Size.X + RegionConnectionTolerance
+			|| LocalLocation.Y > Region.Size.Y + RegionConnectionTolerance)
+		{
+			continue;
+		}
+
+		OutRegion = &Region;
+		return true;
+	}
+
+	return false;
+}
+
+FVector2D AGridManager::WorldToRegionLocal(
+	const FTrapGridRegion& Region,
+	const FVector& WorldLocation
+) const
+{
+	const FVector RelativeLocation = WorldLocation - Region.Origin;
+	return FVector2D(
+		FVector::DotProduct(RelativeLocation, Region.AxisU),
+		FVector::DotProduct(RelativeLocation, Region.AxisV)
+	);
+}
+
+FVector AGridManager::RegionLocalToWorld(
+	const FTrapGridRegion& Region,
+	const FVector2D& LocalLocation,
+	float NormalOffset
+) const
+{
+	return Region.Origin
+		+ Region.AxisU * LocalLocation.X
+		+ Region.AxisV * LocalLocation.Y
+		+ Region.Normal * NormalOffset;
+}
+
+FIntPoint AGridManager::WorldToRegionCell(
+	const FTrapGridRegion& Region,
+	const FVector& WorldLocation
+) const
+{
+	const float SafeCellSize = FMath::Max(CellSize, 1.f);
+	const FVector2D LocalLocation = WorldToRegionLocal(Region, WorldLocation);
+
+	return FIntPoint(
+		FMath::FloorToInt(LocalLocation.X / SafeCellSize),
+		FMath::FloorToInt(LocalLocation.Y / SafeCellSize)
+	);
+}
+
+FVector AGridManager::RegionCellToWorldCenter(
+	const FTrapGridRegion& Region,
+	const FIntPoint& Cell
+) const
+{
+	const float SafeCellSize = FMath::Max(CellSize, 1.f);
+	return RegionLocalToWorld(
+		Region,
+		FVector2D(
+			(Cell.X + 0.5f) * SafeCellSize,
+			(Cell.Y + 0.5f) * SafeCellSize
+		)
+	);
+}
+
+FIntPoint AGridManager::WorldToRegionAnchorCell(
+	const FTrapGridRegion& Region,
+	const FVector& WorldLocation,
+	const FIntPoint& FootprintCells
+) const
+{
+	const float SafeCellSize = FMath::Max(CellSize, 1.f);
+	const FVector2D LocalLocation = WorldToRegionLocal(Region, WorldLocation);
+
+	return FIntPoint(
+		FMath::RoundToInt(LocalLocation.X / SafeCellSize - static_cast<float>(FootprintCells.X) * 0.5f),
+		FMath::RoundToInt(LocalLocation.Y / SafeCellSize - static_cast<float>(FootprintCells.Y) * 0.5f)
+	);
+}
+
+FVector AGridManager::GetRegionFootprintCenter(
+	const FTrapGridRegion& Region,
+	const FIntPoint& AnchorCell,
+	const FIntPoint& FootprintCells
+) const
+{
+	const float SafeCellSize = FMath::Max(CellSize, 1.f);
+	return RegionLocalToWorld(
+		Region,
+		FVector2D(
+			(AnchorCell.X + static_cast<float>(FootprintCells.X) * 0.5f) * SafeCellSize,
+			(AnchorCell.Y + static_cast<float>(FootprintCells.Y) * 0.5f) * SafeCellSize
+		)
+	);
+}
+
+FTransform AGridManager::GetRegionFootprintTransform(
+	const FTrapGridRegion& Region,
+	const FIntPoint& AnchorCell,
+	const FIntPoint& FootprintCells
+) const
+{
+	const FQuat Rotation = FRotationMatrix::MakeFromXZ(
+		Region.AxisU,
+		Region.Normal
+	).ToQuat();
+
+	return FTransform(
+		Rotation,
+		GetRegionFootprintCenter(Region, AnchorCell, FootprintCells),
+		FVector::OneVector
+	);
+}
+
 FTrapCellKey AGridManager::WorldToCellKey(
 	const FVector& WorldLocation,
 	ETrapPlaneAxis PlaneAxis,
