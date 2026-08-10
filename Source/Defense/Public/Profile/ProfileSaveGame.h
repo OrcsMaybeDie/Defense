@@ -16,6 +16,11 @@ public:
 	UPROPERTY(SaveGame)
 	int32 SaveVersion = 1;
 	
+	// 해금된 장비 목록
 	UPROPERTY(SaveGame)
 	TArray<FPrimaryAssetId> UnlockedEquipmentIds;
+	
+	// 배열 인덱스 = 퀵슬롯 인덱스
+	UPROPERTY(SaveGame)
+	TArray<FPrimaryAssetId> EquippedEquipmentIds;
 };
