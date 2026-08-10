@@ -15,11 +15,15 @@ public class Defense : ModuleRules
 			"InputCore",
 			"EnhancedInput",
 			"AIModule",
+			"NavigationSystem",
 			"StateTreeModule",
 			"GameplayStateTreeModule",
+			"GeometryCollectionEngine",
+			"FieldSystemEngine",
 			"UMG",
 			"Slate",
 			"GameplayTags",
+			"Niagara",
 			"SlateCore"
 		});
 

@@ -29,6 +29,7 @@ EStateTreeRunStatus FEnemyPatrolTask::EnterState(FStateTreeExecutionContext& Con
 	}
 
 	AIEnemy->EnemyState = EEnemyState::Patrol;
+	AIEnemy->OnEnteredPatrol();
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPatrolTask EnterState | Enemy=%s Location=%s"),
 		//*GetNameSafe(AIEnemy),
 		//*AIEnemy->GetActorLocation().ToString());
@@ -174,7 +175,11 @@ void FEnemyPatrolTask::MoveToCurrentWaypoint(TWeakObjectPtr<AEnemyController> We
 		InstanceData->bMovingToDestination = true;
 		const EPathFollowingRequestResult::Type MoveResult = AIController->MoveToActor(
 			DestinationActor,
-			InstanceData->DestinationAcceptanceRadius
+			InstanceData->DestinationAcceptanceRadius,
+			true,
+			true,
+			true,
+			AIEnemy->NavigationFilterClass
 		);
 
 		if (MoveResult == EPathFollowingRequestResult::Failed)
@@ -204,7 +209,12 @@ void FEnemyPatrolTask::MoveToCurrentWaypoint(TWeakObjectPtr<AEnemyController> We
 
 	const EPathFollowingRequestResult::Type MoveResult = AIController->MoveToLocation(
 		Waypoints[InstanceData->CurrentWaypointIndex],
-		InstanceData->AcceptanceRadius
+		InstanceData->AcceptanceRadius,
+		true,
+		true,
+		false,
+		true,
+		AIEnemy ? AIEnemy->NavigationFilterClass : nullptr
 	);
 
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPatrolTask MoveTo waypoint result | Result=%d"), static_cast<int32>(MoveResult));

@@ -16,6 +16,9 @@ struct FEnemyDestroyTaskInstanceData : public FEnemyBaseTaskInstanceData
 	UPROPERTY(EditAnywhere, Category = "Parameter")
 	float DestroyDuration = 1.2f;
 
+	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float DestroyHitTimeRatio = 0.5f;
+
 	UPROPERTY()
 	TObjectPtr<AEnemyDestroy> CachedEnemy = nullptr;
 

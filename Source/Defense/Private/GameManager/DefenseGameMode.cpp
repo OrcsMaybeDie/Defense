@@ -24,6 +24,8 @@
 
 namespace
 {
+	constexpr int32 MaxPlayablePlayers = 3;
+
 	const TCHAR* LexToString(const EEnemyRemoveReason Reason)
 	{
 		switch (Reason)
@@ -228,8 +230,6 @@ void ADefenseGameMode::ResetAllPlayersReady()
 
 bool ADefenseGameMode::AreAllActivePlayersDead() const
 {
-	int32 ActivePlayerCount = 0;
-
 	for (FConstPlayerControllerIterator It =
 		GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
@@ -243,16 +243,13 @@ bool ADefenseGameMode::AreAllActivePlayersDead() const
 			continue;
 		}
 
-		++ActivePlayerCount;
-
 		UStatusComponent* StatusComp = Character->GetStatusComp();
 		if (!StatusComp || StatusComp->IsAlive())
 		{
 			return false;
 		}
 	}
-
-	return ActivePlayerCount >= 2;
+	return true;
 }
 
 void ADefenseGameMode::NotifyPlayerDied(ADefenseCharacter* DeadCharacter)
@@ -413,7 +410,7 @@ void ADefenseGameMode::HandleReturnToIntroMapRequested(APlayerController* Reques
 	}
 
 	ADefensePlayerState* HostPlayerState = nullptr;
-	ADefensePlayerState* GuestPlayerState = nullptr;
+	TArray<APlayerState*> GuestPlayerStates;
 	if (GameState)
 	{
 		for (APlayerState* PlayerState : GameState->PlayerArray)
@@ -426,7 +423,7 @@ void ADefenseGameMode::HandleReturnToIntroMapRequested(APlayerController* Reques
 				}
 				else if (DefensePlayerState->IsGuest())
 				{
-					GuestPlayerState = DefensePlayerState;
+					GuestPlayerStates.Add(DefensePlayerState);
 				}
 			}
 		}
@@ -434,7 +431,7 @@ void ADefenseGameMode::HandleReturnToIntroMapRequested(APlayerController* Reques
 
 	if (UDefenseGameInstance* MutableDefenseGameInstance = GetGameInstance<UDefenseGameInstance>())
 	{
-		MutableDefenseGameInstance->SaveIntroPlayerRoles(HostPlayerState, GuestPlayerState);
+		MutableDefenseGameInstance->SaveIntroPlayerRoles(HostPlayerState, GuestPlayerStates);
 	}
 
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -501,14 +498,17 @@ void ADefenseGameMode::AssignGameRole(APlayerController* NewPlayer)
 	}
 
 	bool bHasHost = false;
-	int32 PlayerCount = 0;
+	int32 PlayablePlayerCount = 0;
 	if (GameState)
 	{
 		for (APlayerState* PlayerState : GameState->PlayerArray)
 		{
 			if (const ADefensePlayerState* ExistingDefensePlayerState = Cast<ADefensePlayerState>(PlayerState))
 			{
-				++PlayerCount;
+				if (ExistingDefensePlayerState->GetGameRole() != EDefensePlayerRole::Spectator)
+				{
+					++PlayablePlayerCount;
+				}
 				bHasHost |= ExistingDefensePlayerState->IsHost();
 			}
 		}
@@ -520,7 +520,10 @@ void ADefenseGameMode::AssignGameRole(APlayerController* NewPlayer)
 		return;
 	}
 
-	DefensePlayerState->SetGameRole(PlayerCount <= 2 ? EDefensePlayerRole::Guest : EDefensePlayerRole::Spectator);
+	DefensePlayerState->SetGameRole(
+		PlayablePlayerCount <= MaxPlayablePlayers
+			? EDefensePlayerRole::Guest
+			: EDefensePlayerRole::Spectator);
 }
 
 bool ADefenseGameMode::ShouldSpawnSpectatorController() const
@@ -530,13 +533,32 @@ bool ADefenseGameMode::ShouldSpawnSpectatorController() const
 		return false;
 	}
 
-	if (GameState && GameState->PlayerArray.Num() >= 2)
+	int32 PlayablePlayerCount = 0;
+	if (GameState)
+	{
+		for (const APlayerState* PlayerState : GameState->PlayerArray)
+		{
+			const ADefensePlayerState* DefensePlayerState = Cast<ADefensePlayerState>(PlayerState);
+			if (DefensePlayerState && DefensePlayerState->GetGameRole() != EDefensePlayerRole::Spectator)
+			{
+				++PlayablePlayerCount;
+			}
+		}
+	}
+
+	if (PlayablePlayerCount >= MaxPlayablePlayers)
 	{
 		return true;
 	}
 
 	const UDefenseGameInstance* DefenseGameInstance = GetGameInstance<UDefenseGameInstance>();
-	return !DefenseGameInstance || !DefenseGameInstance->HasSavedGuestPlayerId();
+	if (!DefenseGameInstance)
+	{
+		return true;
+	}
+
+	const int32 SavedPlayablePlayerCount = DefenseGameInstance->GetSavedPlayablePlayerCount();
+	return SavedPlayablePlayerCount <= 0 || PlayablePlayerCount >= SavedPlayablePlayerCount;
 }
 
 void ADefenseGameMode::PromoteRemainingGuestToHost()

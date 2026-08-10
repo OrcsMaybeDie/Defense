@@ -126,7 +126,7 @@ public:
 	void InitializePreviewTrap(UTrapData* TrapData);
 
 	void InitializePlacedTrap(UTrapData* TrapData, ADefensePlayerState* InInstalledByPlayerState);
-	void InitializePlacedTrap(
+	virtual void InitializePlacedTrap(
 		UTrapData* TrapData,
 		ADefensePlayerState* InInstalledByPlayerState,
 		const TArray<FTrapCellKey>& InOccupiedCells

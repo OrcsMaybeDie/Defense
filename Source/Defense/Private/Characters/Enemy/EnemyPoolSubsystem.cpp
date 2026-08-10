@@ -4,19 +4,59 @@
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
 
 #include "Characters/Enemy/EnemyBase.h"
+#include "Characters/Enemy/EnemyAttack.h"
+#include "Characters/Enemy/StoneFractureActor.h"
 #include "Characters/Enemy/AI/EnemyController.h"
 #include "Characters/Enemy/Data/WaveData.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/World.h"
 #include "GameManager/DefenseGameInstance.h"
 #include "GameManager/Data/MapConfigData.h"
+
+void UEnemyPoolSubsystem::RegisterEnemy(AEnemyBase* Enemy)
+{
+	if (!IsValid(Enemy))
+	{
+		return;
+	}
+
+	const TWeakObjectPtr<AEnemyBase> EnemyKey(Enemy);
+	if (AllEnemies.Contains(EnemyKey))
+	{
+		return;
+	}
+
+	AllEnemies.Add(EnemyKey);
+	OnEnemyRegistered.Broadcast(Enemy);
+}
+
+void UEnemyPoolSubsystem::UnregisterEnemy(AEnemyBase* Enemy)
+{
+	if (!Enemy)
+	{
+		return;
+	}
+
+	if (AllEnemies.Remove(TWeakObjectPtr<AEnemyBase>(Enemy)) > 0)
+	{
+		OnEnemyUnregistered.Broadcast(Enemy);
+	}
+}
+
+void UEnemyPoolSubsystem::NotifyEnemyModeChanged(AEnemyBase* Enemy)
+{
+	if (!IsValid(Enemy))
+	{
+		return;
+	}
+
+	RegisterEnemy(Enemy);
+	OnEnemyModeChanged.Broadcast(Enemy);
+}
 
 void UEnemyPoolSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
-
-	if (bIsPoolInitialized || !InWorld.GetAuthGameMode())
-	{
-		return;
-	}
 
 	const UDefenseGameInstance* DefenseGameInstance = InWorld.GetGameInstance<UDefenseGameInstance>();
 	const UMapConfigData* SelectedMapConfigData = DefenseGameInstance
@@ -25,12 +65,21 @@ void UEnemyPoolSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 	if (!SelectedMapConfigData)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Pool] Missing MapConfigData"));
+		//UE_LOG(LogTemp, Error, TEXT("[Pool] Missing MapConfigData"));
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[Pool] Init from WaveData: %s"), *GetNameSafe(SelectedMapConfigData->WaveData));
-	InitPoolFromWaveData(SelectedMapConfigData->WaveData);
+	UWaveData* WaveData = SelectedMapConfigData->WaveData;
+	if (InWorld.GetNetMode() != NM_DedicatedServer)
+	{
+		InitStoneFracturePoolsFromWaveData(WaveData);
+	}
+
+	if (InWorld.GetAuthGameMode())
+	{
+		//UE_LOG(LogTemp, Warning, TEXT("[Pool] Init from WaveData: %s"), *GetNameSafe(WaveData));
+		InitPoolFromWaveData(WaveData);
+	}
 }
 
 void UEnemyPoolSubsystem::InitPool(TSubclassOf<AEnemyBase> factory, int32 initSize)
@@ -48,7 +97,7 @@ void UEnemyPoolSubsystem::InitPoolFromWaveData(UWaveData* WaveData)
 	TMap<TSubclassOf<AEnemyBase>, int32> RequiredPoolCounts;
 	WaveData->BuildRequiredPoolCounts(RequiredPoolCounts);
 
-	UE_LOG(LogTemp, Warning, TEXT("[Pool] Classes=%d Extra=%d"), RequiredPoolCounts.Num(), WaveData->ExtraPoolCount);
+	//UE_LOG(LogTemp, Warning, TEXT("[Pool] Classes=%d Extra=%d"), RequiredPoolCounts.Num(), WaveData->ExtraPoolCount);
 
 	for (const TPair<TSubclassOf<AEnemyBase>, int32>& RequiredPoolCount : RequiredPoolCounts)
 	{
@@ -73,7 +122,7 @@ void UEnemyPoolSubsystem::InitPool(TSubclassOf<AEnemyBase> factory, int32 initSi
 		return;
 	}
 	
-	if (nullptr == factory || 0 == initSize)
+	if (nullptr == factory || initSize <= 0)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("EnemyPool InitPool skipped | Factory=%s InitSize=%d"),
 			//*GetNameSafe(factory),
@@ -87,14 +136,27 @@ void UEnemyPoolSubsystem::InitPool(TSubclassOf<AEnemyBase> factory, int32 initSi
 	
 	for (int32 i = 0; i < initSize; i++)
 	{
-		if(AEnemyBase* enemy = World->SpawnActor<AEnemyBase>(factory, initLocation, initRotation))
+		AEnemyBase* enemy = World->SpawnActor<AEnemyBase>(factory, initLocation, initRotation);
+		if (!enemy)
+		{
+			// 초기 생성이 실패하면 해당 슬롯에 대해 한 번 더 생성한다.
+			enemy = World->SpawnActor<AEnemyBase>(factory, initLocation, initRotation);
+		}
+
+		if (enemy)
 		{
 			//UE_LOG(LogTemp, Warning, TEXT("EnemyPool InitPool spawned | Enemy=%s Index=%d"),
 				//*GetNameSafe(enemy),
 				//i);
 			ReturnToPool(enemy);
 		}
-		
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("EnemyPool InitPool failed after retry | Factory=%s Index=%d/%d"),
+				*GetNameSafe(factory),
+				i + 1,
+				initSize);
+		}
 	}
 }
 
@@ -133,8 +195,10 @@ TObjectPtr<AEnemyBase> UEnemyPoolSubsystem::SpawnFromPool(TSubclassOf<AEnemyBase
 			return nullptr;
 		}
 
-		// 풀이 비어있으면 새로 생성해서 반환
-		enemy = World->SpawnActor<AEnemyBase>(factory, FVector::ZeroVector, FRotator::ZeroRotator);
+		// 풀이 비어있으면 실제 스폰 위치에 충돌 여부와 관계없이 새로 생성해서 반환
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		enemy = World->SpawnActor<AEnemyBase>(factory, location, rotation, SpawnParams);
 		//UE_LOG(LogTemp, Warning, TEXT("EnemyPool SpawnFromPool created new | Enemy=%s Location=%s"),
 			//*GetNameSafe(enemy),
 			//*location.ToString());
@@ -148,13 +212,17 @@ TObjectPtr<AEnemyBase> UEnemyPoolSubsystem::SpawnFromPool(TSubclassOf<AEnemyBase
 	}
 	enemy->SetActorLocationAndRotation(location, rotation);
 	enemy->EnemyState = EEnemyState::Idle;
-	enemy->Target = nullptr;
-	enemy->EnemyMode = EEnemyMode::Preview;
+	enemy->SetTarget(nullptr);
+	if (AEnemyAttack* AttackEnemy = Cast<AEnemyAttack>(enemy))
+	{
+		AttackEnemy->bLockedTarget = false;
+	}
 	enemy->CurHP = enemy->MaxHP;
+	enemy->ResetStoneStateForPool();
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPool SpawnFromPool set mode | Enemy=%s EnemyMode=Preview HasAuthority=%d"),
 		//*GetNameSafe(enemy),
 		//enemy->HasAuthority() ? 1 : 0);
-	enemy->SetPreview();
+	enemy->SetEnemyMode(EEnemyMode::Preview);
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPool SpawnFromPool activated | Enemy=%s Mode=Preview Location=%s Controller=%s"),
 		//*GetNameSafe(enemy),
 		//*enemy->GetActorLocation().ToString(),
@@ -187,7 +255,6 @@ void UEnemyPoolSubsystem::ReturnToPool(TObjectPtr<AEnemyBase> enemy)
 	enemy->SetActorLocationAndRotation(FVector(0,0,-1000), FRotator::ZeroRotator);
 	enemy->MulticastRPC_StopAllMontages();
 	enemy->bHpUIVisible = false;
-	enemy->EnemyMode = EEnemyMode::Inactive;
 	enemy->OwningSpawner = nullptr;
 	if (AEnemyController* EnemyController = Cast<AEnemyController>(enemy->GetController()))
 	{
@@ -196,23 +263,126 @@ void UEnemyPoolSubsystem::ReturnToPool(TObjectPtr<AEnemyBase> enemy)
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPool ReturnToPool set mode | Enemy=%s EnemyMode=Inactive HasAuthority=%d"),
 		//*GetNameSafe(enemy),
 		//enemy->HasAuthority() ? 1 : 0);
-	enemy->SetInactive();
+	enemy->SetEnemyMode(EEnemyMode::Inactive);
 	Pool.PooledEnemies.Add(enemy);
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPool ReturnToPool | Enemy=%s PoolSize=%d"),
 		//*GetNameSafe(enemy),
 		//Pool.PooledEnemies.Num());
 }
 
-void UEnemyPoolSubsystem::Deinitialize()
+void UEnemyPoolSubsystem::InitStoneFracturePoolsFromWaveData(UWaveData* WaveData)
 {
-	UWorld* World = GetWorld();
-
-	if (!World || !World->GetAuthGameMode())
+	if (!WaveData || bIsStoneFracturePoolInitialized)
 	{
 		return;
 	}
-	
+
+	for (const FStoneFracturePoolConfig& PoolConfig : WaveData->StoneFracturePools)
+	{
+		InitStoneFracturePool(PoolConfig.ActorClass, PoolConfig.InitialSize);
+	}
+
+	bIsStoneFracturePoolInitialized = true;
+}
+
+void UEnemyPoolSubsystem::InitStoneFracturePool(const TSubclassOf<AStoneFractureActor> Factory, const int32 InitialSize)
+{
+	UWorld* World = GetWorld();
+	if (!World || World->GetNetMode() == NM_DedicatedServer || !Factory || InitialSize <= 0)
+	{
+		return;
+	}
+
+	int32& CreatedCount = StoneFractureCreatedCounts.FindOrAdd(Factory);
+	FPooledStoneFractureArray& Pool = StoneFracturePools.FindOrAdd(Factory);
+	while (CreatedCount < InitialSize)
+	{
+		AStoneFractureActor* FractureActor = World->SpawnActor<AStoneFractureActor>(
+			Factory,
+			FVector(0.f, 0.f, -100000.f),
+			FRotator::ZeroRotator);
+		if (!FractureActor)
+		{
+			break;
+		}
+
+		FractureActor->DeactivateToPool();
+		Pool.PooledActors.Add(FractureActor);
+		++CreatedCount;
+	}
+}
+
+AStoneFractureActor* UEnemyPoolSubsystem::SpawnStoneFractureFromPool(
+	const TSubclassOf<AStoneFractureActor> Factory,
+	USkeletalMeshComponent* SourceMesh,
+	const bool bAllowCreateNew)
+{
+	UWorld* World = GetWorld();
+	if (!World || World->GetNetMode() == NM_DedicatedServer || !Factory || !IsValid(SourceMesh))
+	{
+		return nullptr;
+	}
+
+	FPooledStoneFractureArray& Pool = StoneFracturePools.FindOrAdd(Factory);
+	AStoneFractureActor* FractureActor = nullptr;
+	while (Pool.PooledActors.Num() > 0 && !IsValid(FractureActor))
+	{
+		FractureActor = Pool.PooledActors.Pop();
+	}
+
+	if (!FractureActor && bAllowCreateNew)
+	{
+		FractureActor = World->SpawnActor<AStoneFractureActor>(
+			Factory,
+			FVector(0.f, 0.f, -100000.f),
+			FRotator::ZeroRotator);
+		if (FractureActor)
+		{
+			++StoneFractureCreatedCounts.FindOrAdd(Factory);
+		}
+	}
+
+	if (!FractureActor)
+	{
+		return nullptr;
+	}
+
+	if (!FractureActor->ActivateFromSkeletalMesh(SourceMesh))
+	{
+		ReturnStoneFractureToPool(FractureActor);
+		return nullptr;
+	}
+
+	return FractureActor;
+}
+
+void UEnemyPoolSubsystem::ReturnStoneFractureToPool(AStoneFractureActor* FractureActor)
+{
+	if (!IsValid(FractureActor))
+	{
+		return;
+	}
+
+	FPooledStoneFractureArray& Pool = StoneFracturePools.FindOrAdd(FractureActor->GetClass());
+	if (Pool.PooledActors.Contains(FractureActor))
+	{
+		return;
+	}
+
+	FractureActor->DeactivateToPool();
+	Pool.PooledActors.Add(FractureActor);
+}
+
+void UEnemyPoolSubsystem::Deinitialize()
+{
 	EnemyPools.Empty();
+	StoneFracturePools.Empty();
+	StoneFractureCreatedCounts.Empty();
+	AllEnemies.Empty();
+	OnEnemyRegistered.Clear();
+	OnEnemyUnregistered.Clear();
+	OnEnemyModeChanged.Clear();
 	bIsPoolInitialized = false;
+	bIsStoneFracturePoolInitialized = false;
 	Super::Deinitialize();
 }
