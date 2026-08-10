@@ -65,11 +65,7 @@ void AIntroGameMode::HandleGuestReadyChanged(AIntroPlayerState* ReadyPlayerState
 	}
 
 	ReadyPlayerState->SetReady(bReady);
-
-	if (AIntroGameState* IntroGameState = GetIntroGameState())
-	{
-		IntroGameState->SetGuestReady(bReady);
-	}
+	RefreshGuestReadyState();
 }
 
 void AIntroGameMode::HandleStartGameRequested(APlayerController* RequestingPlayer)
@@ -101,10 +97,13 @@ void AIntroGameMode::HandleStartGameRequested(APlayerController* RequestingPlaye
 		return;
 	}
 
-	DefenseGameInstance->SaveIntroPlayerRoles(
-		IntroGameState->GetHostPlayerState(),
-		IntroGameState->GetGuestPlayerState()
-	);
+	TArray<APlayerState*> GuestPlayerStates;
+	for (AIntroPlayerState* GuestPlayerState : IntroGameState->GetGuestPlayerStates())
+	{
+		GuestPlayerStates.Add(GuestPlayerState);
+	}
+
+	DefenseGameInstance->SaveIntroPlayerRoles(IntroGameState->GetHostPlayerState(), GuestPlayerStates);
 
 	PendingGameMapPackageName = GameMapPackageName;
 	ShowIntroLoadingForAllPlayers();
@@ -182,10 +181,13 @@ void AIntroGameMode::AssignIntroRole(APlayerController* NewPlayer)
 
 	if (DefenseGameInstance && DefenseGameInstance->IsSavedGuestPlayerState(NewPlayerState))
 	{
-		NewPlayerState->SetIntroRole(EIntroPlayerRole::Guest);
-		IntroGameState->SetGuestPlayerState(NewPlayerState);
-		IntroGameState->SetGuestReady(false);
-		return;
+		if (IntroGameState->GetGuestPlayerCount() < FMath::Max(0, MaxIntroPlayers - 1))
+		{
+			NewPlayerState->SetIntroRole(EIntroPlayerRole::Guest);
+			IntroGameState->AddGuestPlayerState(NewPlayerState);
+			RefreshGuestReadyState();
+			return;
+		}
 	}
 
 	if (!IntroGameState->GetHostPlayerState())
@@ -195,11 +197,11 @@ void AIntroGameMode::AssignIntroRole(APlayerController* NewPlayer)
 		return;
 	}
 
-	if (!IntroGameState->GetGuestPlayerState())
+	if (IntroGameState->GetGuestPlayerCount() < FMath::Max(0, MaxIntroPlayers - 1))
 	{
 		NewPlayerState->SetIntroRole(EIntroPlayerRole::Guest);
-		IntroGameState->SetGuestPlayerState(NewPlayerState);
-		IntroGameState->SetGuestReady(false);
+		IntroGameState->AddGuestPlayerState(NewPlayerState);
+		RefreshGuestReadyState();
 		return;
 	}
 
@@ -266,23 +268,23 @@ void AIntroGameMode::PromoteGuestToHost()
 		return;
 	}
 
+	IntroGameState->RemoveGuestPlayerState(GuestPlayerState);
 	GuestPlayerState->SetIntroRole(EIntroPlayerRole::Host);
 	GuestPlayerState->SetReady(false);
 	IntroGameState->SetHostPlayerState(GuestPlayerState);
-	IntroGameState->SetGuestPlayerState(nullptr);
-	IntroGameState->SetGuestReady(false);
+	RefreshGuestReadyState();
 }
 
 void AIntroGameMode::ClearGuest(AIntroPlayerState* GuestPlayerState)
 {
 	AIntroGameState* IntroGameState = GetIntroGameState();
-	if (!IntroGameState || IntroGameState->GetGuestPlayerState() != GuestPlayerState)
+	if (!IntroGameState || !GuestPlayerState)
 	{
 		return;
 	}
 
-	IntroGameState->SetGuestPlayerState(nullptr);
-	IntroGameState->SetGuestReady(false);
+	IntroGameState->RemoveGuestPlayerState(GuestPlayerState);
+	RefreshGuestReadyState();
 }
 
 void AIntroGameMode::RefreshIntroPlayerRefs(AIntroPlayerState* IgnoredPlayerState)
@@ -298,11 +300,35 @@ void AIntroGameMode::RefreshIntroPlayerRefs(AIntroPlayerState* IgnoredPlayerStat
 		IntroGameState->SetHostPlayerState(nullptr);
 	}
 
-	if (IntroGameState->GetGuestPlayerState() == IgnoredPlayerState)
+	if (IgnoredPlayerState)
 	{
-		IntroGameState->SetGuestPlayerState(nullptr);
-		IntroGameState->SetGuestReady(false);
+		IntroGameState->RemoveGuestPlayerState(IgnoredPlayerState);
 	}
+
+	RefreshGuestReadyState();
+}
+
+void AIntroGameMode::RefreshGuestReadyState()
+{
+	AIntroGameState* IntroGameState = GetIntroGameState();
+	if (!IntroGameState)
+	{
+		return;
+	}
+
+	const TArray<AIntroPlayerState*> GuestPlayerStates = IntroGameState->GetGuestPlayerStates();
+	bool bAllGuestsReady = !GuestPlayerStates.IsEmpty();
+
+	for (const AIntroPlayerState* GuestPlayerState : GuestPlayerStates)
+	{
+		if (!GuestPlayerState || !GuestPlayerState->IsReady())
+		{
+			bAllGuestsReady = false;
+			break;
+		}
+	}
+
+	IntroGameState->SetGuestReady(bAllGuestsReady);
 }
 
 void AIntroGameMode::ShowIntroLoadingForAllPlayers()

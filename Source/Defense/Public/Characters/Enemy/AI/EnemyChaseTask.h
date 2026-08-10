@@ -13,6 +13,9 @@ struct FEnemyChaseTaskInstanceData : public FEnemyBaseTaskInstanceData
 
 	UPROPERTY(EditAnywhere, Category = "Parameter")
 	float AcceptanceRadius = 50.f;
+
+	UPROPERTY()
+	TWeakObjectPtr<AActor> MoveTarget;
 };
 
 USTRUCT(meta = (DisplayName = "Enemy Chase", Category = "Enemy|AI"))

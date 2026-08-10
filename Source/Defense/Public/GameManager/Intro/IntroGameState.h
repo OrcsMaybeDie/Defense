@@ -25,7 +25,13 @@ public:
 	AIntroPlayerState* GetHostPlayerState() const { return HostPlayerState; }
 
 	UFUNCTION(BlueprintPure, Category="Intro|Players")
-	AIntroPlayerState* GetGuestPlayerState() const { return GuestPlayerState; }
+	AIntroPlayerState* GetGuestPlayerState() const;
+
+	UFUNCTION(BlueprintPure, Category="Intro|Players")
+	TArray<AIntroPlayerState*> GetGuestPlayerStates() const;
+
+	UFUNCTION(BlueprintPure, Category="Intro|Players")
+	int32 GetGuestPlayerCount() const { return GuestPlayerStates.Num(); }
 
 	UFUNCTION(BlueprintPure, Category="Intro|Ready")
 	bool IsGuestReady() const { return bGuestReady; }
@@ -40,7 +46,8 @@ public:
 	bool IsHostPlayerState(const APlayerState* PlayerState) const;
 
 	void SetHostPlayerState(AIntroPlayerState* NewHostPlayerState);
-	void SetGuestPlayerState(AIntroPlayerState* NewGuestPlayerState);
+	void AddGuestPlayerState(AIntroPlayerState* NewGuestPlayerState);
+	void RemoveGuestPlayerState(AIntroPlayerState* GuestPlayerStateToRemove);
 	void SetGuestReady(bool bNewGuestReady);
 	void SetSelectedMapConfigData(UMapConfigData* NewSelectedMapConfigData);
 
@@ -57,8 +64,8 @@ protected:
 	UPROPERTY(ReplicatedUsing=OnRep_HostPlayerState, BlueprintReadOnly, Category="Intro|Players")
 	TObjectPtr<AIntroPlayerState> HostPlayerState;
 
-	UPROPERTY(ReplicatedUsing=OnRep_GuestPlayerState, BlueprintReadOnly, Category="Intro|Players")
-	TObjectPtr<AIntroPlayerState> GuestPlayerState;
+	UPROPERTY(ReplicatedUsing=OnRep_GuestPlayerStates, BlueprintReadOnly, Category="Intro|Players")
+	TArray<TObjectPtr<AIntroPlayerState>> GuestPlayerStates;
 
 	UPROPERTY(ReplicatedUsing=OnRep_GuestReady, BlueprintReadOnly, Category="Intro|Ready")
 	bool bGuestReady = false;
@@ -70,7 +77,7 @@ protected:
 	void OnRep_HostPlayerState();
 
 	UFUNCTION()
-	void OnRep_GuestPlayerState();
+	void OnRep_GuestPlayerStates();
 
 	UFUNCTION()
 	void OnRep_GuestReady();

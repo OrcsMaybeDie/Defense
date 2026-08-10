@@ -6,6 +6,21 @@
 #include "Engine/DataAsset.h"
 #include "WaveData.generated.h"
 
+class AStoneFractureActor;
+
+USTRUCT(BlueprintType)
+struct FStoneFracturePoolConfig
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wave|Pool")
+	TSubclassOf<AStoneFractureActor> ActorClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wave|Pool", meta = (ClampMin = "0", UIMin = "0"))
+	int32 InitialSize = 0;
+};
+
 /**
  * 
  */
@@ -74,6 +89,9 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wave|Pool")
 	FRotator PoolInitRotator = FRotator::ZeroRotator;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wave|Pool")
+	TArray<FStoneFracturePoolConfig> StoneFracturePools;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wave")
 	TArray<FWaveInfo> Waves;

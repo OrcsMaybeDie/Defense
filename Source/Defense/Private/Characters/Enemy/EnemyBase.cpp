@@ -3,14 +3,18 @@
 
 #include "Characters/Enemy/EnemyBase.h"
 
+#include "Animation/AnimMontage.h"
 #include "StateTreeEvents.h"
 #include "Characters/Enemy/EnemyAnim.h"
 #include "Characters/Enemy/AI/EnemyController.h"
 #include "Characters/Enemy/Data/EnemyData.h"
+#include "Characters/Enemy/EnemyPoolSubsystem.h"
 #include "Characters/Player/DefenseCharacter.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Characters/Enemy/StoneFractureActor.h"
 #include "Components/StateTreeAIComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -18,10 +22,14 @@
 #include "GameManager/DestinationActor.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
+#include "Traps/Barricade.h"
+#include "Traps/BarricadeTrap.h"
 #include "UI/EnemyHPUI.h"
 
 namespace
 {
+	constexpr ECollisionChannel BarricadeCollisionChannel = ECC_GameTraceChannel3;
+
 	const TCHAR* LexToString(const EEnemyMode Mode)
 	{
 		switch (Mode)
@@ -98,7 +106,24 @@ void AEnemyBase::BeginPlay()
 	UGameplayStatics::GetActorOfClass(GetWorld(), ADestinationActor::StaticClass())
 );
 	}
-	
+
+	if (UEnemyPoolSubsystem* EnemyPool = GetWorld()->GetSubsystem<UEnemyPoolSubsystem>())
+	{
+		EnemyPool->RegisterEnemy(this);
+	}
+}
+
+void AEnemyBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (UEnemyPoolSubsystem* EnemyPool = World->GetSubsystem<UEnemyPoolSubsystem>())
+		{
+			EnemyPool->UnregisterEnemy(this);
+		}
+	}
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void AEnemyBase::ApplyEnemyData()
@@ -114,10 +139,159 @@ void AEnemyBase::ApplyEnemyData()
 	CombatMoveSpeed = EnemyData->CombatMoveSpeed;
 }
 
+void AEnemyBase::SetTarget(AActor* NewTarget)
+{
+	Target = NewTarget;
+	CurrentAttackDist = IsValid(Target) && (Target->IsA<ABarricade>() || Target->IsA<ABarricadeTrap>())
+		? BarricadeAttackDist
+		: AttackDist;
+}
+
+void AEnemyBase::BeginTrackedAction(const EEnemyState ActionState, const float TotalDuration)
+{
+	TrackedActionData.Reset();
+	TrackedActionData.bIsValid = true;
+	TrackedActionData.ActionState = ActionState;
+	TrackedActionData.TotalDuration = FMath::Max(0.f, TotalDuration);
+	TrackedActionData.RemainingTime = TrackedActionData.TotalDuration;
+}
+
+void AEnemyBase::UpdateTrackedAction(const float ElapsedTime, const bool bActionTriggered)
+{
+	if (!TrackedActionData.bIsValid)
+	{
+		return;
+	}
+
+	TrackedActionData.ElapsedTime = FMath::Clamp(ElapsedTime, 0.f, TrackedActionData.TotalDuration);
+	TrackedActionData.RemainingTime = FMath::Max(0.f, TrackedActionData.TotalDuration - TrackedActionData.ElapsedTime);
+	TrackedActionData.bActionTriggered = bActionTriggered;
+}
+
+void AEnemyBase::CompleteTrackedAction()
+{
+	TrackedActionData.Reset();
+}
+
+void AEnemyBase::ClearSuspendedAction()
+{
+	SuspendedActionData.Reset();
+}
+
+bool AEnemyBase::TryEnterStone()
+{
+	if (!HasAuthority()
+		|| EnemyMode != EEnemyMode::Combat
+		|| bDeathHandled
+		|| EnemyState == EEnemyState::Stone
+		|| EnemyState == EEnemyState::StoneDie
+		|| EnemyState == EEnemyState::Die)
+	{
+		return false;
+	}
+
+	if (EnemyState != EEnemyState::StoneEnd || !SuspendedActionData.bIsValid)
+	{
+		const EEnemyState PreviousState = EnemyState;
+		SuspendedActionData.Reset();
+
+		if (TrackedActionData.bIsValid && TrackedActionData.ActionState == PreviousState)
+		{
+			SuspendedActionData = TrackedActionData;
+		}
+		else
+		{
+			SuspendedActionData.bIsValid = true;
+			SuspendedActionData.ActionState = PreviousState;
+		}
+	}
+
+	EnemyState = EEnemyState::Stone;
+	SendStateTreeEvent(TEXT("AI.Event.Stone"));
+	return true;
+}
+
+void AEnemyBase::BeginStoneGameplay()
+{
+	if (!HasAuthority() || bStoneGameplayActive)
+	{
+		return;
+	}
+
+	bStoneGameplayActive = true;
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementModeBeforeStone = MovementComponent->MovementMode;
+		MovementComponent->StopMovementImmediately();
+		MovementComponent->DisableMovement();
+	}
+
+	if (AController* EnemyAIController = GetController())
+	{
+		EnemyAIController->StopMovement();
+	}
+}
+
+void AEnemyBase::EndStoneGameplay()
+{
+	if (!HasAuthority() || !bStoneGameplayActive)
+	{
+		return;
+	}
+
+	bStoneGameplayActive = false;
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		const EMovementMode ResumeMode = MovementModeBeforeStone == MOVE_None
+			? MOVE_Walking
+			: static_cast<EMovementMode>(MovementModeBeforeStone.GetValue());
+		MovementComponent->SetMovementMode(ResumeMode);
+	}
+}
+
+void AEnemyBase::ResetStoneStateForPool()
+{
+	bDeathHandled = false;
+	bDeathTaskStarted = false;
+	PendingDeathType = EEnemyPendingDeathType::None;
+	LastDeathRetryTime = -BIG_NUMBER;
+	TrackedActionData.Reset();
+	SuspendedActionData.Reset();
+	EndStoneGameplay();
+}
+
+bool AEnemyBase::TryMarkDeathTaskStarted(const EEnemyPendingDeathType DeathType)
+{
+	if (!HasAuthority()
+		|| !bDeathHandled
+		|| bDeathTaskStarted
+		|| PendingDeathType != DeathType)
+	{
+		return false;
+	}
+
+	bDeathTaskStarted = true;
+	return true;
+}
+
 // Called every frame
 void AEnemyBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (!IsRunningDedicatedServer() && bPendingLocomotionResume)
+	{
+		LocomotionResumeWaitTime += DeltaTime;
+		if (GetVelocity().SizeSquared2D() > FMath::Square(5.f) || LocomotionResumeWaitTime >= 0.25f)
+		{
+			bPendingLocomotionResume = false;
+			LocomotionResumeWaitTime = 0.f;
+			if (USkeletalMeshComponent* SkeletalMesh = GetMesh())
+			{
+				SkeletalMesh->bPauseAnims = false;
+			}
+		}
+	}
 
 	// 서버에서는 UI가 클라이언트 방향으로 회전하는 것 제외
 	if (GetNetMode() == NM_DedicatedServer || !HpComp || !bHpUIVisible)
@@ -177,10 +351,26 @@ void AEnemyBase::OnRep_UpdateMode()
 	{
 		SetInactive();
 	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UEnemyPoolSubsystem* EnemyPool = World->GetSubsystem<UEnemyPoolSubsystem>())
+		{
+			EnemyPool->NotifyEnemyModeChanged(this);
+		}
+	}
+}
+
+void AEnemyBase::SetEnemyMode(const EEnemyMode NewMode)
+{
+	EnemyMode = NewMode;
+	OnRep_UpdateMode();
 }
 
 void AEnemyBase::SetPreview()
 {
+	ResetStoneVisual();
+
 	if (!EnemyMesh)
 	{
 		EnemyMesh = GetMesh();
@@ -244,6 +434,7 @@ void AEnemyBase::SetPreview()
 	{
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+		CapsuleComp->SetCollisionResponseToChannel(BarricadeCollisionChannel, ECR_Ignore);
 	}
 	
 	if (EnemyMesh)
@@ -258,6 +449,8 @@ void AEnemyBase::SetPreview()
 
 void AEnemyBase::SetCombat()
 {
+	ResetStoneVisual();
+
 	if (!EnemyMesh)
 	{
 		EnemyMesh = GetMesh();
@@ -307,11 +500,12 @@ void AEnemyBase::SetCombat()
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 		//CapsuleComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		CapsuleComp->SetCollisionResponseToChannel(BarricadeCollisionChannel, ECR_Block);
 	}
 	
 	if (EnemyMesh)
 	{
-		//EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		EnemyMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 		//EnemyMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 	}
 	
@@ -319,6 +513,8 @@ void AEnemyBase::SetCombat()
 
 void AEnemyBase::SetInactive()
 {
+	ResetStoneVisual();
+
 	//UE_LOG(LogTemp, Warning, TEXT("Enemy SetInactive | Enemy=%s Mode=%s(%d) NetMode=%d HasAuthority=%d"),
 		//*GetNameSafe(this),
 		//LexToString(EnemyMode),
@@ -370,6 +566,10 @@ void AEnemyBase::SetInactive()
 	}
 }
 
+void AEnemyBase::OnEnteredPatrol()
+{
+}
+
 // Gameplay Tag 이벤트 보내기
 void AEnemyBase::SendStateTreeEvent(FName EventTagName) const
 {
@@ -392,6 +592,55 @@ void AEnemyBase::SendStateTreeEvent(FName EventTagName) const
 	StateTreeAI->SendStateTreeEvent(Event);	
 }
 
+void AEnemyBase::RetryPendingDeathTransition()
+{
+	if (!HasAuthority()
+		|| EnemyMode != EEnemyMode::Combat
+		|| !bDeathHandled
+		|| bDeathTaskStarted
+		|| PendingDeathType == EEnemyPendingDeathType::None)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const float CurrentTime = World->GetTimeSeconds();
+	if (CurrentTime - LastDeathRetryTime < DeathRetryInterval)
+	{
+		return;
+	}
+	LastDeathRetryTime = CurrentTime;
+
+	if (!EnemyController)
+	{
+		EnemyController = Cast<AEnemyController>(GetController());
+	}
+	if (EnemyController && EnemyController->StateTreeAIComp)
+	{
+		if (!EnemyController->StateTreeAIComp->IsRunning())
+		{
+			EnemyController->StateTreeAIComp->StartLogic();
+		}
+		EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
+	}
+
+	if (PendingDeathType == EEnemyPendingDeathType::Stone)
+	{
+		EnemyState = EEnemyState::StoneDie;
+		SendStateTreeEvent(TEXT("AI.Event.StoneDie"));
+	}
+	else
+	{
+		EnemyState = EEnemyState::Die;
+		SendStateTreeEvent(TEXT("AI.Event.Die"));
+	}
+}
+
 void AEnemyBase::MulticastRPC_DamageMotion_Implementation()
 {
 	// 데디 서버에서는 리턴
@@ -399,7 +648,12 @@ void AEnemyBase::MulticastRPC_DamageMotion_Implementation()
 	{
 		return;
 	}
-	AnimInst->PlayDamageMotion();
+
+	PrepareForRegularAnimation();
+	if (AnimInst)
+	{
+		AnimInst->PlayDamageMotion();
+	}
 }
 
 void AEnemyBase::MulticastRPC_DieMotion_Implementation()
@@ -409,9 +663,17 @@ void AEnemyBase::MulticastRPC_DieMotion_Implementation()
 	{
 		return;
 	}
-	HpComp->SetVisibility(false);
+
+	PrepareForRegularAnimation();
+	if (HpComp)
+	{
+		HpComp->SetVisibility(false);
+	}
 	bHpUIVisible = false;
-	AnimInst->PlayDieMotion();
+	if (AnimInst)
+	{
+		AnimInst->PlayDieMotion();
+	}
 }
 
 void AEnemyBase::MulticastRPC_StopAllMontages_Implementation()
@@ -426,6 +688,209 @@ void AEnemyBase::MulticastRPC_StopAllMontages_Implementation()
 	{
 		AnimInst->Montage_Stop(0.f);
 	}
+
+	ResetStoneVisual();
+}
+
+void AEnemyBase::MulticastRPC_EnterStoneVisual_Implementation()
+{
+	EnterStoneVisual();
+}
+
+void AEnemyBase::MulticastRPC_ExitStoneVisual_Implementation(const bool bResumeMontage, const bool bWaitForMovement)
+{
+	ExitStoneVisual(bResumeMontage, bWaitForMovement);
+}
+
+void AEnemyBase::MulticastRPC_StoneDieVisual_Implementation()
+{
+	if (IsRunningDedicatedServer())
+	{
+		return;
+	}
+
+	bPendingLocomotionResume = false;
+	LocomotionResumeWaitTime = 0.f;
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	if (!bStoneVisualActive)
+	{
+		EnterStoneVisual();
+	}
+
+	bool bFractureActivated = false;
+	if (SkeletalMesh && StoneFractureActorClass)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			if (UEnemyPoolSubsystem* EnemyPool = World->GetSubsystem<UEnemyPoolSubsystem>())
+			{
+				bFractureActivated = EnemyPool->SpawnStoneFractureFromPool(
+					StoneFractureActorClass,
+					SkeletalMesh) != nullptr;
+			}
+		}
+	}
+
+	// 에셋이나 매핑이 빠진 경우에는 기존 석화 포즈를 남겨 디버깅할 수 있게 한다.
+	if (bFractureActivated && SkeletalMesh)
+	{
+		SkeletalMesh->SetVisibility(false, true);
+	}
+	if (HpComp)
+	{
+		HpComp->SetVisibility(false);
+	}
+	bHpUIVisible = false;
+}
+
+void AEnemyBase::PrepareForRegularAnimation()
+{
+	if (IsRunningDedicatedServer())
+	{
+		return;
+	}
+
+	ResetStoneVisual();
+}
+
+void AEnemyBase::EnterStoneVisual()
+{
+	if (IsRunningDedicatedServer() || bStoneVisualActive)
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	if (!SkeletalMesh)
+	{
+		return;
+	}
+
+	if (!AnimInst)
+	{
+		AnimInst = Cast<UEnemyAnim>(SkeletalMesh->GetAnimInstance());
+	}
+
+	MaterialsBeforeStone.Empty();
+	for (int32 MaterialIndex = 0; MaterialIndex < SkeletalMesh->GetNumMaterials(); ++MaterialIndex)
+	{
+		MaterialsBeforeStone.Add(SkeletalMesh->GetMaterial(MaterialIndex));
+		if (StoneMaterial)
+		{
+			SkeletalMesh->SetMaterial(MaterialIndex, StoneMaterial);
+		}
+	}
+
+	SuspendedMontage = nullptr;
+	SuspendedMontagePosition = 0.f;
+	SuspendedMontagePlayRate = 1.f;
+	if (AnimInst)
+	{
+		SuspendedMontage = AnimInst->GetCurrentActiveMontage();
+		if (SuspendedMontage)
+		{
+			SuspendedMontagePosition = AnimInst->Montage_GetPosition(SuspendedMontage);
+			SuspendedMontagePlayRate = AnimInst->Montage_GetPlayRate(SuspendedMontage);
+			AnimInst->Montage_Pause(SuspendedMontage);
+		}
+	}
+
+	bPendingLocomotionResume = false;
+	LocomotionResumeWaitTime = 0.f;
+	bStoneVisualActive = true;
+	SkeletalMesh->bPauseAnims = true;
+}
+
+void AEnemyBase::ExitStoneVisual(const bool bResumeMontage, const bool bWaitForMovement)
+{
+	if (IsRunningDedicatedServer())
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	if (!SkeletalMesh)
+	{
+		return;
+	}
+
+	RestoreMaterialsBeforeStone();
+	bStoneVisualActive = false;
+
+	if (bWaitForMovement)
+	{
+		if (AnimInst && SuspendedMontage)
+		{
+			AnimInst->Montage_Stop(0.f, SuspendedMontage);
+		}
+		SuspendedMontage = nullptr;
+		bPendingLocomotionResume = true;
+		LocomotionResumeWaitTime = 0.f;
+		return;
+	}
+
+	bPendingLocomotionResume = false;
+	LocomotionResumeWaitTime = 0.f;
+	SkeletalMesh->bPauseAnims = false;
+
+	if (AnimInst && SuspendedMontage)
+	{
+		if (bResumeMontage && AnimInst->Montage_IsActive(SuspendedMontage))
+		{
+			AnimInst->Montage_SetPosition(SuspendedMontage, SuspendedMontagePosition);
+			AnimInst->Montage_SetPlayRate(SuspendedMontage, SuspendedMontagePlayRate);
+			AnimInst->Montage_Resume(SuspendedMontage);
+		}
+		else if (!bResumeMontage)
+		{
+			AnimInst->Montage_Stop(0.f, SuspendedMontage);
+		}
+	}
+
+	SuspendedMontage = nullptr;
+	SuspendedMontagePosition = 0.f;
+	SuspendedMontagePlayRate = 1.f;
+}
+
+void AEnemyBase::RestoreMaterialsBeforeStone()
+{
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	if (SkeletalMesh)
+	{
+		for (int32 MaterialIndex = 0; MaterialIndex < MaterialsBeforeStone.Num(); ++MaterialIndex)
+		{
+			SkeletalMesh->SetMaterial(MaterialIndex, MaterialsBeforeStone[MaterialIndex]);
+		}
+	}
+
+	MaterialsBeforeStone.Empty();
+}
+
+void AEnemyBase::ResetStoneVisual()
+{
+	if (IsRunningDedicatedServer())
+	{
+		return;
+	}
+
+	RestoreMaterialsBeforeStone();
+	bStoneVisualActive = false;
+	bPendingLocomotionResume = false;
+	LocomotionResumeWaitTime = 0.f;
+
+	if (USkeletalMeshComponent* SkeletalMesh = GetMesh())
+	{
+		SkeletalMesh->bPauseAnims = false;
+		SkeletalMesh->SetVisibility(true, true);
+	}
+	if (AnimInst && SuspendedMontage && AnimInst->Montage_IsActive(SuspendedMontage))
+	{
+		AnimInst->Montage_Stop(0.f, SuspendedMontage);
+	}
+
+	SuspendedMontage = nullptr;
+	SuspendedMontagePosition = 0.f;
+	SuspendedMontagePlayRate = 1.f;
 }
 
 // 체력 UI 업데이트
@@ -440,13 +905,23 @@ void AEnemyBase::OnRep_UpdateUI()
 	{
 		return;
 	}
+
+	if (CurHP <= 0.f || EnemyState == EEnemyState::Die || EnemyState == EEnemyState::StoneDie)
+	{
+		bHpUIVisible = false;
+		HpComp->SetVisibility(false);
+		return;
+	}
 	
 	if (CurHP >= MaxHP)
 	{
 		return;
 	}
 	
-	if (!bHpUIVisible &&  EnemyState != EEnemyState::Die)
+	if (!bHpUIVisible
+		&& CurHP > 0.f
+		&& EnemyState != EEnemyState::Die
+		&& EnemyState != EEnemyState::StoneDie)
 	{
 		bHpUIVisible = true;
 		HpComp->SetVisibility(true);
@@ -467,7 +942,13 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		return 0.f;
 	}
 
-	if (EnemyState == EEnemyState::Die || EnemyState == EEnemyState::Destroy)
+	if (bDeathHandled)
+	{
+		RetryPendingDeathTransition();
+		return 0.f;
+	}
+
+	if (EnemyState == EEnemyState::Die || EnemyState == EEnemyState::StoneDie)
 	{
 		return 0.f;
 	}
@@ -484,7 +965,7 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		return 0.0f;
 	}
 
-	CurHP -= ActualDamage;
+	CurHP = FMath::Max(0.f, CurHP - ActualDamage);
 
 	/*ADefenseCharacter* AttackingCharacter = Cast<ADefenseCharacter>(DamageCauser);
 	if (!AttackingCharacter && EventInstigator)
@@ -499,7 +980,16 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	
 	if (CurHP <= 0.0f)
 	{
-		GameMode->AwardEnemyKillCoin(this, DamageCauser, EventInstigator);
+		bDeathHandled = true;
+		bDeathTaskStarted = false;
+		PendingDeathType = EnemyState == EEnemyState::Stone
+			? EEnemyPendingDeathType::Stone
+			: EEnemyPendingDeathType::Normal;
+		LastDeathRetryTime = -BIG_NUMBER;
+		if (GameMode)
+		{
+			GameMode->AwardEnemyKillCoin(this, DamageCauser, EventInstigator);
+		}
 		
 		// 재화 얻어지나 테스트--------------------
 		/*if (APawn* CauserPawn = Cast<APawn>(DamageCauser))
@@ -515,12 +1005,17 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		}*/
 		//----------------------------------------------
 		
-		SendStateTreeEvent(FName("AI.Event.Die"));
+		RetryPendingDeathTransition();
 		bHpUIVisible = false;
 	}
-	else
+	else if (EnemyState != EEnemyState::Stone)
 	{
-		SendStateTreeEvent(FName("AI.Event.Damage"));
+		if (EnemyState == EEnemyState::StoneEnd)
+		{
+			ClearSuspendedAction();
+			EnemyState = EEnemyState::Damage;
+		}
+		SendStateTreeEvent(TEXT("AI.Event.Damage"));
 	}
 
 	return ActualDamage;

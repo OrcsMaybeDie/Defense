@@ -41,10 +41,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Map")
 	FString GetIntroMapPackageName() const;
 
-	void SaveIntroPlayerRoles(APlayerState* HostPlayerState, APlayerState* GuestPlayerState);
+	void SaveIntroPlayerRoles(APlayerState* HostPlayerState, const TArray<APlayerState*>& GuestPlayerStates);
 	bool IsSavedHostPlayerState(const APlayerState* PlayerState) const;
 	bool IsSavedGuestPlayerState(const APlayerState* PlayerState) const;
-	bool HasSavedGuestPlayerId() const;
+	int32 GetSavedPlayablePlayerCount() const;
 
 	void ShowFullWarning();
 
@@ -59,5 +59,5 @@ protected:
 	FString SavedHostPlayerId;
 
 	UPROPERTY()
-	FString SavedGuestPlayerId;
+	TArray<FString> SavedGuestPlayerIds;
 };
