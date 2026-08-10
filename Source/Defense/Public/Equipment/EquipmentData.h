@@ -13,4 +13,7 @@ class DEFENSE_API UEquipmentData : public UPrimaryDataAsset
 public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Equipment")
 	FText DisplayName;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Equipment")
+	bool bUnlockedByDefault = false;
 };
