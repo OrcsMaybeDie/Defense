@@ -1,13 +1,14 @@
 ﻿#include "Traps/Grid/GridManager.h"
 #include "Components/SceneComponent.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Actor.h"
 #include "Math/RotationMatrix.h"
 #include "Misc/Crc.h"
-#include "PhysicsEngine/BodyInstance.h"
+#include "PhysicsEngine/BodySetup.h"
 #include "Traps/TrapBase.h"
 #include "Traps/TrapData.h"
 
@@ -100,14 +101,8 @@ namespace
 		}
 	}
 
-	bool IsAxisAligned(const UPrimitiveComponent* Component)
+	bool IsAxisAligned(const FQuat& Rotation)
 	{
-		if (!Component)
-		{
-			return false;
-		}
-
-		const FQuat Rotation = Component->GetComponentQuat();
 		const FVector Axes[] =
 		{
 			Rotation.GetAxisX(),
@@ -125,6 +120,48 @@ namespace
 		}
 
 		return true;
+	}
+
+	bool TryGetSimpleBoxCollisionBounds(
+		UPrimitiveComponent* Component,
+		FBox& OutBounds
+	)
+	{
+		UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(Component);
+		if (!StaticMeshComponent)
+		{
+			return false;
+		}
+
+		const UBodySetup* BodySetup = StaticMeshComponent->GetBodySetup();
+		if (!BodySetup
+			|| BodySetup->CollisionTraceFlag == CTF_UseComplexAsSimple
+			|| BodySetup->AggGeom.GetElementCount() != 1
+			|| BodySetup->AggGeom.BoxElems.Num() != 1)
+		{
+			return false;
+		}
+
+		FTransform ComponentTransform = StaticMeshComponent->GetComponentTransform();
+		const FKBoxElem ScaledBox = BodySetup->AggGeom.BoxElems[0].GetFinalScaled(
+			ComponentTransform.GetScale3D(),
+			FTransform::Identity
+		);
+		ComponentTransform.RemoveScaling();
+
+		const FTransform BoxWorldTransform = ScaledBox.GetTransform() * ComponentTransform;
+		if (!IsAxisAligned(BoxWorldTransform.GetRotation()))
+		{
+			return false;
+		}
+
+		const FVector BoxHalfExtent(
+			ScaledBox.X * 0.5f,
+			ScaledBox.Y * 0.5f,
+			ScaledBox.Z * 0.5f
+		);
+		OutBounds = FBox(-BoxHalfExtent, BoxHalfExtent).TransformBy(BoxWorldTransform);
+		return OutBounds.IsValid != 0;
 	}
 
 	void GetRegionBasis(const FVector& Normal, FVector& OutAxisU, FVector& OutAxisV)
@@ -276,21 +313,14 @@ void AGridManager::BuildRegions()
 			if (!Component->IsQueryCollisionEnabled()
 				|| Component->GetCollisionObjectType() != ECC_WorldStatic
 				|| Component->GetCollisionResponseToChannel(ECC_Visibility) != ECR_Block
-				|| !IsAxisAligned(Component))
+				|| !IsAxisAligned(Component->GetComponentQuat()))
 			{
 				++SkippedComponentCount;
 				continue;
 			}
 
-			const FBodyInstance* BodyInstance = Component->GetBodyInstance();
-			if (!BodyInstance || !BodyInstance->IsValidBodyInstance())
-			{
-				++SkippedComponentCount;
-				continue;
-			}
-
-			const FBox CollisionBounds = BodyInstance->GetBodyBounds();
-			if (!CollisionBounds.IsValid)
+			FBox CollisionBounds;
+			if (!TryGetSimpleBoxCollisionBounds(Component, CollisionBounds))
 			{
 				++SkippedComponentCount;
 				continue;
@@ -468,7 +498,7 @@ void AGridManager::ValidateRegions()
 	for (const FTrapGridRegion& Region : BakedRegions)
 	{
 		bool bValidSources = !Region.SourceComponents.IsEmpty();
-		for (const UPrimitiveComponent* SourceComponent : Region.SourceComponents)
+		for (UPrimitiveComponent* SourceComponent : Region.SourceComponents)
 		{
 			if (!IsValid(SourceComponent))
 			{
@@ -478,9 +508,12 @@ void AGridManager::ValidateRegions()
 
 			TArray<ETrapGridSurface, TInlineAllocator<3>> SurfaceTypes;
 			GetTaggedSurfaceTypes(SourceComponent, SurfaceTypes);
+			FBox CollisionBounds;
 			if (!SourceComponent->IsQueryCollisionEnabled()
 				|| SourceComponent->GetCollisionObjectType() != ECC_WorldStatic
 				|| SourceComponent->GetCollisionResponseToChannel(ECC_Visibility) != ECR_Block
+				|| !IsAxisAligned(SourceComponent->GetComponentQuat())
+				|| !TryGetSimpleBoxCollisionBounds(SourceComponent, CollisionBounds)
 				|| !SurfaceTypes.Contains(Region.SurfaceType))
 			{
 				bValidSources = false;
