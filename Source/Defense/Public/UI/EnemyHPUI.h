@@ -18,6 +18,6 @@ public:
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<class UProgressBar> HPBar;
 	
-	void UpdateHPBar(int32 Cur, int32 Max);
+	void UpdateHPBar(float Cur, float Max);
 	
 };

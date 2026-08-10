@@ -18,9 +18,12 @@ public class Defense : ModuleRules
 			"NavigationSystem",
 			"StateTreeModule",
 			"GameplayStateTreeModule",
+			"GeometryCollectionEngine",
+			"FieldSystemEngine",
 			"UMG",
 			"Slate",
 			"GameplayTags",
+			"Niagara",
 			"SlateCore"
 		});
 

@@ -38,6 +38,9 @@ public:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastRPC_DestroyMotion();
 
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastRPC_PlayDestroyEffect(FVector EffectLocation, float EffectRadius);
+
 	UFUNCTION(BlueprintPure)
 	bool CanTryDestroy() const;
 
@@ -46,8 +49,8 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void DestroyTargetTrap();
 
-	/*UFUNCTION(NetMulticast, Unreliable)
-	void Multicast_DrawDestroySearchDebug(FVector SearchCenter, float SearchRadius, bool bFoundTrap);*/
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_DrawDestroySearchDebug(FVector SearchCenter, float SearchRadius, bool bFoundTrap);
 
 	void MarkDestroyFinished(bool bDestroyedTrap);
 	float GetDestroyDuration(float DefaultDuration = 1.2f) const;
@@ -66,6 +69,15 @@ public:
 	
 	// 파괴하는 범위
 	float DestroyRadius = 100.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Enemy|Destroy|VFX")
+	TObjectPtr<class UNiagaraComponent> DestroyEffectComponent;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Destroy|VFX")
+	FName DestroyRadiusParameterName = TEXT("User.ExplosionRadius");
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Destroy|Debug")
+	bool bDrawDestroySearchDebug = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector DestroySearchOffset = FVector::ZeroVector;

@@ -32,11 +32,17 @@ class DEFENSE_API UEnemyAnim : public UAnimInstance
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<class UAnimMontage> DieMontage;
+
+	// Additive montage assigned to the BurnAdditiveSlot/BurnReactionGroup in the Anim Blueprint.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Burn")
+	TObjectPtr<class UAnimMontage> BurnReactionMontage;
 	
 	void PlayAttackMotion();
 	void PlayDestroyMotion();
 	void PlayDamageMotion();
 	void PlayDieMotion();
+	void PlayBurnReactionMotion();
+	void StopBurnReactionMotion(float BlendOutTime = 0.1f);
 	
 	/*UFUNCTION()
 	void AnimNotify_AttackEnd();*/

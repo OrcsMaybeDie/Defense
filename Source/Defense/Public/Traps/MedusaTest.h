@@ -49,7 +49,7 @@ protected:
 	TEnumAsByte<ECollisionChannel> EnemyObjectChannel = ECC_GameTraceChannel1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Medusa|Collision")
-	TEnumAsByte<ECollisionChannel> MedusaSightChannel = ECC_GameTraceChannel2;
+	TEnumAsByte<ECollisionChannel> MedusaSightChannel = ECC_GameTraceChannel4;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Medusa|Debug")
 	bool bDrawDebug = true;

@@ -320,22 +320,19 @@ void AEnemySpawner::SpawnCombatBatch()
 	AEnemyBase* Enemy = EnemyPool->SpawnFromPool(SpawnPlan.EnemyClass, GetActorLocation(), GetActorRotation(), true);
 	if (!Enemy)
 	{
-		GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
-		//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner SpawnCombatBatch stopped | Pool empty before target count | Spawner=%s Spawned=%d/%d"),
-			//*GetNameSafe(this),
-			//CombatSpawnedCount,
-			//CombatSpawnTargetCount);
-		/*UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit Summary | Spawner=%s Initialized=%d Failed=%d Spawned=%d Target=%d Reason=PoolEmpty"),
+		const float RetryDelay = FMath::Max(CombatSpawnInterval, 0.1f);
+		UE_LOG(LogTemp, Warning, TEXT("EnemySpawner SpawnCombatBatch retry | Spawner=%s Spawned=%d/%d RetryDelay=%.2f"),
 			*GetNameSafe(this),
-			CombatInitializedCount,
-			CombatInitializationFailedCount,
 			CombatSpawnedCount,
-			CombatSpawnTargetCount
-		);*/
-		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
-		{
-			GameMode->NotifySpawnerFinished(this);
-		}
+			CombatSpawnTargetCount,
+			RetryDelay);
+		GetWorldTimerManager().SetTimer(
+			SpawnTimerHandle,
+			this,
+			&AEnemySpawner::SpawnCombatBatch,
+			RetryDelay,
+			false
+		);
 		return;
 	}
 

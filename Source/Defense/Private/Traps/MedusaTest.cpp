@@ -146,7 +146,7 @@ void AMedusaTest::ScanForEnemies()
 				continue;
 			}
 
-			Enemy->EnemyState = EEnemyState::Stone;
+			Enemy->TryEnterStone();
 			break;
 		}
 	}

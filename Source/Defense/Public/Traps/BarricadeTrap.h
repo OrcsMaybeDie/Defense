@@ -8,7 +8,9 @@
 
 class AEnemyBase;
 class UBoxComponent;
+class UEnemyHPUI;
 class UPrimitiveComponent;
+class UWidgetComponent;
 
 UCLASS()
 class DEFENSE_API ABarricadeTrap : public ATrapBase
@@ -17,6 +19,8 @@ class DEFENSE_API ABarricadeTrap : public ATrapBase
 
 public:
 	ABarricadeTrap();
+	virtual void Tick(float DeltaTime) override;
+	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 
 	virtual float TakeDamage(
 		float DamageAmount,
@@ -42,18 +46,28 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Barricade|Components")
 	TObjectPtr<UBoxComponent> Sensor;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Barricade|Components")
+	TObjectPtr<UWidgetComponent> HpComp;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Barricade|Sensor", meta=(ClampMin="0.0"))
 	float SensorActivationDelay = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Barricade|AI", meta=(ClampMin="0.0"))
 	float PatrolNotifyRadius = 500.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Barricade|Health", meta=(ClampMin="0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Barricade|Health", meta=(ClampMin="1.0"))
+	float MaxHP = 50.0f;
+
+	UPROPERTY(ReplicatedUsing=OnRep_HP, VisibleInstanceOnly, BlueprintReadOnly, Category="Barricade|Health")
 	float HP = 50.0f;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UEnemyHPUI> HPUI;
 
 	FTimerHandle SensorActivationTimer;
 	TSet<TWeakObjectPtr<AEnemyBase>> SensorOverlappingEnemies;
 	bool bReleasedEnemies = false;
+	bool bHpUIVisible = false;
 
 	void ActivateSensor();
 	void EngageEnemy(AEnemyBase* Enemy);
@@ -62,6 +76,10 @@ protected:
 	void NotifyNearbyWaitingRunEnemies();
 	void ScheduleSensorActivation();
 	void ApplyBoxExtents();
+	void RefreshHPUI();
+
+	UFUNCTION()
+	void OnRep_HP();
 
 	UFUNCTION()
 	void OnSensorBeginOverlap(

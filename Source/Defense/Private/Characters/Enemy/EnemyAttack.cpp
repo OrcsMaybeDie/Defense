@@ -222,7 +222,12 @@ void AEnemyAttack::MulticastRPC_AttackMotion_Implementation()
 	{
 		return;
 	}
-	AnimInst->PlayAttackMotion();
+
+	PrepareForRegularAnimation();
+	if (AnimInst)
+	{
+		AnimInst->PlayAttackMotion();
+	}
 }
 
 void AEnemyAttack::AttackTarget()

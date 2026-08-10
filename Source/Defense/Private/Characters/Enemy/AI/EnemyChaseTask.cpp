@@ -62,7 +62,8 @@ EStateTreeRunStatus FEnemyChaseTask::EnterState(FStateTreeExecutionContext& Cont
 		InstanceData.AcceptanceRadius,
 		true,
 		true,
-		false
+		false,
+		AIEnemy->NavigationFilterClass
 	);
 
 	return MoveResult == EPathFollowingRequestResult::Failed
@@ -97,7 +98,8 @@ EStateTreeRunStatus FEnemyChaseTask::Tick(FStateTreeExecutionContext& Context, c
 			InstanceData.AcceptanceRadius,
 			true,
 			true,
-			false
+			false,
+			AIEnemy->NavigationFilterClass
 		);
 
 		if (MoveResult == EPathFollowingRequestResult::Failed)

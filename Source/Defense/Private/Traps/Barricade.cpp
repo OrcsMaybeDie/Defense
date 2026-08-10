@@ -16,7 +16,7 @@
 namespace
 {
 	constexpr ECollisionChannel BarricadeEnemyCollisionChannel = ECC_GameTraceChannel1;
-	constexpr ECollisionChannel BarricadeCollisionChannel = ECC_GameTraceChannel3;
+	constexpr ECollisionChannel BarricadeObjectCollisionChannel = ECC_GameTraceChannel3;
 }
 
 ABarricade::ABarricade()
@@ -27,7 +27,7 @@ ABarricade::ABarricade()
 
 	Box = CreateDefaultSubobject<UBoxComponent>(TEXT("Box"));
 	SetRootComponent(Box);
-	Box->SetCollisionObjectType(BarricadeCollisionChannel);
+	Box->SetCollisionObjectType(BarricadeObjectCollisionChannel);
 	
 	Cube = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Cube"));
 	Cube->SetupAttachment(Box);
@@ -170,10 +170,9 @@ void ABarricade::EngageEnemy(AEnemyBase* Enemy)
 		break;
 
 	case EEnemyType::Run:
+	case EEnemyType::Destroy:
 		Enemy->EnemyState = EEnemyState::Waiting;
 		Enemy->SendStateTreeEvent(TEXT("AI.Event.Waiting"));
-		break;
-	case EEnemyType::Destroy:
 		break;
 	}
 }
@@ -200,10 +199,8 @@ void ABarricade::ReleaseEnemy(AEnemyBase* Enemy)
 		break;
 
 	case EEnemyType::Run:
-		Enemy->SendStateTreeEvent(TEXT("AI.Event.Patrol"));
-		break;
-
 	case EEnemyType::Destroy:
+		Enemy->SendStateTreeEvent(TEXT("AI.Event.Patrol"));
 		break;
 	}
 }
@@ -269,7 +266,7 @@ void ABarricade::NotifyNearbyWaitingRunEnemies()
 		AEnemyBase* Enemy = Cast<AEnemyBase>(OverlapResult.GetActor());
 		if (!IsValid(Enemy)
 			|| Enemy->EnemyMode != EEnemyMode::Combat
-			|| Enemy->EnemyType != EEnemyType::Run
+			|| (Enemy->EnemyType != EEnemyType::Run && Enemy->EnemyType != EEnemyType::Destroy)
 			|| Enemy->EnemyState != EEnemyState::Waiting)
 		{
 			continue;

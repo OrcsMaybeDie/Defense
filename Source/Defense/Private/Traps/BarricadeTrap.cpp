@@ -2,14 +2,19 @@
 
 #include "Traps/BarricadeTrap.h"
 
+#include "Camera/PlayerCameraManager.h"
 #include "Characters/Enemy/Data/EnemyData.h"
 #include "Characters/Enemy/EnemyAttack.h"
 #include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Player/DefenseCharacter.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/WidgetComponent.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+#include "Net/UnrealNetwork.h"
+#include "UI/EnemyHPUI.h"
 
 namespace
 {
@@ -18,8 +23,13 @@ namespace
 
 ABarricadeTrap::ABarricadeTrap()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 	SetCanBeDamaged(true);
+
+	HpComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("HpComp"));
+	HpComp->SetupAttachment(SceneRoot);
+	HpComp->SetWidgetSpace(EWidgetSpace::World);
+	HpComp->SetDrawAtDesiredSize(false);
 
 	Sensor = CreateDefaultSubobject<UBoxComponent>(TEXT("Sensor"));
 	Sensor->SetupAttachment(SceneRoot);
@@ -32,6 +42,33 @@ ABarricadeTrap::ABarricadeTrap()
 	Sensor->SetCanEverAffectNavigation(false);
 
 	ApplyBoxExtents();
+}
+
+void ABarricadeTrap::Tick(const float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (IsRunningDedicatedServer() || !HpComp || !bHpUIVisible)
+	{
+		return;
+	}
+
+	const APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
+	if (!PlayerController || !PlayerController->IsLocalController() || !PlayerController->PlayerCameraManager)
+	{
+		return;
+	}
+
+	const FVector CameraLocation = PlayerController->PlayerCameraManager->GetCameraLocation();
+	FVector Direction = CameraLocation - HpComp->GetComponentLocation();
+	Direction.Z = 0.0f;
+	HpComp->SetWorldRotation(Direction.GetSafeNormal().ToOrientationRotator());
+}
+
+void ABarricadeTrap::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ABarricadeTrap, HP);
 }
 
 float ABarricadeTrap::TakeDamage(
@@ -55,9 +92,18 @@ float ABarricadeTrap::TakeDamage(
 	Super::TakeDamage(AppliedDamage, DamageEvent, EventInstigator, DamageCauser);
 
 	HP -= AppliedDamage;
+	HP = FMath::Max(0.0f, HP);
+
+	// RepNotify는 서버에서 자동 호출되지 않으므로 Listen Server의 로컬 UI를 직접 갱신한다.
+	if (!IsRunningDedicatedServer())
+	{
+		RefreshHPUI();
+	}
+
+	ForceNetUpdate();
+
 	if (HP <= 0.0f)
 	{
-		HP = 0.0f;
 		Destroy();
 	}
 
@@ -97,6 +143,21 @@ void ABarricadeTrap::BeginPlay()
 	Super::BeginPlay();
 	ApplyBoxExtents();
 
+	if (HasAuthority())
+	{
+		HP = FMath::Max(1.0f, MaxHP);
+	}
+
+	if (HpComp)
+	{
+		HpComp->SetVisibility(false);
+		if (!IsRunningDedicatedServer())
+		{
+			HPUI = Cast<UEnemyHPUI>(HpComp->GetWidget());
+			RefreshHPUI();
+		}
+	}
+
 	if (Sensor)
 	{
 		Sensor->OnComponentBeginOverlap.AddUniqueDynamic(this, &ABarricadeTrap::OnSensorBeginOverlap);
@@ -104,16 +165,43 @@ void ABarricadeTrap::BeginPlay()
 	}
 }
 
+void ABarricadeTrap::OnRep_HP()
+{
+	RefreshHPUI();
+}
+
+void ABarricadeTrap::RefreshHPUI()
+{
+	if (IsRunningDedicatedServer() || !HpComp)
+	{
+		return;
+	}
+
+	if (!HPUI)
+	{
+		HPUI = Cast<UEnemyHPUI>(HpComp->GetWidget());
+	}
+
+	const bool bShouldShow = IsPlaced() && HP > 0.0f && HP < MaxHP;
+	bHpUIVisible = bShouldShow;
+	HpComp->SetVisibility(bShouldShow);
+
+	if (HPUI)
+	{
+		HPUI->UpdateHPBar(HP, MaxHP);
+	}
+}
+
 void ABarricadeTrap::ApplyBoxExtents()
 {
 	if (DamageArea)
 	{
-		DamageArea->SetBoxExtent(FVector(50.0f, 50.0f, 50.0f));
+		DamageArea->SetBoxExtent(FVector(100.0f, 100.0f, 100.0f));
 	}
 
 	if (Sensor)
 	{
-		Sensor->SetBoxExtent(FVector(55.f, 55.0f, 50.0f));
+		Sensor->SetBoxExtent(FVector(52.f, 52.0f, 50.0f));
 	}
 }
 
@@ -212,11 +300,9 @@ void ABarricadeTrap::EngageEnemy(AEnemyBase* Enemy)
 		break;
 
 	case EEnemyType::Run:
+	case EEnemyType::Destroy:
 		Enemy->EnemyState = EEnemyState::Waiting;
 		Enemy->SendStateTreeEvent(TEXT("AI.Event.Waiting"));
-		break;
-
-	case EEnemyType::Destroy:
 		break;
 	}
 }
@@ -243,10 +329,8 @@ void ABarricadeTrap::ReleaseEnemy(AEnemyBase* Enemy)
 		break;
 
 	case EEnemyType::Run:
-		Enemy->SendStateTreeEvent(TEXT("AI.Event.Patrol"));
-		break;
-
 	case EEnemyType::Destroy:
+		Enemy->SendStateTreeEvent(TEXT("AI.Event.Patrol"));
 		break;
 	}
 }
@@ -312,7 +396,7 @@ void ABarricadeTrap::NotifyNearbyWaitingRunEnemies()
 		AEnemyBase* Enemy = Cast<AEnemyBase>(OverlapResult.GetActor());
 		if (!IsValid(Enemy)
 			|| Enemy->EnemyMode != EEnemyMode::Combat
-			|| Enemy->EnemyType != EEnemyType::Run
+			|| (Enemy->EnemyType != EEnemyType::Run && Enemy->EnemyType != EEnemyType::Destroy)
 			|| Enemy->EnemyState != EEnemyState::Waiting)
 		{
 			continue;
