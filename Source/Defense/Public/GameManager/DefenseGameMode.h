@@ -8,7 +8,6 @@
 #include "TimerManager.h"
 #include "DefenseGameMode.generated.h"
 
-class AGridManager;
 class ADefenseCharacter;
 
 UENUM(BlueprintType)
@@ -171,9 +170,6 @@ public:
 	
 	UPROPERTY()
 	TObjectPtr<class ADefenseGameState> DefenseGameState;
-
-	UPROPERTY()
-	TObjectPtr<AGridManager> GridManager;
 
 	UFUNCTION()
 	int32 GetCurrentWave();

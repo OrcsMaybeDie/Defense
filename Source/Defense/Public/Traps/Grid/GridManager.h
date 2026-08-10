@@ -33,6 +33,9 @@ public:
 	UFUNCTION(CallInEditor, Category="Trap Grid|Region")
 	void ClearRegions();
 
+	UFUNCTION(CallInEditor, Category="Trap Grid|Region")
+	void ShowRegions();
+
 	UFUNCTION(BlueprintPure, Category="Trap Grid|Region")
 	int32 GetBakedRegionCount() const { return BakedRegions.Num(); }
 
@@ -82,14 +85,6 @@ public:
 		const FIntPoint& FootprintCells
 	) const;
 
-	/* World Location ↔ Cell 변환 */
-	FTrapCellKey WorldToCellKey(const FVector& WorldLocation,
-		ETrapPlaneAxis PlaneAxis,
-		ETrapPlaneNormal PlaneNormal
-	) const; // 월드 위치와 설치면 정보 → 월드 위치를 논리적인 Cell 주소
-	
-	FVector CellKeyToWorldCenter(const FTrapCellKey& CellKey) const; // Cell 주소 → 월드 중심 위치
-	
 	/* 단일 Cell 조회 */
 	bool IsCellValid(const FTrapCellKey& CellKey); // 실제 설치면 Collision이 Cell 전체를 지지함?
 	bool IsCellOccupied(const FTrapCellKey& CellKey) const; // 함정이 점유됨?
@@ -162,6 +157,9 @@ protected:
 	// 점 접촉만으로 Region이 합쳐지는 것을 막는 최소 접촉 길이
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid|Region", meta=(ClampMin="0.0"))
 	float RegionMinimumContactLength = 1.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid|Region", meta=(ClampMin="0.0"))
+	float RegionDebugDuration = 30.f;
 
 	// Collision 검사 결과 캐시. 두 Set에 모두 없으면 아직 검사하지 않은 Cell
 	TSet<FTrapCellKey> ValidCells;
