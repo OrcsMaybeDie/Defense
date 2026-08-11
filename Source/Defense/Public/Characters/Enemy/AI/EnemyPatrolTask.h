@@ -20,10 +20,10 @@ struct FEnemyPatrolTaskInstanceData : public FEnemyBaseTaskInstanceData
 	float AcceptanceRadius = 50.f;
 
 	UPROPERTY(EditAnywhere, Category = "Parameter")
-	float DestinationAcceptanceRadius = 50.f;
+	float EntryAcceptanceRadius = 10.f;
 
 	UPROPERTY()
-	bool bMovingToDestination = false;
+	bool bMovingToEntryPoint = false;
 
 	FDelegateHandle MoveFinishedHandle;
 	FAIRequestID MoveRequestID;

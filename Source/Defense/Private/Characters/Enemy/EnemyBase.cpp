@@ -11,6 +11,7 @@
 #include "Characters/Enemy/Data/EnemyData.h"
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
 #include "Characters/Player/DefenseCharacter.h"
+#include "Characters/Player/DefensePlayerController.h"
 #include "Characters/Player/DefensePlayerState.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
@@ -24,7 +25,7 @@
 #include "Engine/DamageEvents.h"
 #include "GameFramework/PlayerController.h"
 #include "GameManager/DefenseGameMode.h"
-#include "GameManager/DestinationActor.h"
+#include "GameManager/Portal.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
@@ -37,6 +38,18 @@
 namespace
 {
 	constexpr ECollisionChannel BarricadeCollisionChannel = ECC_GameTraceChannel3;
+	const FName PortalClipEnabledParameter(TEXT("PortalClipEnabled"));
+	const FName PortalPositionParameter(TEXT("PortalPosition"));
+	const FName PortalForwardParameter(TEXT("PortalForward"));
+	const FName PortalRightParameter(TEXT("PortalRight"));
+	const FName PortalUpParameter(TEXT("PortalUp"));
+	const FName PortalHalfWidthParameter(TEXT("PortalHalfWidth"));
+	const FName PortalHalfHeightParameter(TEXT("PortalHalfHeight"));
+
+	FLinearColor ToMaterialVector(const FVector& Vector)
+	{
+		return FLinearColor(Vector.X, Vector.Y, Vector.Z, 0.f);
+	}
 
 	const TCHAR* LexToString(const EEnemyMode Mode)
 	{
@@ -123,9 +136,7 @@ void AEnemyBase::BeginPlay()
 	else
 	{
 		GameMode = Cast<ADefenseGameMode>(GetWorld()->GetAuthGameMode());
-		DestinationActor = Cast<ADestinationActor>(
-	UGameplayStatics::GetActorOfClass(GetWorld(), ADestinationActor::StaticClass())
-);
+		PortalActor = Cast<APortal>(UGameplayStatics::GetActorOfClass(GetWorld(), APortal::StaticClass()));
 	}
 
 	if (UEnemyPoolSubsystem* EnemyPool = GetWorld()->GetSubsystem<UEnemyPoolSubsystem>())
@@ -167,6 +178,11 @@ void AEnemyBase::ApplyEnemyData()
 
 void AEnemyBase::SetTarget(AActor* NewTarget)
 {
+	if (bEnteringPortal && NewTarget)
+	{
+		return;
+	}
+
 	Target = NewTarget;
 	CurrentAttackDist = IsValid(Target) && (Target->IsA<ABarricade>() || Target->IsA<ABarricadeTrap>())
 		? BarricadeAttackDist
@@ -209,6 +225,7 @@ bool AEnemyBase::TryEnterStone()
 {
 	if (!HasAuthority()
 		|| EnemyMode != EEnemyMode::Combat
+		|| bEnteringPortal
 		|| bDeathHandled
 		|| EnemyState == EEnemyState::Stone
 		|| EnemyState == EEnemyState::StoneDie
@@ -352,6 +369,7 @@ void AEnemyBase::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& Out
 	DOREPLIFETIME(AEnemyBase, EnemyMode);
 	DOREPLIFETIME(AEnemyBase, CurHP);
 	DOREPLIFETIME(AEnemyBase, bIsBurning);
+	DOREPLIFETIME(AEnemyBase, bEnteringPortal);
 	
 	
 }
@@ -398,6 +416,7 @@ void AEnemyBase::SetEnemyMode(const EEnemyMode NewMode)
 
 void AEnemyBase::SetPreview()
 {
+	ResetPortalEntryState();
 	ResetRewardPopup();
 	ClearDamageOutline();
 
@@ -481,6 +500,7 @@ void AEnemyBase::SetPreview()
 
 void AEnemyBase::SetCombat()
 {
+	ResetPortalEntryState();
 	ResetStoneVisual();
 
 	if (!EnemyMesh)
@@ -541,6 +561,7 @@ void AEnemyBase::SetCombat()
 
 void AEnemyBase::SetInactive()
 {
+	ResetPortalEntryState();
 	ResetRewardPopup();
 	ClearDamageOutline();
 
@@ -605,6 +626,239 @@ void AEnemyBase::SetInactive()
 
 void AEnemyBase::OnEnteredPatrol()
 {
+}
+
+bool AEnemyBase::TryBeginPortalEntry(
+	APortal* Portal,
+	const FVector& ExitLocation,
+	const FVector& PortalPosition,
+	const FVector& PortalForward,
+	const FVector& PortalRight,
+	const FVector& PortalUp,
+	const float PortalHalfWidth,
+	const float PortalHalfHeight
+)
+{
+	if (!HasAuthority()
+		|| !Portal
+		|| bEnteringPortal
+		|| EnemyMode == EEnemyMode::Inactive
+		|| EnemyMode == EEnemyMode::ReturningToPool
+		|| EnemyState == EEnemyState::Die
+		|| EnemyState == EEnemyState::StoneDie)
+	{
+		return false;
+	}
+
+	bEnteringPortal = true;
+	EnteringPortal = Portal;
+	SetTarget(nullptr);
+	EndBurnEffect();
+	ClearDamageOutline();
+	ApplyPortalCollisionState();
+
+	if (HpComp)
+	{
+		bHpUIVisible = false;
+		HpComp->SetVisibility(false);
+	}
+
+	if (!EnemyController)
+	{
+		EnemyController = Cast<AEnemyController>(GetController());
+	}
+
+	if (EnemyController)
+	{
+		if (EnemyController->StateTreeAIComp)
+		{
+			EnemyController->StateTreeAIComp->StopLogic(TEXT("Enemy entered portal"));
+		}
+
+		EnemyController->StopMovement();
+		EnemyController->MoveToLocation(
+			ExitLocation,
+			5.f,
+			false,
+			true,
+			true,
+			false,
+			NavigationFilterClass,
+			true
+		);
+	}
+
+	MulticastRPC_BeginPortalClip(
+		PortalPosition,
+		PortalForward.GetSafeNormal(),
+		PortalRight.GetSafeNormal(),
+		PortalUp.GetSafeNormal(),
+		FMath::Max(PortalHalfWidth, 1.f),
+		FMath::Max(PortalHalfHeight, 1.f)
+	);
+
+	return true;
+}
+
+bool AEnemyBase::FinishPortalEntry(const APortal* Portal)
+{
+	if (!HasAuthority() || !bEnteringPortal || !Portal || EnteringPortal != Portal)
+	{
+		return false;
+	}
+
+	bEnteringPortal = false;
+	EnteringPortal = nullptr;
+	RestorePortalCollisionState();
+	return true;
+}
+
+void AEnemyBase::MulticastRPC_BeginPortalClip_Implementation(
+	const FVector PortalPosition,
+	const FVector PortalForward,
+	const FVector PortalRight,
+	const FVector PortalUp,
+	const float PortalHalfWidth,
+	const float PortalHalfHeight
+)
+{
+	ApplyPortalCollisionState();
+
+	if (IsRunningDedicatedServer())
+	{
+		return;
+	}
+
+	ClearDamageOutline();
+	SetBurnVisualActive(false);
+	if (HpComp)
+	{
+		bHpUIVisible = false;
+		HpComp->SetVisibility(false);
+	}
+
+	ApplyPortalClipVisual(
+		PortalPosition,
+		PortalForward,
+		PortalRight,
+		PortalUp,
+		PortalHalfWidth,
+		PortalHalfHeight
+	);
+}
+
+void AEnemyBase::ApplyPortalClipVisual(
+	const FVector& PortalPosition,
+	const FVector& PortalForward,
+	const FVector& PortalRight,
+	const FVector& PortalUp,
+	const float PortalHalfWidth,
+	const float PortalHalfHeight
+)
+{
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	if (!SkeletalMesh)
+	{
+		return;
+	}
+
+	PortalMaterialInstances.Reset();
+	for (int32 MaterialIndex = 0; MaterialIndex < SkeletalMesh->GetNumMaterials(); ++MaterialIndex)
+	{
+		UMaterialInstanceDynamic* MID = SkeletalMesh->CreateDynamicMaterialInstance(MaterialIndex);
+		if (!MID)
+		{
+			continue;
+		}
+
+		MID->SetVectorParameterValue(PortalPositionParameter, ToMaterialVector(PortalPosition));
+		MID->SetVectorParameterValue(PortalForwardParameter, ToMaterialVector(PortalForward));
+		MID->SetVectorParameterValue(PortalRightParameter, ToMaterialVector(PortalRight));
+		MID->SetVectorParameterValue(PortalUpParameter, ToMaterialVector(PortalUp));
+		MID->SetScalarParameterValue(PortalHalfWidthParameter, FMath::Max(PortalHalfWidth, 1.f));
+		MID->SetScalarParameterValue(PortalHalfHeightParameter, FMath::Max(PortalHalfHeight, 1.f));
+		MID->SetScalarParameterValue(PortalClipEnabledParameter, 1.f);
+		PortalMaterialInstances.Add(MID);
+	}
+}
+
+void AEnemyBase::ResetPortalClipVisual()
+{
+	for (UMaterialInstanceDynamic* MID : PortalMaterialInstances)
+	{
+		if (MID)
+		{
+			MID->SetScalarParameterValue(PortalClipEnabledParameter, 0.f);
+		}
+	}
+	PortalMaterialInstances.Reset();
+}
+
+void AEnemyBase::ApplyPortalCollisionState()
+{
+	if (bPortalCollisionSnapshotValid)
+	{
+		return;
+	}
+
+	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
+	{
+		CapsulePawnResponseBeforePortal = CapsuleComp->GetCollisionResponseToChannel(ECC_Pawn);
+		CapsuleVisibilityResponseBeforePortal = CapsuleComp->GetCollisionResponseToChannel(ECC_Visibility);
+		CapsuleBarricadeResponseBeforePortal = CapsuleComp->GetCollisionResponseToChannel(BarricadeCollisionChannel);
+		CapsuleWorldDynamicResponseBeforePortal = CapsuleComp->GetCollisionResponseToChannel(ECC_WorldDynamic);
+		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+		CapsuleComp->SetCollisionResponseToChannel(BarricadeCollisionChannel, ECR_Ignore);
+		CapsuleComp->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+	}
+
+	if (!EnemyMesh)
+	{
+		EnemyMesh = GetMesh();
+	}
+	if (EnemyMesh)
+	{
+		MeshCollisionEnabledBeforePortal = EnemyMesh->GetCollisionEnabled();
+		EnemyMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+
+	bPortalCollisionSnapshotValid = true;
+}
+
+void AEnemyBase::RestorePortalCollisionState()
+{
+	if (!bPortalCollisionSnapshotValid)
+	{
+		return;
+	}
+
+	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
+	{
+		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, CapsulePawnResponseBeforePortal);
+		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, CapsuleVisibilityResponseBeforePortal);
+		CapsuleComp->SetCollisionResponseToChannel(BarricadeCollisionChannel, CapsuleBarricadeResponseBeforePortal);
+		CapsuleComp->SetCollisionResponseToChannel(ECC_WorldDynamic, CapsuleWorldDynamicResponseBeforePortal);
+	}
+
+	if (!EnemyMesh)
+	{
+		EnemyMesh = GetMesh();
+	}
+	if (EnemyMesh)
+	{
+		EnemyMesh->SetCollisionEnabled(MeshCollisionEnabledBeforePortal);
+	}
+
+	bPortalCollisionSnapshotValid = false;
+}
+
+void AEnemyBase::ResetPortalEntryState()
+{
+	bEnteringPortal = false;
+	EnteringPortal = nullptr;
+	RestorePortalCollisionState();
+	ResetPortalClipVisual();
 }
 
 // Gameplay Tag 이벤트 보내기
@@ -802,17 +1056,7 @@ void AEnemyBase::MulticastRPC_StoneDieVisual_Implementation()
 	bHpUIVisible = false;
 }
 
-void AEnemyBase::MulticastRPC_ShowRewardPopup_Implementation(ADefensePlayerState* RewardTarget)
-{
-	const APlayerController* LocalPlayerController = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
-	if (LocalPlayerController
-		&& LocalPlayerController->GetPlayerState<ADefensePlayerState>() == RewardTarget)
-	{
-		ShowRewardPopup();
-	}
-}
-
-void AEnemyBase::ShowRewardPopup()
+void AEnemyBase::ShowRewardPopup(const int32 RewardAmount)
 {
 	if (IsRunningDedicatedServer() || !RewardComp)
 	{
@@ -824,14 +1068,14 @@ void AEnemyBase::ShowRewardPopup()
 	RewardUI = Cast<URewardUI>(RewardWidget);
 	if (RewardUI)
 	{
-		RewardUI->SetRewardAmount(KillCoinReward);
+		RewardUI->SetRewardAmount(RewardAmount);
 	}
 	else if (RewardWidget)
 	{
 		// WBP_RewardUI가 아직 URewardUI를 부모로 사용하지 않아도 이름으로 연결한다.
 		if (UTextBlock* RewardText = Cast<UTextBlock>(RewardWidget->GetWidgetFromName(TEXT("RewardText"))))
 		{
-			RewardText->SetText(FText::AsNumber(KillCoinReward));
+			RewardText->SetText(FText::AsNumber(RewardAmount));
 		}
 	}
 
@@ -1035,6 +1279,13 @@ void AEnemyBase::OnRep_UpdateUI()
 	{
 		return;
 	}
+
+	if (bEnteringPortal)
+	{
+		bHpUIVisible = false;
+		HpComp->SetVisibility(false);
+		return;
+	}
 	
 	if (EnemyMode != EEnemyMode::Combat)
 	{
@@ -1072,7 +1323,7 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		return 0.f;
 	}
 
-	if (EnemyMode != EEnemyMode::Combat)
+	if (EnemyMode != EEnemyMode::Combat || bEnteringPortal)
 	{
 		return 0.f;
 	}
@@ -1128,7 +1379,11 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		{
 			if (ADefensePlayerState* RewardTarget = GameMode->AwardEnemyKillCoin(this, DamageCauser, EventInstigator))
 			{
-				MulticastRPC_ShowRewardPopup(RewardTarget);
+				if (ADefensePlayerController* RewardPlayerController =
+					Cast<ADefensePlayerController>(RewardTarget->GetPlayerController()))
+				{
+					RewardPlayerController->ClientRPC_ShowRewardPopup(this, KillCoinReward);
+				}
 			}
 		}
 		
@@ -1180,6 +1435,7 @@ void AEnemyBase::ApplyBurnEffect(
 {
 	if (!HasAuthority()
 		|| EnemyMode != EEnemyMode::Combat
+		|| bEnteringPortal
 		|| bDeathHandled
 		|| EnemyState == EEnemyState::Stone
 		|| EnemyState == EEnemyState::StoneDie
@@ -1240,7 +1496,7 @@ void AEnemyBase::ApplyBurnEffect(
 
 void AEnemyBase::ApplyBurnDamageTick()
 {
-	if (!HasAuthority() || !bIsBurning || EnemyMode != EEnemyMode::Combat || bDeathHandled)
+	if (!HasAuthority() || !bIsBurning || EnemyMode != EEnemyMode::Combat || bEnteringPortal || bDeathHandled)
 	{
 		EndBurnEffect();
 		return;

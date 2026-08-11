@@ -13,7 +13,6 @@
 #include "Components/BoxComponent.h"
 #include "Engine/World.h"
 #include "GameManager/DefenseGameMode.h"
-#include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 
 
@@ -35,22 +34,6 @@ void AEnemySpawner::BeginPlay()
 	// 서버에서만 overlap 이벤트 일어나도록 & pool 초기화
 	if (HasAuthority())
 	{
-		EnemyRoutes.Empty();
-		
-		TArray<AActor*> FoundRoutes;
-		UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemyRoute::StaticClass(), FoundRoutes);
-		for (AActor* FoundRoute : FoundRoutes)
-		{
-			if (AEnemyRoute* EnemyRoute = Cast<AEnemyRoute>(FoundRoute))
-			{
-				EnemyRoutes.Add(EnemyRoute);
-			}
-		}
-
-		//UE_LOG(LogTemp, Error, TEXT("EnemySpawner BeginPlay | Spawner=%s FoundRoutes=%d"),
-			//*GetNameSafe(this),
-			//EnemyRoutes.Num());
-		
 		BoxComp->SetGenerateOverlapEvents(true);
 		
 		// 적 스폰 테스트

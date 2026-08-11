@@ -13,7 +13,7 @@
 #include "Characters/Player/DefenseCharacter.h"
 #include "GameManager/DefenseGameInstance.h"
 #include "GameManager/DefenseGameState.h"
-#include "GameManager/DestinationActor.h"
+#include "GameManager/Portal.h"
 #include "GameManager/DefenseSpectatorController.h"
 #include "GameManager/Data/MapConfigData.h"
 #include "GameFramework/GameStateBase.h"
@@ -297,8 +297,8 @@ void ADefenseGameMode::RespawnDeadPlayer(AController* Controller)
 	UStatusComponent* StatusComp = Character->GetStatusComp();
 	if (!StatusComp || StatusComp->IsAlive()) return;
 
-	ADestinationActor* Destination = nullptr;
-	for (TActorIterator<ADestinationActor> It(GetWorld()); It; ++It)
+	APortal* Destination = nullptr;
+	for (TActorIterator<APortal> It(GetWorld()); It; ++It)
 	{
 		Destination = *It;
 		break;
