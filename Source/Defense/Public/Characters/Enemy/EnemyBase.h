@@ -196,7 +196,7 @@ public:
 	void MulticastRPC_StoneDieVisual();
 
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastRPC_ShowRewardPopup();
+	void MulticastRPC_ShowRewardPopup(class ADefensePlayerState* RewardTarget);
 	
 	// UI 업데이트
 	UFUNCTION()

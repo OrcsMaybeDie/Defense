@@ -10,6 +10,8 @@ EStateTreeRunStatus FEnemyDestroyTask::EnterState(FStateTreeExecutionContext& Co
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	InstanceData.ElapsedTime = 0.f;
 	InstanceData.bDestroyFinished = false;
+	InstanceData.bDestroyStarted = false;
+	InstanceData.bDestroyTaskCompleted = false;
 	InstanceData.CachedEnemy = Cast<AEnemyDestroy>(GetAIEnemy(Context));
 
 	AEnemyDestroy* AIEnemy = InstanceData.CachedEnemy.Get();
@@ -38,6 +40,7 @@ EStateTreeRunStatus FEnemyDestroyTask::EnterState(FStateTreeExecutionContext& Co
 	const float DestroyHitTime = InstanceData.DestroyDuration
 		* FMath::Clamp(InstanceData.DestroyHitTimeRatio, 0.f, 1.f);
 
+	InstanceData.bDestroyStarted = true;
 	AIEnemy->EnemyState = EEnemyState::Destroy;
 	AIEnemy->ClearSuspendedAction();
 	AIEnemy->BeginTrackedAction(EEnemyState::Destroy, InstanceData.DestroyDuration, DestroyHitTime);
@@ -72,12 +75,32 @@ EStateTreeRunStatus FEnemyDestroyTask::Tick(FStateTreeExecutionContext& Context,
 
 	if (InstanceData.ElapsedTime >= InstanceData.DestroyDuration)
 	{
+		InstanceData.bDestroyTaskCompleted = true;
 		AIEnemy->MarkDestroyFinished(true);
 		AIEnemy->CompleteTrackedAction();
 		return EStateTreeRunStatus::Succeeded;
 	}
 
 	return EStateTreeRunStatus::Running;
+}
+
+void FEnemyDestroyTask::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
+{
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	AEnemyDestroy* AIEnemy = InstanceData.CachedEnemy.Get();
+	if (!InstanceData.bDestroyStarted
+		|| InstanceData.bDestroyTaskCompleted
+		|| !AIEnemy
+		|| !AIEnemy->HasAuthority()
+		|| AIEnemy->EnemyMode != EEnemyMode::Combat
+		|| AIEnemy->bDeathHandled)
+	{
+		return;
+	}
+
+	AIEnemy->MarkDestroyFinished(InstanceData.bDestroyFinished);
+	AIEnemy->CompleteTrackedAction();
+	InstanceData.bDestroyTaskCompleted = true;
 }
 
 #if WITH_EDITOR

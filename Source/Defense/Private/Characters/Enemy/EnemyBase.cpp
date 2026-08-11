@@ -11,6 +11,7 @@
 #include "Characters/Enemy/Data/EnemyData.h"
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
 #include "Characters/Player/DefenseCharacter.h"
+#include "Characters/Player/DefensePlayerState.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -801,9 +802,14 @@ void AEnemyBase::MulticastRPC_StoneDieVisual_Implementation()
 	bHpUIVisible = false;
 }
 
-void AEnemyBase::MulticastRPC_ShowRewardPopup_Implementation()
+void AEnemyBase::MulticastRPC_ShowRewardPopup_Implementation(ADefensePlayerState* RewardTarget)
 {
-	ShowRewardPopup();
+	const APlayerController* LocalPlayerController = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	if (LocalPlayerController
+		&& LocalPlayerController->GetPlayerState<ADefensePlayerState>() == RewardTarget)
+	{
+		ShowRewardPopup();
+	}
 }
 
 void AEnemyBase::ShowRewardPopup()
@@ -1120,9 +1126,11 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		LastDeathRetryTime = -BIG_NUMBER;
 		if (GameMode)
 		{
-			GameMode->AwardEnemyKillCoin(this, DamageCauser, EventInstigator);
+			if (ADefensePlayerState* RewardTarget = GameMode->AwardEnemyKillCoin(this, DamageCauser, EventInstigator))
+			{
+				MulticastRPC_ShowRewardPopup(RewardTarget);
+			}
 		}
-		MulticastRPC_ShowRewardPopup();
 		
 		// 재화 얻어지나 테스트--------------------
 		/*if (APawn* CauserPawn = Cast<APawn>(DamageCauser))

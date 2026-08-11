@@ -1341,12 +1341,12 @@ int32 ADefenseGameMode::GetMaxWave()
 	return MaxWave;
 }
 	
-void ADefenseGameMode::AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator)
+ADefensePlayerState* ADefenseGameMode::AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator)
 {
-	if (!HasAuthority() || !Enemy) return;
+	if (!HasAuthority() || !Enemy) return nullptr;
 	
 	const int32 RewardCoin = Enemy->KillCoinReward;
-	if (RewardCoin <= 0) return;
+	if (RewardCoin <= 0) return nullptr;
 	
 	ADefensePlayerState* RewardTarget = nullptr;
 	
@@ -1363,7 +1363,8 @@ void ADefenseGameMode::AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* Damag
 		RewardTarget = DamageCauserPawn->GetPlayerState<ADefensePlayerState>();
 	}
 
-	if (!RewardTarget) return;
+	if (!RewardTarget) return nullptr;
 
 	RewardTarget->AddCoin(RewardCoin);
+	return RewardTarget;
 }

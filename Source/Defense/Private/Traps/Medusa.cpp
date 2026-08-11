@@ -8,6 +8,17 @@
 #include "Engine/World.h"
 #include "TimerManager.h"
 
+namespace
+{
+	constexpr int32 MaxPetrifiedEnemyCount = 5;
+
+	struct FPetrifyCandidate
+	{
+		AEnemyBase* Enemy = nullptr;
+		double DistanceSquared = 0.0;
+	};
+}
+
 AMedusa::AMedusa()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -21,8 +32,22 @@ AMedusa::AMedusa()
 void AMedusa::BeginPlay()
 {
 	Super::BeginPlay();
+	StartScanTimer();
+}
 
-	if (!HasAuthority() || ScanInterval <= 0.f)
+void AMedusa::InitializePlacedTrap(
+	UTrapData* TrapData,
+	ADefensePlayerState* InInstalledByPlayerState,
+	const TArray<FTrapCellKey>& InOccupiedCells
+)
+{
+	Super::InitializePlacedTrap(TrapData, InInstalledByPlayerState, InOccupiedCells);
+	StartScanTimer();
+}
+
+void AMedusa::StartScanTimer()
+{
+	if (!HasAuthority() || !IsPlaced() || ScanInterval <= 0.f || ScanTimerHandle.IsValid())
 	{
 		return;
 	}
@@ -45,7 +70,7 @@ void AMedusa::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AMedusa::ScanForEnemies()
 {
-	if (!HasAuthority() || TargetBoneNames.IsEmpty())
+	if (!HasAuthority() || !IsPlaced() || TargetBoneNames.IsEmpty())
 	{
 		return;
 	}
@@ -96,6 +121,8 @@ void AMedusa::ScanForEnemies()
 
 	const FVector Origin = GazeOrigin->GetComponentLocation();
 	const FVector Forward = GazeOrigin->GetForwardVector();
+	TArray<FPetrifyCandidate> Candidates;
+	Candidates.Reserve(UniqueEnemies.Num());
 
 	for (AEnemyBase* Enemy : UniqueEnemies)
 	{
@@ -132,7 +159,21 @@ void AMedusa::ScanForEnemies()
 				continue;
 			}
 
-			Enemy->TryEnterStone();
+			Candidates.Add({Enemy, FVector::DistSquared(Origin, Enemy->GetActorLocation())});
+			break;
+		}
+	}
+
+	Candidates.Sort([](const FPetrifyCandidate& Left, const FPetrifyCandidate& Right)
+	{
+		return Left.DistanceSquared < Right.DistanceSquared;
+	});
+
+	int32 PetrifiedEnemyCount = 0;
+	for (const FPetrifyCandidate& Candidate : Candidates)
+	{
+		if (Candidate.Enemy->TryEnterStone() && ++PetrifiedEnemyCount >= MaxPetrifiedEnemyCount)
+		{
 			break;
 		}
 	}
