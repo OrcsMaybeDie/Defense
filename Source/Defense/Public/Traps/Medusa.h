@@ -13,6 +13,11 @@ class DEFENSE_API AMedusa : public ATrapBase
 
 public:
 	AMedusa();
+	virtual void InitializePlacedTrap(
+		UTrapData* TrapData,
+		ADefensePlayerState* InInstalledByPlayerState,
+		const TArray<FTrapCellKey>& InOccupiedCells
+	) override;
 
 protected:
 	virtual void BeginPlay() override;
@@ -51,6 +56,7 @@ protected:
 private:
 	FTimerHandle ScanTimerHandle;
 
+	void StartScanTimer();
 	void ScanForEnemies();
 	bool IsPointInsideHorizontalCone(const FVector& Origin, const FVector& Forward, const FVector& Point) const;
 	bool HasClearSightToPoint(AActor* TargetActor, const FVector& TargetPoint) const;

@@ -98,7 +98,7 @@ public:
 	bool ShouldSpawnInWave(int32 WaveNumber) const;
 
 	void AssignRandomRouteToEnemy(class AEnemyBase* Enemy) const;
-	void RestartEnemyLogic(class AEnemyBase* Enemy) const;
+	bool RestartEnemyLogic(class AEnemyBase* Enemy) const;
 
 private:
 	void SpawnPreviewEnemy();
@@ -117,7 +117,9 @@ private:
 	int32 CurrentCombatBatchRemaining = 0;
 	int32 CombatInitializedCount = 0;
 	int32 CombatInitializationFailedCount = 0;
+	int32 CombatInitializationRetryCount = 0;
 	int32 PreparedWaveNumber = INDEX_NONE;
+	static constexpr int32 MaxCombatInitializationRetries = 3;
 	
 public:
 	UFUNCTION()

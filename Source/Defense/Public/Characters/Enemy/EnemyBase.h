@@ -126,7 +126,7 @@ public:
 	UPROPERTY(ReplicatedUsing=OnRep_UpdateMode)
 	EEnemyMode EnemyMode = EEnemyMode::Inactive;
 
-	// DestinationActor에 Overlap시 태어난 스포너에 있는 Active배열에서 제거하기 위함.
+	// 목적지에 도달했을 때 태어난 스포너의 Active 배열에서 제거하기 위함.
 	UPROPERTY()
 	TObjectPtr<class AEnemySpawner> OwningSpawner;
 	
@@ -155,15 +155,45 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Stone|Visual")
 	bool bApplyDamageOverlayWhileStone = true;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Stone|Visual",
+		meta=(EditCondition="bApplyDamageOverlayWhileStone"))
+	bool bShowDamageOutlineWhileStone = false;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Stone|Fracture")
 	TSubclassOf<class AStoneFractureActor> StoneFractureActorClass;
 	
 	UPROPERTY()
 	TObjectPtr<class UEnemyAnim> AnimInst;
 	
-	// 서버(state tree)에서만 씀.
+	// 서버 StateTree가 최종 이동 대상으로 사용한다.
 	UPROPERTY()
-	TObjectPtr<class ADestinationActor> DestinationActor;
+	TObjectPtr<class APortal> PortalActor;
+
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Portal")
+	bool bEnteringPortal = false;
+
+	bool TryBeginPortalEntry(
+		class APortal* Portal,
+		const FVector& ExitLocation,
+		const FVector& PortalPosition,
+		const FVector& PortalForward,
+		const FVector& PortalRight,
+		const FVector& PortalUp,
+		float PortalHalfWidth,
+		float PortalHalfHeight
+	);
+
+	bool FinishPortalEntry(const class APortal* Portal);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRPC_BeginPortalClip(
+		FVector PortalPosition,
+		FVector PortalForward,
+		FVector PortalRight,
+		FVector PortalUp,
+		float PortalHalfWidth,
+		float PortalHalfHeight
+	);
 	
 	//---------------피격---------------------------------
 	// Enemy HP
@@ -191,9 +221,6 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastRPC_StoneDieVisual();
 
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastRPC_ShowRewardPopup();
-	
 	// UI 업데이트
 	UFUNCTION()
 	void OnRep_UpdateUI();
@@ -270,8 +297,10 @@ public:
 	TObjectPtr<AActor> Target;
 
 	void SetTarget(AActor* NewTarget);
+	void ShowRewardPopup(int32 RewardAmount);
 
-	FORCEINLINE class ADestinationActor* GetDestinationActor() const { return DestinationActor; }
+	FORCEINLINE class APortal* GetPortalActor() const { return PortalActor; }
+	FORCEINLINE bool IsEnteringPortal() const { return bEnteringPortal; }
 	
 	virtual void ApplyEnemyData();
 	void PrepareForRegularAnimation();
@@ -285,6 +314,12 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<class UMaterialInterface>> MaterialsBeforeStone;
 
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<class UMaterialInstanceDynamic>> PortalMaterialInstances;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class APortal> EnteringPortal;
+
 	float SuspendedMontagePosition = 0.f;
 	float SuspendedMontagePlayRate = 1.f;
 	float LocomotionResumeWaitTime = 0.f;
@@ -292,6 +327,12 @@ private:
 	bool bStoneGameplayActive = false;
 	bool bStoneVisualActive = false;
 	bool bPendingLocomotionResume = false;
+	bool bPortalCollisionSnapshotValid = false;
+	ECollisionResponse CapsulePawnResponseBeforePortal = ECR_Ignore;
+	ECollisionResponse CapsuleVisibilityResponseBeforePortal = ECR_Ignore;
+	ECollisionResponse CapsuleBarricadeResponseBeforePortal = ECR_Ignore;
+	ECollisionResponse CapsuleWorldDynamicResponseBeforePortal = ECR_Ignore;
+	ECollisionEnabled::Type MeshCollisionEnabledBeforePortal = ECollisionEnabled::NoCollision;
 	float LastDeathRetryTime = -BIG_NUMBER;
 	static constexpr float DeathRetryInterval = 0.25f;
 
@@ -299,7 +340,18 @@ private:
 	void ExitStoneVisual(bool bResumeMontage, bool bWaitForMovement);
 	void RestoreMaterialsBeforeStone();
 	void ResetStoneVisual();
-	void ShowRewardPopup();
+	void ApplyPortalClipVisual(
+		const FVector& PortalPosition,
+		const FVector& PortalForward,
+		const FVector& PortalRight,
+		const FVector& PortalUp,
+		float PortalHalfWidth,
+		float PortalHalfHeight
+	);
+	void ResetPortalClipVisual();
+	void ApplyPortalCollisionState();
+	void RestorePortalCollisionState();
+	void ResetPortalEntryState();
 	void UpdateRewardPopup(float DeltaTime);
 	void ResetRewardPopup();
 

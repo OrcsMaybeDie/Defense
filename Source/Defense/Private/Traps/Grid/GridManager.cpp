@@ -826,7 +826,7 @@ bool AGridManager::IsTrapSurfaceCompatible(
 }
 
 // Hit 위치를 Trap Footprint의 시작 Cell(Anchor)로 변환
-// 홀수/짝수 크기 모두 Footprint 중심이 조준 위치에 가장 가깝게 Snap
+// 홀수/짝수 크기 모두 비어 있는 Footprint 중심이 조준 위치에 가장 가깝게 Snap
 bool AGridManager::FindClosestValidAnchor(
 	const UTrapData* TrapData,
 	const FVector& HitLocation,
@@ -885,7 +885,7 @@ bool AGridManager::FindClosestValidAnchor(
 	{
 		TArray<FTrapCellKey> CandidateFootprint;
 		GetTrapFootprintCells(TrapData, Candidate.CellKey, CandidateFootprint);
-		if (AreCellsValid(CandidateFootprint))
+		if (AreCellsAvailable(CandidateFootprint))
 		{
 			OutCellKey = Candidate.CellKey;
 			return true;
