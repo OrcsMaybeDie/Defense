@@ -19,7 +19,7 @@
 
 namespace
 {
-	constexpr ECollisionChannel EnemyCollisionChannel = ECC_GameTraceChannel1;
+	constexpr ECollisionChannel TrapBaseEnemyCollisionChannel = ECC_GameTraceChannel1;
 	constexpr float WallTraceRange = 1400.f;
 	constexpr float WallTraceStartOffset = 10.f;
 	constexpr float WallTraceDebugTime = 0.35f;
@@ -72,7 +72,7 @@ ATrapBase::ATrapBase()
 	DamageArea->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	DamageArea->SetCollisionObjectType(ECC_WorldDynamic);
 	DamageArea->SetCollisionResponseToAllChannels(ECR_Ignore);
-	DamageArea->SetCollisionResponseToChannel(EnemyCollisionChannel, ECR_Overlap);
+	DamageArea->SetCollisionResponseToChannel(TrapBaseEnemyCollisionChannel, ECR_Overlap);
 	DamageArea->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	DamageArea->SetGenerateOverlapEvents(true);
 }
@@ -421,7 +421,7 @@ void ATrapBase::ApplyWallBoxTraceDamage()
 	const FQuat TraceRotation = GetActorQuat();
 
 	FCollisionObjectQueryParams ObjectQueryParams;
-	ObjectQueryParams.AddObjectTypesToQuery(EnemyCollisionChannel);
+	ObjectQueryParams.AddObjectTypesToQuery(TrapBaseEnemyCollisionChannel);
 
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(WallTrapTrace), false, this);
 	QueryParams.AddIgnoredActor(this);
@@ -527,7 +527,7 @@ void ATrapBase::OnDamageAreaBeginOverlap(
 )
 {
 	if (!HasAuthority() || !IsPlaced() || !IsValid(OtherActor) || OtherActor == this) return;
-	if (OtherComp && OtherComp->GetCollisionObjectType() != EnemyCollisionChannel) return;
+	if (OtherComp && OtherComp->GetCollisionObjectType() != TrapBaseEnemyCollisionChannel) return;
 
 	OverlappingEnemies.Add(TWeakObjectPtr<AActor>(OtherActor));
 }
