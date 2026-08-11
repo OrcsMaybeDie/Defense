@@ -8,7 +8,7 @@
 #include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Player/DefenseCharacter.h"
 #include "Components/BoxComponent.h"
-#include "Components/StaticMeshComponent.h"
+#include "Components/MeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
@@ -112,16 +112,18 @@ float ABarricadeTrap::TakeDamage(
 
 float ABarricadeTrap::GetDistanceToSurface(const FVector& FromLocation) const
 {
-	if (!Mesh || !Mesh->GetStaticMesh())
+	UMeshComponent* ActiveMesh = GetActiveTrapMeshComponent();
+	FVector BoundsCenter;
+	FVector BoundsExtent;
+	if (!ActiveMesh || !GetTrapMeshLocalBounds(BoundsCenter, BoundsExtent))
 	{
 		return FVector::Distance(FromLocation, GetActorLocation());
 	}
 
-	FVector BoundsMin;
-	FVector BoundsMax;
-	Mesh->GetLocalBounds(BoundsMin, BoundsMax);
+	const FVector BoundsMin = BoundsCenter - BoundsExtent;
+	const FVector BoundsMax = BoundsCenter + BoundsExtent;
 
-	const FTransform& MeshTransform = Mesh->GetComponentTransform();
+	const FTransform& MeshTransform = ActiveMesh->GetComponentTransform();
 	const FVector LocalLocation = MeshTransform.InverseTransformPosition(FromLocation);
 	const FVector ClosestLocalPoint(
 		FMath::Clamp(LocalLocation.X, BoundsMin.X, BoundsMax.X),

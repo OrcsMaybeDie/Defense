@@ -177,7 +177,7 @@ protected:
 	bool EvaluateCellStaticValidity(const FTrapCellKey& CellKey) const;
 	bool IsPlaceableHit(const FHitResult& Hit, ETrapGridSurface SurfaceType) const;
 
-	// 조준 위치 주변에서 가장 가까운 유효 Footprint Anchor 선택
+	// 조준 위치 주변에서 가장 가까운 유효하고 비어 있는 Footprint Anchor 선택
 	bool FindClosestValidAnchor(
 		const UTrapData* TrapData,
 		const FVector& HitLocation,
