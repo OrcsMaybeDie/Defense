@@ -106,3 +106,6 @@ Build/
 
 # Docs
 Docs/
+
+# Local source asset pack; required assets are migrated under Content/_Defense.
+/Content/DepthsBelow/
