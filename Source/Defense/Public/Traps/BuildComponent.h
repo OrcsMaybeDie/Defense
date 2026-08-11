@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Traps/Grid/TrapGridTypes.h"
 #include "BuildComponent.generated.h"
 
 class ATrapBase;
@@ -35,16 +36,19 @@ protected:
 	UPROPERTY(Transient)
 	TObjectPtr<ATrapBase> TrapPreviewActor;
 
+	UPROPERTY(Transient)
+	TObjectPtr<AGridManager> CachedGridManager;
+
 	UTrapData* GetSelectedTrapData() const;
 	APawn* GetOwnerPawn() const;
 
 	bool TraceBuildTarget(FHitResult& OutHit) const;
-	AGridManager* FindGridManager() const;
+	AGridManager* FindGridManager();
 	void UpdateTrapPreview();
 	void DestroyTrapPreview();
 
 	UFUNCTION(Server, Reliable)
-	void ServerRPC_RequestBuildTrap(FVector_NetQuantize HitLocation);
+	void ServerRPC_RequestBuildTrap(const FTrapCellKey& AnchorCell);
 
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_RequestSellTrap(ATrapBase* Trap);

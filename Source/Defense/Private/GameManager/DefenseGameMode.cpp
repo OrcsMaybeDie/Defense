@@ -21,7 +21,6 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Traps/TrapBase.h"
-#include "Traps/Grid/GridManager.h"
 
 namespace
 {
@@ -85,28 +84,6 @@ void ADefenseGameMode::StartPlay()
 	}
 
 	ApplyDataAssets();
-
-	// GridManager (없으면) 초기화
-	for (TActorIterator<AGridManager> It(GetWorld()); It; ++It)
-	{
-		GridManager = *It;
-		break;
-	}
-
-	if (!GridManager)
-	{
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.SpawnCollisionHandlingOverride =
-			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-		// 월드 원점 (0,0,0)에 Spawn
-		GridManager = GetWorld()->SpawnActor<AGridManager>(
-			AGridManager::StaticClass(),
-			FVector::ZeroVector,
-			FRotator::ZeroRotator,
-			SpawnParams
-		);
-	}
 
 	DefenseGameState = GetGameState<ADefenseGameState>();
 	if (DefenseGameState)

@@ -9,8 +9,6 @@
 
 class ATrapBase;
 class USceneComponent;
-class UGridSurfaceComponent;
-class UPrimitiveComponent;
 class UTrapData;
 
 
@@ -22,29 +20,78 @@ class DEFENSE_API AGridManager : public AActor
 public:
 	AGridManager();
 
-	virtual void BeginPlay() override;
-	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap Grid")
 	TObjectPtr<USceneComponent> SceneRoot;
 
-	/* World Location ↔ Cell 변환 */
-	FTrapCellKey WorldToCellKey(const FVector& WorldLocation,
-		ETrapPlaneAxis PlaneAxis,
-		ETrapPlaneNormal PlaneNormal
-	) const; // 월드 위치와 설치면 정보 → 월드 위치를 논리적인 Cell 주소
-	
-	FVector CellKeyToWorldCenter(const FTrapCellKey& CellKey) const; // Cell 주소 → 월드 중심 위치
-	
-	/* 유효 Cell을 등록 */
-	void RegisterValidCells(const TArray<FTrapCellKey>& CellKeys);
-	
+	/* Region Bake */
+	UFUNCTION(CallInEditor, Category="Trap Grid|Region")
+	void BuildRegions();
+
+	UFUNCTION(CallInEditor, Category="Trap Grid|Region")
+	void ValidateRegions();
+
+	UFUNCTION(CallInEditor, Category="Trap Grid|Region")
+	void ClearRegions();
+
+	UFUNCTION(CallInEditor, Category="Trap Grid|Region")
+	void ShowRegions();
+
+	UFUNCTION(BlueprintPure, Category="Trap Grid|Region")
+	int32 GetBakedRegionCount() const { return BakedRegions.Num(); }
+
+	const FTrapGridRegion* FindRegionById(const FGuid& RegionId) const;
+
+	bool TryGetRegionForHit(
+		const FHitResult& Hit,
+		const FTrapGridRegion*& OutRegion
+	) const;
+
+	FVector2D WorldToRegionLocal(
+		const FTrapGridRegion& Region,
+		const FVector& WorldLocation
+	) const;
+
+	FVector RegionLocalToWorld(
+		const FTrapGridRegion& Region,
+		const FVector2D& LocalLocation,
+		float NormalOffset = 0.f
+	) const;
+
+	FIntPoint WorldToRegionCell(
+		const FTrapGridRegion& Region,
+		const FVector& WorldLocation
+	) const;
+
+	FVector RegionCellToWorldCenter(
+		const FTrapGridRegion& Region,
+		const FIntPoint& Cell
+	) const;
+
+	FIntPoint WorldToRegionAnchorCell(
+		const FTrapGridRegion& Region,
+		const FVector& WorldLocation,
+		const FIntPoint& FootprintCells
+	) const;
+
+	FVector GetRegionFootprintCenter(
+		const FTrapGridRegion& Region,
+		const FIntPoint& AnchorCell,
+		const FIntPoint& FootprintCells
+	) const;
+
+	FTransform GetRegionFootprintTransform(
+		const FTrapGridRegion& Region,
+		const FIntPoint& AnchorCell,
+		const FIntPoint& FootprintCells
+	) const;
+
 	/* 단일 Cell 조회 */
-	bool IsCellValid(const FTrapCellKey& CellKey) const; // 레벨이 제공한 설치 가능 Cell인가?
+	bool IsCellValid(const FTrapCellKey& CellKey); // 실제 설치면 Collision이 Cell 전체를 지지함?
 	bool IsCellOccupied(const FTrapCellKey& CellKey) const; // 함정이 점유됨?
 	
 	/* Footprint 전체 조회 */
-	bool AreCellsValid(const TArray<FTrapCellKey>& CellKeys) const; // 함정 Footprint의 모든 Cell이 유효함?
-	bool AreCellsAvailable(const TArray<FTrapCellKey>& CellKeys) const; // 유효하고, 비어있음?
+	bool AreCellsValid(const TArray<FTrapCellKey>& CellKeys); // 함정 Footprint의 모든 Cell이 유효함?
+	bool AreCellsAvailable(const TArray<FTrapCellKey>& CellKeys); // 유효하고, 비어있음?
 
 	// Footprint를 구성하는 모든 Cell Key를 계산
 	void GetTrapFootprintCells(
@@ -75,21 +122,22 @@ public:
 
 	bool TryGetCellKeyForHit(
 		const UTrapData* TrapData,
-		const UPrimitiveComponent* HitComponent,
-		const FVector& HitLocation,
+		const FHitResult& Hit,
 		FTrapCellKey& OutCellKey
-	) const;
+	);
 
-	bool TryGetCellKeyAtWorldLocation(
+	bool IsTrapSurfaceCompatible(
 		const UTrapData* TrapData,
-		const FVector& WorldLocation,
-		FTrapCellKey& OutCellKey
+		const FTrapCellKey& CellKey
 	) const;
 
 	float GetCellSize() const { return CellSize; }
 
 	UFUNCTION(BlueprintPure, Category="Trap Grid")
-	int32 GetRegisteredValidCellCount() const { return RegisteredValidCellCount; }
+	int32 GetCachedValidCellCount() const { return ValidCells.Num(); }
+
+	UFUNCTION(BlueprintPure, Category="Trap Grid")
+	int32 GetCachedInvalidCellCount() const { return InvalidCells.Num(); }
 	
 
 protected:
@@ -98,18 +146,24 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid", meta=(ClampMin="1.0"))
 	float CellSize = 100.f;
 
-	// 등록된 설치면 Bounds에서 자동 계산되는 World Grid 원점
-	// 설치면이 없는 축은 이 Actor의 Location을 기본값으로 사용
-	FVector GridOrigin = FVector::ZeroVector;
-	
-	// 설치 가능한 모든 Cell 주소
-	// 모듈 경계가 달라도 동일한 주소라면 같은 Cell. Module ID가 Key에 없기 때문에 경계 설치가 가능
-	TSet<FTrapCellKey> ValidCells; 
-	TArray<TWeakObjectPtr<UGridSurfaceComponent>> RegisteredSurfaces;
-	TMap<FObjectKey, TArray<TWeakObjectPtr<UGridSurfaceComponent>>> SurfacesByPrimitive;
+	// Editor에서 생성한 연결 설치 영역
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Trap Grid|Region")
+	TArray<FTrapGridRegion> BakedRegions;
 
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Trap Grid")
-	int32 RegisteredValidCellCount = 0;
+	// 서로 맞닿은 Surface로 판단할 최대 간격
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid|Region", meta=(ClampMin="0.0"))
+	float RegionConnectionTolerance = 2.f;
+
+	// 점 접촉만으로 Region이 합쳐지는 것을 막는 최소 접촉 길이
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid|Region", meta=(ClampMin="0.0"))
+	float RegionMinimumContactLength = 1.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid|Region", meta=(ClampMin="0.0"))
+	float RegionDebugDuration = 30.f;
+
+	// Collision 검사 결과 캐시. 두 Set에 모두 없으면 아직 검사하지 않은 Cell
+	TSet<FTrapCellKey> ValidCells;
+	TSet<FTrapCellKey> InvalidCells;
 	
 	// 이 Cell에 어떤 함정이 있는가? (Trap도 살아 있음? -> 점유 상태)
 	TMap<FTrapCellKey, TWeakObjectPtr<ATrapBase>> CellToTrap;
@@ -119,41 +173,33 @@ protected:
 	UFUNCTION()
 	void HandleTrapDestroyed(AActor* DestroyedActor);
 
-	void RegisterWorldGridSurfaces();
-	
-	// GridSurface 부모 Primitive의 Bounds를 Valid Cell 목록으로 변환
-	bool BuildCellKeysForSurface(
-		const UGridSurfaceComponent* Surface,
-		TArray<FTrapCellKey>& OutCellKeys
-	) const;
+	// 아직 검사하지 않은 Cell을 실제 WorldStatic Collision으로 검사
+	bool EvaluateCellStaticValidity(const FTrapCellKey& CellKey) const;
+	bool IsPlaceableHit(const FHitResult& Hit, ETrapGridSurface SurfaceType) const;
 
-	void AppendCellKeysForPlane(
-		const FBox& WorldBounds,
-		ETrapPlaneAxis PlaneAxis,
-		ETrapPlaneNormal PlaneNormal,
-		TArray<FTrapCellKey>& OutCellKeys
-	) const;
-
-	bool ResolveSurfacePlaneAtLocation(
-		const UGridSurfaceComponent* Surface,
-		const FVector& WorldLocation,
-		ETrapPlaneAxis& OutPlaneAxis,
-		ETrapPlaneNormal& OutPlaneNormal,
-		FVector& OutSurfaceLocation
-	) const;
-
-	// 조준 위치를 선택된 Trap의 Footprint Anchor로 변환
-	bool TryGetCellKeyForSurface(
+	// 조준 위치 주변에서 가장 가까운 유효 Footprint Anchor 선택
+	bool FindClosestValidAnchor(
 		const UTrapData* TrapData,
-		const UGridSurfaceComponent* Surface,
-		const FVector& WorldLocation,
+		const FVector& HitLocation,
+		const FTrapGridRegion& Region,
 		FTrapCellKey& OutCellKey
-	) const;
+	);
 
 	FTrapCellKey WorldToTrapAnchorCellKey(
 		const FVector& WorldLocation,
-		ETrapPlaneAxis PlaneAxis,
-		ETrapPlaneNormal PlaneNormal,
+		const FTrapGridRegion& Region,
 		const FIntPoint& FootprintCells
 	) const;
+
+	// Cell 외곽 검사 시 경계선에서 안쪽으로 들어올 거리
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid|Collision", meta=(ClampMin="0.0"))
+	float CellProbeInset = 2.f;
+
+	// 설치면 바깥에서 안쪽으로 검사할 거리
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid|Collision", meta=(ClampMin="1.0"))
+	float SurfaceProbeDistance = 50.f;
+
+	// 인접 모듈 설치면 높이 차이 허용 범위
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trap Grid|Collision", meta=(ClampMin="0.0"))
+	float SurfacePlaneTolerance = 1.f;
 };
