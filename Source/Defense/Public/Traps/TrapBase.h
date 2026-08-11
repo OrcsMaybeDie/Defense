@@ -7,6 +7,8 @@
 #include "TrapBase.generated.h"
 
 class UPrimitiveComponent;
+class UMeshComponent;
+class USkeletalMeshComponent;
 class UStaticMeshComponent;
 class USceneComponent;
 class UTrapData;
@@ -38,6 +40,8 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap|Components")
 	TObjectPtr<UStaticMeshComponent> Mesh;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap|Components")
+	TObjectPtr<USkeletalMeshComponent> SkeletalMesh;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap|Components")
 	TObjectPtr<UBoxComponent> DamageArea;
 
 	UPROPERTY(ReplicatedUsing=OnRep_RuntimeState, VisibleInstanceOnly, BlueprintReadOnly, Category="Trap")
@@ -63,6 +67,9 @@ protected:
 	TSet<TWeakObjectPtr<AActor>> OverlappingEnemies;
 
 	bool IsPlaced() const { return RuntimeState == ETrapRuntimeState::Placed; }
+	UMeshComponent* GetActiveTrapMeshComponent() const;
+	bool GetTrapMeshLocalBounds(FVector& OutBoundsCenter, FVector& OutBoundsExtent) const;
+	void RefreshTrapMeshComponents();
 	void ConfigureFromTrapData(UTrapData* TrapData);
 	void CenterTrapMeshOnRoot();
 	void ApplyTrapCollision();

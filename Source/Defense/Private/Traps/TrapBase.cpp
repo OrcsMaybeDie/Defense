@@ -1,11 +1,14 @@
 #include "Traps/TrapBase.h"
 
 #include "Components/BoxComponent.h"
+#include "Components/MeshComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Characters/Enemy/EnemyBase.h"
 #include "DrawDebugHelpers.h"
+#include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
@@ -58,6 +61,11 @@ ATrapBase::ATrapBase()
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 
+	SkeletalMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("SkeletalMesh"));
+	SkeletalMesh->SetupAttachment(SceneRoot);
+	SkeletalMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	SkeletalMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+
 	DamageArea = CreateDefaultSubobject<UBoxComponent>(TEXT("DamageArea"));
 	DamageArea->SetupAttachment(SceneRoot);
 	DamageArea->SetBoxExtent(FVector(50.f, 50.f, 50.f)); // test
@@ -85,6 +93,7 @@ void ATrapBase::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
+	RefreshTrapMeshComponents();
 	CenterTrapMeshOnRoot();
 	SyncDamageAreaToMesh();
 }
@@ -93,6 +102,7 @@ void ATrapBase::BeginPlay()
 {
 	Super::BeginPlay();
 
+	RefreshTrapMeshComponents();
 	CenterTrapMeshOnRoot();
 	ApplyTrapCollision();
 
@@ -184,22 +194,75 @@ void ATrapBase::ConfigureFromTrapData(UTrapData* TrapData)
 	DamageInterval = TrapData->DamageInterval;
 }
 
+UMeshComponent* ATrapBase::GetActiveTrapMeshComponent() const
+{
+	// 두 에셋이 모두 지정된 경우 Skeletal Mesh를 우선 사용
+	if (SkeletalMesh && SkeletalMesh->GetSkeletalMeshAsset())
+	{
+		return SkeletalMesh;
+	}
+
+	return Mesh && Mesh->GetStaticMesh() ? Mesh.Get() : nullptr;
+}
+
+bool ATrapBase::GetTrapMeshLocalBounds(FVector& OutBoundsCenter, FVector& OutBoundsExtent) const
+{
+	if (SkeletalMesh && SkeletalMesh->GetSkeletalMeshAsset())
+	{
+		const FBoxSphereBounds MeshBounds = SkeletalMesh->GetSkeletalMeshAsset()->GetBounds();
+		OutBoundsCenter = MeshBounds.Origin;
+		OutBoundsExtent = MeshBounds.BoxExtent;
+		return true;
+	}
+
+	if (Mesh && Mesh->GetStaticMesh())
+	{
+		FVector BoundsMin;
+		FVector BoundsMax;
+		Mesh->GetLocalBounds(BoundsMin, BoundsMax);
+		OutBoundsCenter = (BoundsMin + BoundsMax) * 0.5f;
+		OutBoundsExtent = (BoundsMax - BoundsMin) * 0.5f;
+		return true;
+	}
+
+	return false;
+}
+
+void ATrapBase::RefreshTrapMeshComponents()
+{
+	const bool bUseSkeletalMesh = SkeletalMesh && SkeletalMesh->GetSkeletalMeshAsset();
+	const bool bUseStaticMesh = !bUseSkeletalMesh && Mesh && Mesh->GetStaticMesh();
+
+	if (Mesh)
+	{
+		Mesh->SetVisibility(bUseStaticMesh, true);
+		Mesh->SetHiddenInGame(!bUseStaticMesh, true);
+	}
+
+	if (SkeletalMesh)
+	{
+		SkeletalMesh->SetVisibility(bUseSkeletalMesh, true);
+		SkeletalMesh->SetHiddenInGame(!bUseSkeletalMesh, true);
+		SkeletalMesh->SetComponentTickEnabled(bUseSkeletalMesh);
+	}
+}
+
 void ATrapBase::CenterTrapMeshOnRoot()
 {
-	if (!Mesh || !Mesh->GetStaticMesh()) return;
-
-	FVector BoundsMin;
-	FVector BoundsMax;
-	Mesh->GetLocalBounds(BoundsMin, BoundsMax);
+	UMeshComponent* ActiveMesh = GetActiveTrapMeshComponent();
+	FVector BoundsCenter;
+	FVector BoundsExtent;
+	if (!ActiveMesh || !GetTrapMeshLocalBounds(BoundsCenter, BoundsExtent)) return;
 
 	// Actor 원점 = Grid가 계산한 Footprint 중심
-	// 메시 크기: BP 설정을 유지, XY Bounds 중심: Actor 원점
-	const FVector BoundsCenter = (BoundsMin + BoundsMax) * 0.5f;
-	const FVector MeshScale = Mesh->GetRelativeScale3D();
-	FVector MeshLocation = Mesh->GetRelativeLocation();
-	MeshLocation.X = -BoundsCenter.X * MeshScale.X;
-	MeshLocation.Y = -BoundsCenter.Y * MeshScale.Y;
-	Mesh->SetRelativeLocation(MeshLocation);
+	// 메시의 BP 회전/스케일을 적용한 뒤, 설치 평면의 XY Bounds 중심을 Actor 원점에 맞춤
+	const FVector MeshScale = ActiveMesh->GetRelativeScale3D();
+	const FVector ScaledBoundsCenter = BoundsCenter * MeshScale;
+	const FVector TransformedBoundsCenter = ActiveMesh->GetRelativeRotation().RotateVector(ScaledBoundsCenter);
+	FVector MeshLocation = ActiveMesh->GetRelativeLocation();
+	MeshLocation.X = -TransformedBoundsCenter.X;
+	MeshLocation.Y = -TransformedBoundsCenter.Y;
+	ActiveMesh->SetRelativeLocation(MeshLocation);
 }
 
 void ATrapBase::OnRep_RuntimeState()
@@ -248,14 +311,14 @@ void ATrapBase::Multicast_PlayWallShotVFX_Implementation(FVector_NetQuantize Sta
 
 void ATrapBase::ApplyPreviewVisual()
 {
-	if (Mesh)
+	if (UMeshComponent* ActiveMesh = GetActiveTrapMeshComponent())
 	{
-		Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		ActiveMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		ActiveMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 
-		for (int32 MaterialIndex = 0; MaterialIndex < Mesh->GetNumMaterials(); ++MaterialIndex)
+		for (int32 MaterialIndex = 0; MaterialIndex < ActiveMesh->GetNumMaterials(); ++MaterialIndex)
 		{
-			if (UMaterialInstanceDynamic* PreviewMaterial = Mesh->CreateDynamicMaterialInstance(MaterialIndex))
+			if (UMaterialInstanceDynamic* PreviewMaterial = ActiveMesh->CreateDynamicMaterialInstance(MaterialIndex))
 			{
 				PreviewMaterial->SetVectorParameterValue(TEXT("PreviewColor"), FLinearColor(0.f, 1.f, 0.2f));
 			}
@@ -266,18 +329,13 @@ void ATrapBase::ApplyPreviewVisual()
 // test : Mesh 크기에 맞춰 Collision을 자동 조정
 void ATrapBase::SyncDamageAreaToMesh()
 {
-	if (!Mesh || !DamageArea || !Mesh->GetStaticMesh()) return;
-	
-	// StaticMesh의 로컬 공간 기준 최소/최대 범위
-	FVector BoundsMin;
-	FVector BoundsMax;
-	Mesh->GetLocalBounds(BoundsMin, BoundsMax);
-
-	const FVector BoundsCenter = (BoundsMin + BoundsMax) * 0.5f;
-	const FVector BoundsExtent = (BoundsMax - BoundsMin) * 0.5f;
+	UMeshComponent* ActiveMesh = GetActiveTrapMeshComponent();
+	FVector BoundsCenter;
+	FVector BoundsExtent;
+	if (!ActiveMesh || !DamageArea || !GetTrapMeshLocalBounds(BoundsCenter, BoundsExtent)) return;
 	
 	// Mesh가 Actor 안에서 상대 위치/회전/스케일을 가질 수 있어서 반영함
-	const FTransform MeshRelativeTransform = Mesh->GetRelativeTransform();
+	const FTransform MeshRelativeTransform = ActiveMesh->GetRelativeTransform();
 	const FVector MeshScale = MeshRelativeTransform.GetScale3D();
 	const FVector AbsMeshScale(FMath::Abs(MeshScale.X), FMath::Abs(MeshScale.Y), FMath::Abs(MeshScale.Z));
 
