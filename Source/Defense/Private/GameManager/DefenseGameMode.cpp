@@ -13,7 +13,7 @@
 #include "Characters/Player/DefenseCharacter.h"
 #include "GameManager/DefenseGameInstance.h"
 #include "GameManager/DefenseGameState.h"
-#include "GameManager/DestinationActor.h"
+#include "GameManager/Portal.h"
 #include "GameManager/DefenseSpectatorController.h"
 #include "GameManager/Data/MapConfigData.h"
 #include "GameFramework/GameStateBase.h"
@@ -297,8 +297,8 @@ void ADefenseGameMode::RespawnDeadPlayer(AController* Controller)
 	UStatusComponent* StatusComp = Character->GetStatusComp();
 	if (!StatusComp || StatusComp->IsAlive()) return;
 
-	ADestinationActor* Destination = nullptr;
-	for (TActorIterator<ADestinationActor> It(GetWorld()); It; ++It)
+	APortal* Destination = nullptr;
+	for (TActorIterator<APortal> It(GetWorld()); It; ++It)
 	{
 		Destination = *It;
 		break;
@@ -1318,12 +1318,12 @@ int32 ADefenseGameMode::GetMaxWave()
 	return MaxWave;
 }
 	
-void ADefenseGameMode::AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator)
+ADefensePlayerState* ADefenseGameMode::AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator)
 {
-	if (!HasAuthority() || !Enemy) return;
+	if (!HasAuthority() || !Enemy) return nullptr;
 	
 	const int32 RewardCoin = Enemy->KillCoinReward;
-	if (RewardCoin <= 0) return;
+	if (RewardCoin <= 0) return nullptr;
 	
 	ADefensePlayerState* RewardTarget = nullptr;
 	
@@ -1340,7 +1340,8 @@ void ADefenseGameMode::AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* Damag
 		RewardTarget = DamageCauserPawn->GetPlayerState<ADefensePlayerState>();
 	}
 
-	if (!RewardTarget) return;
+	if (!RewardTarget) return nullptr;
 
 	RewardTarget->AddCoin(RewardCoin);
+	return RewardTarget;
 }

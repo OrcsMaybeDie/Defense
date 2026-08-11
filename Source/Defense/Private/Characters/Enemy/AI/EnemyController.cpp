@@ -32,11 +32,7 @@ void AEnemyController::OnPossess(APawn* InPawn)
 		//*GetNameSafe(this),
 		//*GetNameSafe(InPawn),
 		//*GetNameSafe(StateTreeAIComp));
-	if (StateTreeAIComp && Cast<AEnemyBase>(InPawn))
-	{
-		StateTreeAIComp->RestartLogic();
-	}
-	
+	// StateTree is started by the spawner only after possession and route setup are complete.
 }
 
 // Called when the game starts or when spawned

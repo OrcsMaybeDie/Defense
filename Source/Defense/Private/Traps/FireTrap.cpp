@@ -1,5 +1,6 @@
 #include "Traps/FireTrap.h"
 
+#include "Characters/Enemy/Data/EnemyData.h"
 #include "Characters/Enemy/EnemyBase.h"
 #include "Components/BoxComponent.h"
 
@@ -45,7 +46,9 @@ void AFireTrap::OnFireAreaBeginOverlap(
 	}
 
 	AEnemyBase* Enemy = Cast<AEnemyBase>(OtherActor);
-	if (!IsValid(Enemy) || Enemy->EnemyMode != EEnemyMode::Combat)
+	if (!IsValid(Enemy)
+		|| Enemy->EnemyMode != EEnemyMode::Combat
+		|| Enemy->EnemyType == EEnemyType::Run)
 	{
 		return;
 	}

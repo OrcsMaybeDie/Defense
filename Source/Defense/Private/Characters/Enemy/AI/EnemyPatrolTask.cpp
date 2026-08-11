@@ -7,7 +7,7 @@
 #include "Characters/Enemy/EnemyRoute.h"
 #include "Characters/Enemy/AI/EnemyController.h"
 #include "Engine/Engine.h"
-#include "GameManager/DestinationActor.h"
+#include "GameManager/Portal.h"
 #include "Navigation/PathFollowingComponent.h"
 
 FEnemyPatrolTask::FEnemyPatrolTask()
@@ -116,7 +116,7 @@ EStateTreeRunStatus FEnemyPatrolTask::EnterState(FStateTreeExecutionContext& Con
 
 			if (Result.IsSuccess())
 			{
-				if (InstanceData.bMovingToDestination)
+				if (InstanceData.bMovingToEntryPoint)
 				{
 					FinishPatrolTask(WeakController, &InstanceData, EStateTreeFinishTaskType::Succeeded);
 					return;
@@ -155,7 +155,7 @@ void FEnemyPatrolTask::MoveToCurrentWaypoint(TWeakObjectPtr<AEnemyController> We
 	AEnemyController* AIController = WeakController.Get();
 	AEnemyBase* AIEnemy = Cast<AEnemyBase>(AIController->GetPawn());
 	const TArray<FVector>& Waypoints = AIController->EnemyRoute->Waypoints;
-	InstanceData->bMovingToDestination = false;
+	InstanceData->bMovingToEntryPoint = false;
 
 	if (!Waypoints.IsValidIndex(InstanceData->CurrentWaypointIndex))
 	{
@@ -165,20 +165,21 @@ void FEnemyPatrolTask::MoveToCurrentWaypoint(TWeakObjectPtr<AEnemyController> We
 
 	if (InstanceData->CurrentWaypointIndex == Waypoints.Num() - 1)
 	{
-		AActor* DestinationActor = AIEnemy ? AIEnemy->GetDestinationActor() : nullptr;
-		if (!DestinationActor)
+		APortal* PortalActor = AIEnemy ? AIEnemy->GetPortalActor() : nullptr;
+		if (!PortalActor)
 		{
 			FinishPatrolTask(WeakController, InstanceData, EStateTreeFinishTaskType::Failed);
 			return;
 		}
 
-		InstanceData->bMovingToDestination = true;
-		const EPathFollowingRequestResult::Type MoveResult = AIController->MoveToActor(
-			DestinationActor,
-			InstanceData->DestinationAcceptanceRadius,
+		InstanceData->bMovingToEntryPoint = true;
+		const EPathFollowingRequestResult::Type MoveResult = AIController->MoveToLocation(
+			PortalActor->GetEntryPointLocation(),
+			InstanceData->EntryAcceptanceRadius,
+			false,
 			true,
 			true,
-			true,
+			false,
 			AIEnemy->NavigationFilterClass
 		);
 
