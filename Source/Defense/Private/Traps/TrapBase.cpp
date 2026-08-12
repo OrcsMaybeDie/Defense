@@ -20,6 +20,7 @@
 namespace
 {
 	constexpr ECollisionChannel TrapBaseEnemyCollisionChannel = ECC_GameTraceChannel1;
+	constexpr ECollisionChannel TrapBaseFootIKTraceChannel = ECC_GameTraceChannel2;
 	constexpr float WallTraceRange = 1400.f;
 	constexpr float WallTraceStartOffset = 10.f;
 	constexpr float WallTraceDebugTime = 0.35f;
@@ -102,8 +103,12 @@ void ATrapBase::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// Grid Actor 자체의 Scale은 항상 1이며, 함정별 크기는 Mesh Relative Scale로 관리한다.
+	// BP Root/Construction Script Scale이 프리뷰와 실제 스폰 크기를 다르게 만드는 것도 방지한다.
+	SetActorScale3D(FVector::OneVector);
 	RefreshTrapMeshComponents();
 	CenterTrapMeshOnRoot();
+	ResetAttackAnimation();
 	ApplyTrapCollision();
 
 	if (DamageArea)
@@ -150,6 +155,7 @@ void ATrapBase::InitializePreviewTrap(UTrapData* TrapData)
 
 	ConfigureFromTrapData(TrapData);
 	StopDamageTimer();
+	ResetAttackAnimation();
 	ApplyTrapCollision();
 
 	ApplyPreviewVisual();
@@ -174,6 +180,7 @@ void ATrapBase::InitializePlacedTrap(
 	OccupiedCells = InOccupiedCells;
 
 	ConfigureFromTrapData(TrapData);
+	ResetAttackAnimation();
 	ApplyTrapCollision();
 
 	if (DamageArea)
@@ -235,12 +242,14 @@ void ATrapBase::RefreshTrapMeshComponents()
 
 	if (Mesh)
 	{
+		Mesh->SetCastShadow(false);
 		Mesh->SetVisibility(bUseStaticMesh, true);
 		Mesh->SetHiddenInGame(!bUseStaticMesh, true);
 	}
 
 	if (SkeletalMesh)
 	{
+		SkeletalMesh->SetCastShadow(false);
 		SkeletalMesh->SetVisibility(bUseSkeletalMesh, true);
 		SkeletalMesh->SetHiddenInGame(!bUseSkeletalMesh, true);
 		SkeletalMesh->SetComponentTickEnabled(bUseSkeletalMesh);
@@ -267,6 +276,7 @@ void ATrapBase::CenterTrapMeshOnRoot()
 
 void ATrapBase::OnRep_RuntimeState()
 {
+	ResetAttackAnimation();
 	ApplyTrapCollision();
 }
 
@@ -274,8 +284,22 @@ void ATrapBase::ApplyTrapCollision()
 {
 	SetActorEnableCollision(IsPlaced());
 
+	const ECollisionResponse PawnResponse = ShouldBlockPawn() ? ECR_Block : ECR_Ignore;
+	if (Mesh)
+	{
+		Mesh->SetCollisionResponseToChannel(ECC_Pawn, PawnResponse);
+		Mesh->SetCollisionResponseToChannel(TrapBaseFootIKTraceChannel, PawnResponse);
+	}
+	if (SkeletalMesh)
+	{
+		SkeletalMesh->SetCollisionResponseToChannel(ECC_Pawn, PawnResponse);
+		SkeletalMesh->SetCollisionResponseToChannel(TrapBaseFootIKTraceChannel, PawnResponse);
+	}
+
 	if (DamageArea)
 	{
+		// DamageArea is only for trap targeting/damage. It must never drive character foot IK.
+		DamageArea->SetCollisionResponseToChannel(TrapBaseFootIKTraceChannel, ECR_Ignore);
 		DamageArea->SetCollisionEnabled(IsPlaced() ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
 	}
 }
@@ -307,6 +331,21 @@ void ATrapBase::Multicast_PlayDamageVFX_Implementation(FVector_NetQuantize Effec
 void ATrapBase::Multicast_PlayWallShotVFX_Implementation(FVector_NetQuantize StartLocation, FVector_NetQuantize EndLocation)
 {
 	PlayWallShotVFX(StartLocation, EndLocation);
+}
+
+void ATrapBase::Multicast_PlayAttackAnimation_Implementation()
+{
+	if (GetNetMode() == NM_DedicatedServer
+		|| !SkeletalMesh
+		|| !SkeletalMesh->GetSkeletalMeshAsset())
+	{
+		return;
+	}
+
+	// 같은 공격 주기 안에 이전 재생이 끝나지 않았어도 항상 첫 프레임부터 1회 재생
+	SkeletalMesh->Stop();
+	SkeletalMesh->SetPosition(0.f, false);
+	SkeletalMesh->Play(false);
 }
 
 void ATrapBase::ApplyPreviewVisual()
@@ -350,6 +389,17 @@ void ATrapBase::SyncDamageAreaToMesh()
 	));
 }
 
+void ATrapBase::ResetAttackAnimation()
+{
+	if (!SkeletalMesh || !SkeletalMesh->GetSkeletalMeshAsset())
+	{
+		return;
+	}
+
+	SkeletalMesh->Stop();
+	SkeletalMesh->SetPosition(0.f, false);
+}
+
 void ATrapBase::StartDamageTimer()
 {
 	if (!HasAuthority() || !IsPlaced() || Damage <= 0.f || DamageInterval <= 0.f) return;
@@ -377,10 +427,15 @@ void ATrapBase::ApplyPeriodicDamage()
 
 	if (SourceTrapData && SourceTrapData->GridSurface == ETrapGridSurface::Wall)
 	{
-		ApplyWallBoxTraceDamage();
+		const bool bDidAttack = ApplyWallBoxTraceDamage();
+		if (bDidAttack && SkeletalMesh && SkeletalMesh->GetSkeletalMeshAsset())
+		{
+			Multicast_PlayAttackAnimation();
+		}
 		return;
 	}
 
+	bool bDidAttack = false;
 	for (auto It = OverlappingEnemies.CreateIterator(); It; ++It)
 	{
 		AActor* OverlappingActor = It->Get();
@@ -395,6 +450,7 @@ void ATrapBase::ApplyPeriodicDamage()
 			continue;
 		}
 
+		bDidAttack = true;
 		const float ActualDamage = UGameplayStatics::ApplyDamage(OverlappingActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
 		
 		if (ActualDamage > 0.f)
@@ -404,16 +460,21 @@ void ATrapBase::ApplyPeriodicDamage()
 			Multicast_PlayDamageVFX(EffectLocation);
 		}
 	}
+
+	if (bDidAttack && SkeletalMesh && SkeletalMesh->GetSkeletalMeshAsset())
+	{
+		Multicast_PlayAttackAnimation();
+	}
 }
 
-void ATrapBase::ApplyWallBoxTraceDamage()
+bool ATrapBase::ApplyWallBoxTraceDamage()
 {
 	UWorld* World = GetWorld();
-	if (!World) return;
+	if (!World) return false;
 
 	// BuildGridSurface convention: local +Z is the trap's outward direction.
 	const FVector TraceDirection = GetActorUpVector().GetSafeNormal();
-	if (TraceDirection.IsNearlyZero()) return;
+	if (TraceDirection.IsNearlyZero()) return false;
 
 	const FVector TraceCenter = DamageArea ? DamageArea->GetComponentLocation() : GetActorLocation();
 	const float TraceHalfDepth = GetBoxHalfExtentAlongDirection(DamageArea, TraceDirection);
@@ -433,6 +494,7 @@ void ATrapBase::ApplyWallBoxTraceDamage()
 	const FCollisionShape TraceShape = FCollisionShape::MakeBox(WallTraceBoxExtent);
 	const float LaneOffsets[] = { -WallTraceLaneOffset, 0.f, WallTraceLaneOffset };
 	TSet<AActor*> DamagedActors;
+	bool bDidAttack = false;
 
 	for (const float LaneOffset : LaneOffsets)
 	{
@@ -458,29 +520,54 @@ void ATrapBase::ApplyWallBoxTraceDamage()
 
 		for (const FHitResult& Hit : Hits)
 		{
-			AActor* HitActor = Hit.GetActor();
-			if (!IsValid(HitActor) || HitActor == this || DamagedActors.Contains(HitActor) || !IsCombatEnemy(HitActor))
+			AEnemyBase* Enemy = Cast<AEnemyBase>(Hit.GetActor());
+			if (!IsValid(Enemy)
+				|| DamagedActors.Contains(Enemy)
+				|| Enemy->EnemyMode != EEnemyMode::Combat)
 			{
 				continue;
 			}
-
-			DamagedActors.Add(HitActor);
 
 			const float DebugLaneOffset = FMath::Clamp(LaneOffset, -WallDebugLaneOffset, WallDebugLaneOffset);
 			const FVector DebugLaneCenter = TraceCenter + TraceLateralDirection * DebugLaneOffset;
 			const FVector DebugStart = DebugLaneCenter + TraceDirection * TraceHalfDepth;
 			// Multicast_DrawWallTraceDebug(DebugStart, Hit.ImpactPoint, true);
 
-			const float ActualDamage = UGameplayStatics::ApplyDamage(HitActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
-			
-			if (ActualDamage > 0.f)
+			if (!ApplyWallHitEffect(Enemy, DebugStart, Hit.ImpactPoint))
 			{
-				Multicast_PlayWallShotVFX(DebugStart, Hit.ImpactPoint);
+				continue;
 			}
-			
+
+			DamagedActors.Add(Enemy);
+			bDidAttack = true;
 			break;
 		}
 	}
+
+	return bDidAttack;
+}
+
+bool ATrapBase::ApplyWallHitEffect(AEnemyBase* Enemy, const FVector& EffectStart, const FVector& EffectEnd)
+{
+	if (!IsValid(Enemy))
+	{
+		return false;
+	}
+
+	const float ActualDamage = UGameplayStatics::ApplyDamage(
+		Enemy,
+		Damage,
+		GetInstigatorController(),
+		this,
+		UDamageType::StaticClass()
+	);
+
+	if (ActualDamage > 0.f)
+	{
+		Multicast_PlayWallShotVFX(EffectStart, EffectEnd);
+	}
+
+	return true;
 }
 
 void ATrapBase::Multicast_DrawWallTraceDebug_Implementation(FVector TraceStart, FVector TraceEnd, bool bHit)

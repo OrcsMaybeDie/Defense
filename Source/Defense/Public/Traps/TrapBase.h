@@ -14,6 +14,7 @@ class USceneComponent;
 class UTrapData;
 class UBoxComponent;
 class ADefensePlayerState;
+class AEnemyBase;
 
 UENUM(BlueprintType)
 enum class ETrapRuntimeState : uint8
@@ -67,6 +68,7 @@ protected:
 	TSet<TWeakObjectPtr<AActor>> OverlappingEnemies;
 
 	bool IsPlaced() const { return RuntimeState == ETrapRuntimeState::Placed; }
+	virtual bool ShouldBlockPawn() const { return false; }
 	UMeshComponent* GetActiveTrapMeshComponent() const;
 	bool GetTrapMeshLocalBounds(FVector& OutBoundsCenter, FVector& OutBoundsExtent) const;
 	void RefreshTrapMeshComponents();
@@ -75,10 +77,12 @@ protected:
 	void ApplyTrapCollision();
 	void ApplyPreviewVisual();
 	void SyncDamageAreaToMesh();
+	void ResetAttackAnimation();
 	void StartDamageTimer();
 	void StopDamageTimer();
 	void ApplyPeriodicDamage();
-	void ApplyWallBoxTraceDamage();
+	bool ApplyWallBoxTraceDamage();
+	virtual bool ApplyWallHitEffect(AEnemyBase* Enemy, const FVector& EffectStart, const FVector& EffectEnd);
 	void CacheCurrentOverlaps();
 
 	UFUNCTION()
@@ -107,6 +111,9 @@ protected:
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_DrawWallTraceDebug(FVector TraceStart, FVector TraceEnd, bool bHit);
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayAttackAnimation();
 	
 	// VFX test
 	UFUNCTION(NetMulticast, Unreliable)
