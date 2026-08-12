@@ -69,7 +69,7 @@ EStateTreeRunStatus FEnemyPatrolTask::EnterState(FStateTreeExecutionContext& Con
 		return EStateTreeRunStatus::Failed;
 	}
 	
-	InstanceData.CurrentWaypointIndex = BestIndex + 1;
+	InstanceData.CurrentWaypointIndex = FMath::Min(BestIndex + 1, Waypoints.Num() - 1);
 	if (!Waypoints.IsValidIndex(InstanceData.CurrentWaypointIndex))
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("EnemyPatrolTask completed immediately | BestIndex=%d CurrentWaypointIndex=%d Waypoints=%d"),
@@ -79,12 +79,12 @@ EStateTreeRunStatus FEnemyPatrolTask::EnterState(FStateTreeExecutionContext& Con
 
 		if (GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(
+			/*GEngine->AddOnScreenDebugMessage(
 				-1,
 				3.f,
 				FColor::Yellow,
 				FString::Printf(TEXT("Patrol Waypoint invalid | BestIndex: %d | Waypoints: %d"), BestIndex, Waypoints.Num())
-			);
+			);*/
 		}
 		return EStateTreeRunStatus::Succeeded;
 	}
