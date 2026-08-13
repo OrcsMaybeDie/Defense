@@ -41,12 +41,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Medusa|Detection")
 	TArray<FName> TargetBoneNames;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Medusa|Collision")
-	TEnumAsByte<ECollisionChannel> EnemyObjectChannel = ECC_GameTraceChannel1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Medusa|Collision")
-	TEnumAsByte<ECollisionChannel> MedusaSightChannel = ECC_GameTraceChannel4;
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Medusa|Debug")
 	bool bDrawDebug = true;
 

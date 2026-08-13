@@ -7,6 +7,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Characters/Enemy/EnemyBase.h"
+#include "Collision/DefenseCollisionChannels.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
@@ -19,14 +20,12 @@
 
 namespace
 {
-	constexpr ECollisionChannel TrapBaseEnemyCollisionChannel = ECC_GameTraceChannel1;
-	constexpr ECollisionChannel TrapBaseFootIKTraceChannel = ECC_GameTraceChannel2;
 	constexpr float WallTraceRange = 1400.f;
 	constexpr float WallTraceStartOffset = 10.f;
 	constexpr float WallTraceDebugTime = 0.35f;
 	const FVector WallTraceBoxExtent(120.f, 140.f, 20.f);
 	constexpr float WallTraceLaneOffset = 120.f;
-	constexpr float WallDebugLaneOffset = 50.f;
+	constexpr float WallEffectLaneOffset = 50.f;
 
 	float GetBoxHalfExtentAlongDirection(const UBoxComponent* BoxComponent, const FVector& WorldDirection)
 	{
@@ -59,23 +58,15 @@ ATrapBase::ATrapBase()
 
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	Mesh->SetupAttachment(SceneRoot);
-	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 
 	SkeletalMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("SkeletalMesh"));
 	SkeletalMesh->SetupAttachment(SceneRoot);
-	SkeletalMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	SkeletalMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 
 	DamageArea = CreateDefaultSubobject<UBoxComponent>(TEXT("DamageArea"));
 	DamageArea->SetupAttachment(SceneRoot);
 	DamageArea->SetBoxExtent(FVector(50.f, 50.f, 50.f)); // test
-	DamageArea->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	DamageArea->SetCollisionObjectType(ECC_WorldDynamic);
-	DamageArea->SetCollisionResponseToAllChannels(ECR_Ignore);
-	DamageArea->SetCollisionResponseToChannel(TrapBaseEnemyCollisionChannel, ECR_Overlap);
-	DamageArea->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
-	DamageArea->SetGenerateOverlapEvents(true);
+
+	ApplyTrapCollision();
 }
 
 void ATrapBase::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
@@ -284,22 +275,27 @@ void ATrapBase::ApplyTrapCollision()
 {
 	SetActorEnableCollision(IsPlaced());
 
-	const ECollisionResponse PawnResponse = ShouldBlockPawn() ? ECR_Block : ECR_Ignore;
 	if (Mesh)
 	{
-		Mesh->SetCollisionResponseToChannel(ECC_Pawn, PawnResponse);
-		Mesh->SetCollisionResponseToChannel(TrapBaseFootIKTraceChannel, PawnResponse);
+		Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		Mesh->SetGenerateOverlapEvents(false);
 	}
 	if (SkeletalMesh)
 	{
-		SkeletalMesh->SetCollisionResponseToChannel(ECC_Pawn, PawnResponse);
-		SkeletalMesh->SetCollisionResponseToChannel(TrapBaseFootIKTraceChannel, PawnResponse);
+		SkeletalMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		SkeletalMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		SkeletalMesh->SetGenerateOverlapEvents(false);
 	}
 
 	if (DamageArea)
 	{
-		// DamageArea is only for trap targeting/damage. It must never drive character foot IK.
-		DamageArea->SetCollisionResponseToChannel(TrapBaseFootIKTraceChannel, ECR_Ignore);
+		DamageArea->SetCollisionObjectType(ECC_WorldDynamic);
+		DamageArea->SetCollisionResponseToAllChannels(ECR_Ignore);
+		DamageArea->SetCollisionResponseToChannel(DefenseCollisionChannels::Enemy, ECR_Overlap);
+		DamageArea->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		DamageArea->SetCollisionResponseToChannel(ECC_Pawn, ShouldBlockPawn() ? ECR_Block : ECR_Ignore);
+		DamageArea->SetGenerateOverlapEvents(IsPlaced());
 		DamageArea->SetCollisionEnabled(IsPlaced() ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
 	}
 }
@@ -352,9 +348,6 @@ void ATrapBase::ApplyPreviewVisual()
 {
 	if (UMeshComponent* ActiveMesh = GetActiveTrapMeshComponent())
 	{
-		ActiveMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		ActiveMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
-
 		for (int32 MaterialIndex = 0; MaterialIndex < ActiveMesh->GetNumMaterials(); ++MaterialIndex)
 		{
 			if (UMaterialInstanceDynamic* PreviewMaterial = ActiveMesh->CreateDynamicMaterialInstance(MaterialIndex))
@@ -482,7 +475,7 @@ bool ATrapBase::ApplyWallBoxTraceDamage()
 	const FQuat TraceRotation = GetActorQuat();
 
 	FCollisionObjectQueryParams ObjectQueryParams;
-	ObjectQueryParams.AddObjectTypesToQuery(TrapBaseEnemyCollisionChannel);
+	ObjectQueryParams.AddObjectTypesToQuery(DefenseCollisionChannels::Enemy);
 
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(WallTrapTrace), false, this);
 	QueryParams.AddIgnoredActor(this);
@@ -528,12 +521,12 @@ bool ATrapBase::ApplyWallBoxTraceDamage()
 				continue;
 			}
 
-			const float DebugLaneOffset = FMath::Clamp(LaneOffset, -WallDebugLaneOffset, WallDebugLaneOffset);
-			const FVector DebugLaneCenter = TraceCenter + TraceLateralDirection * DebugLaneOffset;
-			const FVector DebugStart = DebugLaneCenter + TraceDirection * TraceHalfDepth;
-			// Multicast_DrawWallTraceDebug(DebugStart, Hit.ImpactPoint, true);
+			const float EffectLaneOffset = FMath::Clamp(LaneOffset, -WallEffectLaneOffset, WallEffectLaneOffset);
+			const FVector EffectLaneCenter = TraceCenter + TraceLateralDirection * EffectLaneOffset;
+			const FVector EffectStart = EffectLaneCenter + TraceDirection * TraceHalfDepth;
+			// Multicast_DrawWallTraceDebug(EffectStart, Hit.ImpactPoint, true);
 
-			if (!ApplyWallHitEffect(Enemy, DebugStart, Hit.ImpactPoint))
+			if (!ApplyWallHitEffect(Enemy, EffectStart, Hit.ImpactPoint))
 			{
 				continue;
 			}
@@ -614,7 +607,7 @@ void ATrapBase::OnDamageAreaBeginOverlap(
 )
 {
 	if (!HasAuthority() || !IsPlaced() || !IsValid(OtherActor) || OtherActor == this) return;
-	if (OtherComp && OtherComp->GetCollisionObjectType() != TrapBaseEnemyCollisionChannel) return;
+	if (OtherComp && OtherComp->GetCollisionObjectType() != DefenseCollisionChannels::Enemy) return;
 
 	OverlappingEnemies.Add(TWeakObjectPtr<AActor>(OtherActor));
 }

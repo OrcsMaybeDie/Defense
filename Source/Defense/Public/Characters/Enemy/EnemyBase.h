@@ -352,6 +352,7 @@ private:
 	void ApplyPortalCollisionState();
 	void RestorePortalCollisionState();
 	void ResetPortalEntryState();
+	void ApplyEnemyCollisionPolicy();
 	void UpdateRewardPopup(float DeltaTime);
 	void ResetRewardPopup();
 

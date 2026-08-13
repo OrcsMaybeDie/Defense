@@ -1,6 +1,7 @@
 #include "Traps/Medusa.h"
 
 #include "Characters/Enemy/EnemyBase.h"
+#include "Collision/DefenseCollisionChannels.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "DrawDebugHelpers.h"
@@ -95,7 +96,7 @@ void AMedusa::ScanForEnemies()
 	}
 
 	FCollisionObjectQueryParams ObjectQueryParams;
-	ObjectQueryParams.AddObjectTypesToQuery(EnemyObjectChannel);
+	ObjectQueryParams.AddObjectTypesToQuery(DefenseCollisionChannels::Enemy);
 
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(MedusaOverlap), false, this);
 	QueryParams.AddIgnoredActor(this);
@@ -225,7 +226,7 @@ bool AMedusa::HasClearSightToPoint(AActor* TargetActor, const FVector& TargetPoi
 		Hit,
 		GazeOrigin->GetComponentLocation(),
 		TargetPoint,
-		MedusaSightChannel,
+		DefenseCollisionChannels::MedusaSight,
 		QueryParams
 	);
 }

@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Characters/Player/DefenseCharacter.h"
+#include "Collision/DefenseCollisionChannels.h"
 #include "Engine/LocalPlayer.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -29,6 +30,7 @@ ADefenseCharacter::ADefenseCharacter ()
 	// Collision (Player Capsule & Mesh)
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	GetMesh()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	ApplyFootIKCollisionPolicy();
 		
 	// Don't rotate when the controller rotates. Let that just affect the camera.
 	bUseControllerRotationPitch = false;
@@ -77,12 +79,19 @@ ADefenseCharacter::ADefenseCharacter ()
 void ADefenseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	ApplyFootIKCollisionPolicy();
 	
 	if (!StatusComp) return;
 	
 	StatusComp->OnLifeStateChanged.AddUniqueDynamic(this, &ADefenseCharacter::HandleLifeStateChanged);
 	
 	HandleLifeStateChanged(StatusComp->GetLifeState());
+}
+
+void ADefenseCharacter::ApplyFootIKCollisionPolicy()
+{
+	GetCapsuleComponent()->SetCollisionResponseToChannel(DefenseCollisionChannels::FootIK, ECR_Ignore);
+	GetMesh()->SetCollisionResponseToChannel(DefenseCollisionChannels::FootIK, ECR_Ignore);
 }
 
 void ADefenseCharacter::Tick(float DeltaSeconds)

@@ -236,7 +236,7 @@ void UBuildComponent::UpdateTrapPreview()
 
 #if ENABLE_DRAW_DEBUG
 	// Grid가 계산한 Footprint 중심
-	DrawDebugPoint(World, PreviewTransform.GetLocation(), 10.f, FColor::Yellow, false, 0.f);
+	// DrawDebugPoint(World, PreviewTransform.GetLocation(), 10.f, FColor::Yellow, false, 0.f);
 #endif
 }
 

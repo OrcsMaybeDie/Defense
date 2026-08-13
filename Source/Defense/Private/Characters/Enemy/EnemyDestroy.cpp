@@ -2,6 +2,7 @@
 
 
 #include "Characters/Enemy/EnemyDestroy.h"
+#include "Collision/DefenseCollisionChannels.h"
 
 #include "Characters/Enemy/EnemyAnim.h"
 #include "Characters/Enemy/Data/EnemyData.h"
@@ -159,7 +160,7 @@ bool AEnemyDestroy::TryFindDestroyTarget()
 
 	FCollisionObjectQueryParams ObjectQueryParams;
 	ObjectQueryParams.AddObjectTypesToQuery(ECC_WorldDynamic);
-	ObjectQueryParams.AddObjectTypesToQuery(ECC_GameTraceChannel3);
+	ObjectQueryParams.AddObjectTypesToQuery(DefenseCollisionChannels::Barricade);
 
 	const FVector SearchCenter = GetActorLocation() + GetActorTransform().TransformVectorNoScale(DestroySearchOffset);
 

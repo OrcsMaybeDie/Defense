@@ -6,16 +6,15 @@
 #include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
 #include "Characters/Enemy/EnemySpawner.h"
+#include "Collision/DefenseCollisionChannels.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameManager/DefenseGameMode.h"
 
-namespace
-{
-	constexpr ECollisionChannel EnemyCollisionChannel = ECC_GameTraceChannel1;
-}
+// 충돌 채널은 DefenseCollisionChannels.h에서 통합 관리 (확인 후 주석 제거)
+// constexpr ECollisionChannel EnemyCollisionChannel = ECC_GameTraceChannel1;
 
 APortal::APortal()
 {
@@ -37,7 +36,7 @@ APortal::APortal()
 	EntrySensor->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	EntrySensor->SetCollisionObjectType(ECC_WorldDynamic);
 	EntrySensor->SetCollisionResponseToAllChannels(ECR_Ignore);
-	EntrySensor->SetCollisionResponseToChannel(EnemyCollisionChannel, ECR_Overlap);
+	EntrySensor->SetCollisionResponseToChannel(DefenseCollisionChannels::Enemy, ECR_Overlap);
 	EntrySensor->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	EntrySensor->SetGenerateOverlapEvents(true);
 
@@ -52,7 +51,7 @@ APortal::APortal()
 	ReturnPoolSensor->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	ReturnPoolSensor->SetCollisionObjectType(ECC_WorldDynamic);
 	ReturnPoolSensor->SetCollisionResponseToAllChannels(ECR_Ignore);
-	ReturnPoolSensor->SetCollisionResponseToChannel(EnemyCollisionChannel, ECR_Overlap);
+	ReturnPoolSensor->SetCollisionResponseToChannel(DefenseCollisionChannels::Enemy, ECR_Overlap);
 	ReturnPoolSensor->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	ReturnPoolSensor->SetGenerateOverlapEvents(true);
 

@@ -2,6 +2,7 @@
 
 
 #include "Characters/Enemy/EnemyBase.h"
+#include "Collision/DefenseCollisionChannels.h"
 
 #include "Animation/AnimMontage.h"
 #include "StateTreeEvents.h"
@@ -37,7 +38,8 @@
 
 namespace
 {
-	constexpr ECollisionChannel BarricadeCollisionChannel = ECC_GameTraceChannel3;
+	// 충돌 채널은 DefenseCollisionChannels.h에서 통합 관리 (확인 후 주석 제거)
+	// constexpr ECollisionChannel BarricadeCollisionChannel = ECC_GameTraceChannel3;
 	const FName PortalClipEnabledParameter(TEXT("PortalClipEnabled"));
 	const FName PortalPositionParameter(TEXT("PortalPosition"));
 	const FName PortalForwardParameter(TEXT("PortalForward"));
@@ -97,6 +99,7 @@ AEnemyBase::AEnemyBase()
 {
 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+	ApplyEnemyCollisionPolicy();
 	
 	HpComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("HpComp"));
 	HpComp->SetupAttachment(RootComponent);
@@ -116,6 +119,7 @@ AEnemyBase::AEnemyBase()
 void AEnemyBase::BeginPlay()
 {
 	Super::BeginPlay();
+	ApplyEnemyCollisionPolicy();
 	ApplyEnemyData();
 	HpComp->SetVisibility(false);
 	RewardPopupInitialRelativeLocation = RewardComp->GetRelativeLocation();
@@ -143,6 +147,14 @@ void AEnemyBase::BeginPlay()
 	{
 		EnemyPool->RegisterEnemy(this);
 	}
+}
+
+void AEnemyBase::ApplyEnemyCollisionPolicy()
+{
+	GetCapsuleComponent()->SetCollisionObjectType(DefenseCollisionChannels::Enemy);
+
+	GetCapsuleComponent()->SetCollisionResponseToChannel(DefenseCollisionChannels::FootIK, ECR_Ignore);
+	GetMesh()->SetCollisionResponseToChannel(DefenseCollisionChannels::FootIK, ECR_Ignore);
 }
 
 void AEnemyBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -485,7 +497,7 @@ void AEnemyBase::SetPreview()
 	{
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
-		CapsuleComp->SetCollisionResponseToChannel(BarricadeCollisionChannel, ECR_Ignore);
+		CapsuleComp->SetCollisionResponseToChannel(DefenseCollisionChannels::Barricade, ECR_Ignore);
 	}
 	
 	if (EnemyMesh)
@@ -548,7 +560,7 @@ void AEnemyBase::SetCombat()
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 		//CapsuleComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
-		CapsuleComp->SetCollisionResponseToChannel(BarricadeCollisionChannel, ECR_Block);
+		CapsuleComp->SetCollisionResponseToChannel(DefenseCollisionChannels::Barricade, ECR_Block);
 	}
 	
 	if (EnemyMesh)
@@ -805,11 +817,11 @@ void AEnemyBase::ApplyPortalCollisionState()
 	{
 		CapsulePawnResponseBeforePortal = CapsuleComp->GetCollisionResponseToChannel(ECC_Pawn);
 		CapsuleVisibilityResponseBeforePortal = CapsuleComp->GetCollisionResponseToChannel(ECC_Visibility);
-		CapsuleBarricadeResponseBeforePortal = CapsuleComp->GetCollisionResponseToChannel(BarricadeCollisionChannel);
+		CapsuleBarricadeResponseBeforePortal = CapsuleComp->GetCollisionResponseToChannel(DefenseCollisionChannels::Barricade);
 		CapsuleWorldDynamicResponseBeforePortal = CapsuleComp->GetCollisionResponseToChannel(ECC_WorldDynamic);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
-		CapsuleComp->SetCollisionResponseToChannel(BarricadeCollisionChannel, ECR_Ignore);
+		CapsuleComp->SetCollisionResponseToChannel(DefenseCollisionChannels::Barricade, ECR_Ignore);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 	}
 
@@ -837,7 +849,7 @@ void AEnemyBase::RestorePortalCollisionState()
 	{
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Pawn, CapsulePawnResponseBeforePortal);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_Visibility, CapsuleVisibilityResponseBeforePortal);
-		CapsuleComp->SetCollisionResponseToChannel(BarricadeCollisionChannel, CapsuleBarricadeResponseBeforePortal);
+		CapsuleComp->SetCollisionResponseToChannel(DefenseCollisionChannels::Barricade, CapsuleBarricadeResponseBeforePortal);
 		CapsuleComp->SetCollisionResponseToChannel(ECC_WorldDynamic, CapsuleWorldDynamicResponseBeforePortal);
 	}
 

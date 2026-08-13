@@ -6,18 +6,13 @@
 #include "Characters/Enemy/Data/EnemyData.h"
 #include "Characters/Enemy/EnemyAttack.h"
 #include "Characters/Enemy/EnemyBase.h"
+#include "Collision/DefenseCollisionChannels.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "NavAreas/NavArea_Obstacle.h"
 #include "NavModifierComponent.h"
-
-namespace
-{
-	constexpr ECollisionChannel BarricadeEnemyCollisionChannel = ECC_GameTraceChannel1;
-	constexpr ECollisionChannel BarricadeObjectCollisionChannel = ECC_GameTraceChannel3;
-}
 
 ABarricade::ABarricade()
 {
@@ -27,7 +22,7 @@ ABarricade::ABarricade()
 
 	Box = CreateDefaultSubobject<UBoxComponent>(TEXT("Box"));
 	SetRootComponent(Box);
-	Box->SetCollisionObjectType(BarricadeObjectCollisionChannel);
+	Box->SetCollisionObjectType(DefenseCollisionChannels::Barricade);
 	
 	Cube = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Cube"));
 	Cube->SetupAttachment(Box);
@@ -241,7 +236,7 @@ void ABarricade::NotifyNearbyWaitingRunEnemies()
 
 	TArray<FOverlapResult> OverlapResults;
 	FCollisionObjectQueryParams ObjectQueryParams;
-	ObjectQueryParams.AddObjectTypesToQuery(BarricadeEnemyCollisionChannel);
+	ObjectQueryParams.AddObjectTypesToQuery(DefenseCollisionChannels::Enemy);
 
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(BarricadePatrolNotify), false, this);
 	QueryParams.AddIgnoredActor(this);

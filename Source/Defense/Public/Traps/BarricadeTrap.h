@@ -38,6 +38,7 @@ public:
 	) override;
 
 protected:
+	virtual bool ShouldBlockPawn() const override { return true; }
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
