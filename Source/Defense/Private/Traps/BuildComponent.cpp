@@ -51,12 +51,12 @@ void UBuildComponent::BuildTrap()
 	FTrapCellKey CellKey;
 	TArray<FTrapCellKey> FootprintCells;
 	if (!TraceBuildTarget(Hit)
-		|| !GridManager->TryGetCellKeyForHit(TrapData, Hit.GetComponent(), Hit.ImpactPoint, CellKey))
+		|| !GridManager->TryGetCellKeyForHit(TrapData, Hit, CellKey))
 	{
 		return;
 	}
 
-	GridManager->GetTrapFootprintCells(CellKey, FootprintCells);
+	GridManager->GetTrapFootprintCells(TrapData, CellKey, FootprintCells);
 	if (!GridManager->AreCellsAvailable(FootprintCells))
 	{
 		return;
@@ -67,7 +67,7 @@ void UBuildComponent::BuildTrap()
 		TrapPreviewActor->SetActorHiddenInGame(true);
 	}
 
-	ServerRPC_RequestBuildTrap(Hit.ImpactPoint);
+	ServerRPC_RequestBuildTrap(CellKey);
 }
 
 void UBuildComponent::SellTrap()
@@ -138,6 +138,7 @@ bool UBuildComponent::TraceBuildTarget(FHitResult& OutHit) const
 
 	// if (bHit)
 	// {
+	// 	// Crosshair Trace가 실제로 맞은 위치
 	// 	DrawDebugPoint(World, OutHit.ImpactPoint, 6.f, FColor::Red, false, 0.f);
 	// }
 #endif
@@ -145,8 +146,13 @@ bool UBuildComponent::TraceBuildTarget(FHitResult& OutHit) const
 	return bHit;
 }
 
-AGridManager* UBuildComponent::FindGridManager() const
+AGridManager* UBuildComponent::FindGridManager()
 {
+	if (IsValid(CachedGridManager))
+	{
+		return CachedGridManager;
+	}
+
 	UWorld* World = GetWorld();
 	if (!World)
 	{
@@ -155,7 +161,8 @@ AGridManager* UBuildComponent::FindGridManager() const
 
 	for (TActorIterator<AGridManager> It(World); It; ++It)
 	{
-		return *It;
+		CachedGridManager = *It;
+		return CachedGridManager;
 	}
 
 	return nullptr;
@@ -170,6 +177,12 @@ void UBuildComponent::UpdateTrapPreview()
 	{
 		DestroyTrapPreview();
 		return;
+	}
+
+	// 함정 프리뷰를 재사용 X
+	if (TrapPreviewActor && TrapPreviewActor->GetSourceTrapData() != TrapData)
+	{
+		DestroyTrapPreview();
 	}
 
 	if (!TrapPreviewActor)
@@ -204,24 +217,25 @@ void UBuildComponent::UpdateTrapPreview()
 	TArray<FTrapCellKey> FootprintCells;
 	if (!GridManager
 		|| !TraceBuildTarget(Hit)
-		|| !GridManager->TryGetCellKeyForHit(TrapData, Hit.GetComponent(), Hit.ImpactPoint, CellKey))
+		|| !GridManager->TryGetCellKeyForHit(TrapData, Hit, CellKey))
 	{
 		TrapPreviewActor->SetActorHiddenInGame(true);
 		return;
 	}
 
-	GridManager->GetTrapFootprintCells(CellKey, FootprintCells);
+	GridManager->GetTrapFootprintCells(TrapData, CellKey, FootprintCells);
 	if (!GridManager->AreCellsAvailable(FootprintCells))
 	{
 		TrapPreviewActor->SetActorHiddenInGame(true);
 		return;
 	}
 
-	const FTransform PreviewTransform = GridManager->GetTrapFootprintTransform(CellKey);
+	const FTransform PreviewTransform = GridManager->GetTrapFootprintTransform(TrapData, CellKey);
 	TrapPreviewActor->SetActorTransform(PreviewTransform);
 	TrapPreviewActor->SetActorHiddenInGame(false);
 
 #if ENABLE_DRAW_DEBUG
+	// Grid가 계산한 Footprint 중심
 	// DrawDebugPoint(World, PreviewTransform.GetLocation(), 10.f, FColor::Yellow, false, 0.f);
 #endif
 }
@@ -235,7 +249,7 @@ void UBuildComponent::DestroyTrapPreview()
 	}
 }
 
-void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(FVector_NetQuantize HitLocation)
+void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(const FTrapCellKey& AnchorCell)
 {
 	UTrapData* TrapData = GetSelectedTrapData();
 	APawn* OwnerPawn = GetOwnerPawn();
@@ -248,19 +262,19 @@ void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(FVector_NetQuant
 		return;
 	}
 
-	if (FVector::DistSquared(OwnerPawn->GetActorLocation(), HitLocation) > FMath::Square(BuildTraceRange))
+	if (!GridManager->IsTrapSurfaceCompatible(TrapData, AnchorCell))
 	{
 		return;
 	}
 
-	FTrapCellKey CellKey;
+	const FVector PlacementCenter = GridManager->GetTrapFootprintCenter(TrapData, AnchorCell);
+	if (FVector::DistSquared(OwnerPawn->GetActorLocation(), PlacementCenter) > FMath::Square(BuildTraceRange))
+	{
+		return;
+	}
+
 	TArray<FTrapCellKey> FootprintCells;
-	if (!GridManager->TryGetCellKeyAtWorldLocation(TrapData, HitLocation, CellKey))
-	{
-		return;
-	}
-
-	GridManager->GetTrapFootprintCells(CellKey, FootprintCells);
+	GridManager->GetTrapFootprintCells(TrapData, AnchorCell, FootprintCells);
 	if (!GridManager->AreCellsAvailable(FootprintCells))
 	{
 		return;
@@ -277,7 +291,7 @@ void UBuildComponent::ServerRPC_RequestBuildTrap_Implementation(FVector_NetQuant
 	SpawnParams.Instigator = OwningController ? OwningController->GetPawn() : nullptr;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	const FTransform SpawnTransform = GridManager->GetTrapFootprintTransform(CellKey);
+	const FTransform SpawnTransform = GridManager->GetTrapFootprintTransform(TrapData, AnchorCell);
 
 	ATrapBase* SpawnedTrap = GetWorld()->SpawnActor<ATrapBase>(
 		TrapData->TrapClass,

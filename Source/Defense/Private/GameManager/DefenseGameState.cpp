@@ -5,6 +5,28 @@
 
 #include "Net/UnrealNetwork.h"
 
+void ADefenseGameState::AddPlayerState(APlayerState* PlayerState)
+{
+	const bool bWasAlreadyRegistered = PlayerArray.Contains(PlayerState);
+	Super::AddPlayerState(PlayerState);
+
+	if (!bWasAlreadyRegistered && PlayerArray.Contains(PlayerState))
+	{
+		OnPlayerStateAdded.Broadcast(PlayerState);
+	}
+}
+
+void ADefenseGameState::RemovePlayerState(APlayerState* PlayerState)
+{
+	const bool bWasRegistered = PlayerArray.Contains(PlayerState);
+	Super::RemovePlayerState(PlayerState);
+
+	if (bWasRegistered)
+	{
+		OnPlayerStateRemoved.Broadcast(PlayerState);
+	}
+}
+
 void ADefenseGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);

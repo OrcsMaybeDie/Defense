@@ -4,7 +4,6 @@
 #include "Characters/Enemy/EnemyAnim.h"
 
 #include "Characters/Enemy/EnemyBase.h"
-#include "Characters/Enemy/EnemyDestroy.h"
 
 void UEnemyAnim::NativeInitializeAnimation()
 {
@@ -32,6 +31,22 @@ void UEnemyAnim::PlayDieMotion()
 	Montage_Play(DieMontage);
 }
 
+void UEnemyAnim::PlayBurnReactionMotion()
+{
+	if (BurnReactionMontage && !Montage_IsPlaying(BurnReactionMontage))
+	{
+		Montage_Play(BurnReactionMontage);
+	}
+}
+
+void UEnemyAnim::StopBurnReactionMotion(const float BlendOutTime)
+{
+	if (BurnReactionMontage && Montage_IsActive(BurnReactionMontage))
+	{
+		Montage_Stop(BlendOutTime, BurnReactionMontage);
+	}
+}
+
 void UEnemyAnim::AnimNotify_Hit()
 {
 	// Damage is applied by the authoritative attack StateTree task.
@@ -39,12 +54,5 @@ void UEnemyAnim::AnimNotify_Hit()
 
 void UEnemyAnim::AnimNotify_Destroy()
 {
-	if (Enemy && Enemy->HasAuthority())
-	{
-		auto* EnemyDestroy = Cast<AEnemyDestroy>(Enemy);
-		if (EnemyDestroy)
-		{
-			EnemyDestroy->DestroyTargetTrap();
-		}
-	}
+	// Trap destruction is handled by the authoritative destroy StateTree task.
 }

@@ -34,8 +34,12 @@ EStateTreeRunStatus FEnemyAttackTask::EnterState(FStateTreeExecutionContext& Con
 	}
 
 	InstanceData.AttackDuration = AIEnemy->GetAttackDuration(InstanceData.AttackDuration);
+	const float AttackHitTime = InstanceData.AttackDuration
+		* FMath::Clamp(InstanceData.AttackHitTimeRatio, 0.f, 1.f);
 	
 	AIEnemy->EnemyState = EEnemyState::Attack;
+	AIEnemy->ClearSuspendedAction();
+	AIEnemy->BeginTrackedAction(EEnemyState::Attack, InstanceData.AttackDuration, AttackHitTime);
 	AIEnemy->MulticastRPC_AttackMotion();
 	return EStateTreeRunStatus::Running;
 }
@@ -49,6 +53,10 @@ EStateTreeRunStatus FEnemyAttackTask::Tick(FStateTreeExecutionContext& Context, 
 	{
 		return EStateTreeRunStatus::Failed;
 	}
+	if (AIEnemy->EnemyState != EEnemyState::Attack)
+	{
+		return EStateTreeRunStatus::Running;
+	}
 
 	InstanceData.ElapsedTime += DeltaTime;
 
@@ -60,9 +68,12 @@ EStateTreeRunStatus FEnemyAttackTask::Tick(FStateTreeExecutionContext& Context, 
 		AIEnemy->AttackTarget();
 	}
 
+	AIEnemy->UpdateTrackedAction(InstanceData.ElapsedTime, InstanceData.bHasAppliedDamage);
+
 	if (InstanceData.ElapsedTime >= InstanceData.AttackDuration)
 	{
 		AIEnemy->MarkAttackFinished();
+		AIEnemy->CompleteTrackedAction();
 		return EStateTreeRunStatus::Succeeded;
 	}
 

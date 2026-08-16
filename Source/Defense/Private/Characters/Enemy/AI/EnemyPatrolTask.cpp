@@ -7,7 +7,7 @@
 #include "Characters/Enemy/EnemyRoute.h"
 #include "Characters/Enemy/AI/EnemyController.h"
 #include "Engine/Engine.h"
-#include "GameManager/DestinationActor.h"
+#include "GameManager/Portal.h"
 #include "Navigation/PathFollowingComponent.h"
 
 FEnemyPatrolTask::FEnemyPatrolTask()
@@ -29,6 +29,7 @@ EStateTreeRunStatus FEnemyPatrolTask::EnterState(FStateTreeExecutionContext& Con
 	}
 
 	AIEnemy->EnemyState = EEnemyState::Patrol;
+	AIEnemy->OnEnteredPatrol();
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPatrolTask EnterState | Enemy=%s Location=%s"),
 		//*GetNameSafe(AIEnemy),
 		//*AIEnemy->GetActorLocation().ToString());
@@ -68,7 +69,7 @@ EStateTreeRunStatus FEnemyPatrolTask::EnterState(FStateTreeExecutionContext& Con
 		return EStateTreeRunStatus::Failed;
 	}
 	
-	InstanceData.CurrentWaypointIndex = BestIndex + 1;
+	InstanceData.CurrentWaypointIndex = FMath::Min(BestIndex + 1, Waypoints.Num() - 1);
 	if (!Waypoints.IsValidIndex(InstanceData.CurrentWaypointIndex))
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("EnemyPatrolTask completed immediately | BestIndex=%d CurrentWaypointIndex=%d Waypoints=%d"),
@@ -78,12 +79,12 @@ EStateTreeRunStatus FEnemyPatrolTask::EnterState(FStateTreeExecutionContext& Con
 
 		if (GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(
+			/*GEngine->AddOnScreenDebugMessage(
 				-1,
 				3.f,
 				FColor::Yellow,
 				FString::Printf(TEXT("Patrol Waypoint invalid | BestIndex: %d | Waypoints: %d"), BestIndex, Waypoints.Num())
-			);
+			);*/
 		}
 		return EStateTreeRunStatus::Succeeded;
 	}
@@ -115,7 +116,7 @@ EStateTreeRunStatus FEnemyPatrolTask::EnterState(FStateTreeExecutionContext& Con
 
 			if (Result.IsSuccess())
 			{
-				if (InstanceData.bMovingToDestination)
+				if (InstanceData.bMovingToEntryPoint)
 				{
 					FinishPatrolTask(WeakController, &InstanceData, EStateTreeFinishTaskType::Succeeded);
 					return;
@@ -154,7 +155,7 @@ void FEnemyPatrolTask::MoveToCurrentWaypoint(TWeakObjectPtr<AEnemyController> We
 	AEnemyController* AIController = WeakController.Get();
 	AEnemyBase* AIEnemy = Cast<AEnemyBase>(AIController->GetPawn());
 	const TArray<FVector>& Waypoints = AIController->EnemyRoute->Waypoints;
-	InstanceData->bMovingToDestination = false;
+	InstanceData->bMovingToEntryPoint = false;
 
 	if (!Waypoints.IsValidIndex(InstanceData->CurrentWaypointIndex))
 	{
@@ -164,17 +165,22 @@ void FEnemyPatrolTask::MoveToCurrentWaypoint(TWeakObjectPtr<AEnemyController> We
 
 	if (InstanceData->CurrentWaypointIndex == Waypoints.Num() - 1)
 	{
-		AActor* DestinationActor = AIEnemy ? AIEnemy->GetDestinationActor() : nullptr;
-		if (!DestinationActor)
+		APortal* PortalActor = AIEnemy ? AIEnemy->GetPortalActor() : nullptr;
+		if (!PortalActor)
 		{
 			FinishPatrolTask(WeakController, InstanceData, EStateTreeFinishTaskType::Failed);
 			return;
 		}
 
-		InstanceData->bMovingToDestination = true;
-		const EPathFollowingRequestResult::Type MoveResult = AIController->MoveToActor(
-			DestinationActor,
-			InstanceData->DestinationAcceptanceRadius
+		InstanceData->bMovingToEntryPoint = true;
+		const EPathFollowingRequestResult::Type MoveResult = AIController->MoveToLocation(
+			PortalActor->GetEntryPointLocation(),
+			InstanceData->EntryAcceptanceRadius,
+			false,
+			true,
+			true,
+			false,
+			AIEnemy->NavigationFilterClass
 		);
 
 		if (MoveResult == EPathFollowingRequestResult::Failed)
@@ -204,7 +210,12 @@ void FEnemyPatrolTask::MoveToCurrentWaypoint(TWeakObjectPtr<AEnemyController> We
 
 	const EPathFollowingRequestResult::Type MoveResult = AIController->MoveToLocation(
 		Waypoints[InstanceData->CurrentWaypointIndex],
-		InstanceData->AcceptanceRadius
+		InstanceData->AcceptanceRadius,
+		true,
+		true,
+		false,
+		true,
+		AIEnemy ? AIEnemy->NavigationFilterClass : nullptr
 	);
 
 	//UE_LOG(LogTemp, Warning, TEXT("EnemyPatrolTask MoveTo waypoint result | Result=%d"), static_cast<int32>(MoveResult));

@@ -42,6 +42,10 @@
 		{
 			"Name": "MotionWarping",
 			"Enabled": true
+		},
+		{
+			"Name": "AnimPhys",
+			"Enabled": true
 		}
 	]
 }

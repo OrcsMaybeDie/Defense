@@ -6,6 +6,8 @@
 #include "GameFramework/GameStateBase.h"
 #include "DefenseGameState.generated.h"
 
+class APlayerState;
+
 /**
  * 
  */
@@ -24,6 +26,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDestScoreChanged, int32, NewDestS
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCountdownChanged, int32, NewCountdownRemaining);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCurrentWaveChanged, int32, NewCurrentWave);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnReadyInputRequiredChanged, bool, bRequired);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnDefensePlayerStateChanged, APlayerState*);
 
 UCLASS()
 class DEFENSE_API ADefenseGameState : public AGameStateBase
@@ -32,6 +35,11 @@ class DEFENSE_API ADefenseGameState : public AGameStateBase
 	
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void AddPlayerState(APlayerState* PlayerState) override;
+	virtual void RemovePlayerState(APlayerState* PlayerState) override;
+
+	FOnDefensePlayerStateChanged OnPlayerStateAdded;
+	FOnDefensePlayerStateChanged OnPlayerStateRemoved;
 	
 	UPROPERTY(Replicated)
 	EGamePhase GamePhase = EGamePhase::Preparation;

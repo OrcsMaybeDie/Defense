@@ -9,6 +9,7 @@
 #include "Defense.h"
 #include "EnhancedInputComponent.h"
 
+#include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Player/DefensePlayerState.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameManager/DefenseGameMode.h"
@@ -253,6 +254,14 @@ void ADefensePlayerController::ClientRPC_ShowESCLoadingUI_Implementation()
 	if (ESCUI)
 	{
 		ESCUI->ShowESCLoading();
+	}
+}
+
+void ADefensePlayerController::ClientRPC_ShowRewardPopup_Implementation(AEnemyBase* Enemy, const int32 RewardAmount)
+{
+	if (IsValid(Enemy))
+	{
+		Enemy->ShowRewardPopup(RewardAmount);
 	}
 }
 

@@ -3,6 +3,7 @@
 
 #include "Characters/Enemy/AI/EnemyController.h"
 
+#include "Characters/Enemy/EnemyBase.h"
 #include "Components/StateTreeAIComponent.h"
 
 
@@ -14,6 +15,16 @@ AEnemyController::AEnemyController()
 	StateTreeAIComp = CreateDefaultSubobject<UStateTreeAIComponent>(FName("StateTreeAI"));
 }
 
+void AEnemyController::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	if (StateTreeAIComp)
+	{
+		StateTreeAIComp->SetStartLogicAutomatically(false);
+	}
+}
+
 void AEnemyController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
@@ -21,8 +32,7 @@ void AEnemyController::OnPossess(APawn* InPawn)
 		//*GetNameSafe(this),
 		//*GetNameSafe(InPawn),
 		//*GetNameSafe(StateTreeAIComp));
-	//StateTreeAIComp->RestartLogic(); // State tree 실행
-	
+	// StateTree is started by the spawner only after possession and route setup are complete.
 }
 
 // Called when the game starts or when spawned

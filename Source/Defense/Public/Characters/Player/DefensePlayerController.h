@@ -115,5 +115,8 @@ public:
 
 	UFUNCTION(Client, Reliable)
 	void ClientRPC_ShowESCLoadingUI();
+
+	UFUNCTION(Client, Reliable)
+	void ClientRPC_ShowRewardPopup(class AEnemyBase* Enemy, int32 RewardAmount);
 	
 };

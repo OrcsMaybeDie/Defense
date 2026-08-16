@@ -17,6 +17,8 @@ EStateTreeRunStatus FEnemyDamageTask::EnterState(FStateTreeExecutionContext& Con
 	}
 	
 	AIEnemy->EnemyState = EEnemyState::Damage;
+	AIEnemy->ClearSuspendedAction();
+	AIEnemy->BeginTrackedAction(EEnemyState::Damage, InstanceData.DamageDuration);
 	AIEnemy->MulticastRPC_DamageMotion();
 	return EStateTreeRunStatus::Running;
 }
@@ -24,7 +26,26 @@ EStateTreeRunStatus FEnemyDamageTask::EnterState(FStateTreeExecutionContext& Con
 EStateTreeRunStatus FEnemyDamageTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	AEnemyBase* AIEnemy = GetAIEnemy(Context);
+	if (!AIEnemy)
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+	if (AIEnemy->EnemyState != EEnemyState::Damage)
+	{
+		return EStateTreeRunStatus::Running;
+	}
+
 	InstanceData.ElapsedTime += DeltaTime;
+
+	if (AIEnemy)
+	{
+		AIEnemy->UpdateTrackedAction(InstanceData.ElapsedTime, false);
+		if (InstanceData.ElapsedTime >= InstanceData.DamageDuration)
+		{
+			AIEnemy->CompleteTrackedAction();
+		}
+	}
 
 	return InstanceData.ElapsedTime >= InstanceData.DamageDuration
 		? EStateTreeRunStatus::Succeeded

@@ -10,14 +10,35 @@ void AIntroGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AIntroGameState, HostPlayerState);
-	DOREPLIFETIME(AIntroGameState, GuestPlayerState);
+	DOREPLIFETIME(AIntroGameState, GuestPlayerStates);
 	DOREPLIFETIME(AIntroGameState, bGuestReady);
 	DOREPLIFETIME(AIntroGameState, SelectedMapConfigData);
 }
 
+AIntroPlayerState* AIntroGameState::GetGuestPlayerState() const
+{
+	return GuestPlayerStates.IsEmpty() ? nullptr : GuestPlayerStates[0].Get();
+}
+
+TArray<AIntroPlayerState*> AIntroGameState::GetGuestPlayerStates() const
+{
+	TArray<AIntroPlayerState*> Result;
+	Result.Reserve(GuestPlayerStates.Num());
+
+	for (AIntroPlayerState* GuestPlayerState : GuestPlayerStates)
+	{
+		if (GuestPlayerState)
+		{
+			Result.Add(GuestPlayerState);
+		}
+	}
+
+	return Result;
+}
+
 bool AIntroGameState::CanHostStart() const
 {
-	return HostPlayerState && (!GuestPlayerState || bGuestReady);
+	return HostPlayerState && (GuestPlayerStates.IsEmpty() || bGuestReady);
 }
 
 bool AIntroGameState::IsHostPlayerState(const APlayerState* PlayerState) const
@@ -36,15 +57,25 @@ void AIntroGameState::SetHostPlayerState(AIntroPlayerState* NewHostPlayerState)
 	OnRep_HostPlayerState();
 }
 
-void AIntroGameState::SetGuestPlayerState(AIntroPlayerState* NewGuestPlayerState)
+void AIntroGameState::AddGuestPlayerState(AIntroPlayerState* NewGuestPlayerState)
 {
-	if (GuestPlayerState == NewGuestPlayerState)
+	if (!NewGuestPlayerState || GuestPlayerStates.Contains(NewGuestPlayerState))
 	{
 		return;
 	}
 
-	GuestPlayerState = NewGuestPlayerState;
-	OnRep_GuestPlayerState();
+	GuestPlayerStates.Add(NewGuestPlayerState);
+	OnRep_GuestPlayerStates();
+}
+
+void AIntroGameState::RemoveGuestPlayerState(AIntroPlayerState* GuestPlayerStateToRemove)
+{
+	if (!GuestPlayerStateToRemove || GuestPlayerStates.Remove(GuestPlayerStateToRemove) == 0)
+	{
+		return;
+	}
+
+	OnRep_GuestPlayerStates();
 }
 
 void AIntroGameState::SetGuestReady(bool bNewGuestReady)
@@ -74,7 +105,7 @@ void AIntroGameState::OnRep_HostPlayerState()
 	OnIntroPlayersChanged.Broadcast();
 }
 
-void AIntroGameState::OnRep_GuestPlayerState()
+void AIntroGameState::OnRep_GuestPlayerStates()
 {
 	OnIntroPlayersChanged.Broadcast();
 }

@@ -7,11 +7,14 @@
 #include "TrapBase.generated.h"
 
 class UPrimitiveComponent;
+class UMeshComponent;
+class USkeletalMeshComponent;
 class UStaticMeshComponent;
 class USceneComponent;
 class UTrapData;
 class UBoxComponent;
 class ADefensePlayerState;
+class AEnemyBase;
 
 UENUM(BlueprintType)
 enum class ETrapRuntimeState : uint8
@@ -38,6 +41,8 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap|Components")
 	TObjectPtr<UStaticMeshComponent> Mesh;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap|Components")
+	TObjectPtr<USkeletalMeshComponent> SkeletalMesh;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap|Components")
 	TObjectPtr<UBoxComponent> DamageArea;
 
 	UPROPERTY(ReplicatedUsing=OnRep_RuntimeState, VisibleInstanceOnly, BlueprintReadOnly, Category="Trap")
@@ -63,15 +68,21 @@ protected:
 	TSet<TWeakObjectPtr<AActor>> OverlappingEnemies;
 
 	bool IsPlaced() const { return RuntimeState == ETrapRuntimeState::Placed; }
+	virtual bool ShouldBlockPawn() const { return false; }
+	UMeshComponent* GetActiveTrapMeshComponent() const;
+	bool GetTrapMeshLocalBounds(FVector& OutBoundsCenter, FVector& OutBoundsExtent) const;
+	void RefreshTrapMeshComponents();
 	void ConfigureFromTrapData(UTrapData* TrapData);
-	void ApplyTrapMeshScale();
+	void CenterTrapMeshOnRoot();
 	void ApplyTrapCollision();
 	void ApplyPreviewVisual();
 	void SyncDamageAreaToMesh();
+	void ResetAttackAnimation();
 	void StartDamageTimer();
 	void StopDamageTimer();
 	void ApplyPeriodicDamage();
-	void ApplyWallBoxTraceDamage();
+	bool ApplyWallBoxTraceDamage();
+	virtual bool ApplyWallHitEffect(AEnemyBase* Enemy, const FVector& EffectStart, const FVector& EffectEnd);
 	void CacheCurrentOverlaps();
 
 	UFUNCTION()
@@ -100,6 +111,9 @@ protected:
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_DrawWallTraceDebug(FVector TraceStart, FVector TraceEnd, bool bHit);
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayAttackAnimation();
 	
 	// VFX test
 	UFUNCTION(NetMulticast, Unreliable)
@@ -126,7 +140,7 @@ public:
 	void InitializePreviewTrap(UTrapData* TrapData);
 
 	void InitializePlacedTrap(UTrapData* TrapData, ADefensePlayerState* InInstalledByPlayerState);
-	void InitializePlacedTrap(
+	virtual void InitializePlacedTrap(
 		UTrapData* TrapData,
 		ADefensePlayerState* InInstalledByPlayerState,
 		const TArray<FTrapCellKey>& InOccupiedCells

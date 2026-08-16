@@ -13,7 +13,7 @@
 #include "Characters/Player/DefenseCharacter.h"
 #include "GameManager/DefenseGameInstance.h"
 #include "GameManager/DefenseGameState.h"
-#include "GameManager/DestinationActor.h"
+#include "GameManager/Portal.h"
 #include "GameManager/DefenseSpectatorController.h"
 #include "GameManager/Data/MapConfigData.h"
 #include "GameFramework/GameStateBase.h"
@@ -21,10 +21,11 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Traps/TrapBase.h"
-#include "Traps/Grid/GridManager.h"
 
 namespace
 {
+	constexpr int32 MaxPlayablePlayers = 3;
+
 	const TCHAR* LexToString(const EEnemyRemoveReason Reason)
 	{
 		switch (Reason)
@@ -83,28 +84,6 @@ void ADefenseGameMode::StartPlay()
 	}
 
 	ApplyDataAssets();
-
-	// GridManager (없으면) 초기화
-	for (TActorIterator<AGridManager> It(GetWorld()); It; ++It)
-	{
-		GridManager = *It;
-		break;
-	}
-
-	if (!GridManager)
-	{
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.SpawnCollisionHandlingOverride =
-			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-		// 월드 원점 (0,0,0)에 Spawn
-		GridManager = GetWorld()->SpawnActor<AGridManager>(
-			AGridManager::StaticClass(),
-			FVector::ZeroVector,
-			FRotator::ZeroRotator,
-			SpawnParams
-		);
-	}
 
 	DefenseGameState = GetGameState<ADefenseGameState>();
 	if (DefenseGameState)
@@ -251,8 +230,6 @@ void ADefenseGameMode::ResetAllPlayersReady()
 
 bool ADefenseGameMode::AreAllActivePlayersDead() const
 {
-	int32 ActivePlayerCount = 0;
-
 	for (FConstPlayerControllerIterator It =
 		GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
@@ -266,16 +243,13 @@ bool ADefenseGameMode::AreAllActivePlayersDead() const
 			continue;
 		}
 
-		++ActivePlayerCount;
-
 		UStatusComponent* StatusComp = Character->GetStatusComp();
 		if (!StatusComp || StatusComp->IsAlive())
 		{
 			return false;
 		}
 	}
-
-	return ActivePlayerCount >= 2;
+	return true;
 }
 
 void ADefenseGameMode::NotifyPlayerDied(ADefenseCharacter* DeadCharacter)
@@ -323,8 +297,8 @@ void ADefenseGameMode::RespawnDeadPlayer(AController* Controller)
 	UStatusComponent* StatusComp = Character->GetStatusComp();
 	if (!StatusComp || StatusComp->IsAlive()) return;
 
-	ADestinationActor* Destination = nullptr;
-	for (TActorIterator<ADestinationActor> It(GetWorld()); It; ++It)
+	APortal* Destination = nullptr;
+	for (TActorIterator<APortal> It(GetWorld()); It; ++It)
 	{
 		Destination = *It;
 		break;
@@ -436,7 +410,7 @@ void ADefenseGameMode::HandleReturnToIntroMapRequested(APlayerController* Reques
 	}
 
 	ADefensePlayerState* HostPlayerState = nullptr;
-	ADefensePlayerState* GuestPlayerState = nullptr;
+	TArray<APlayerState*> GuestPlayerStates;
 	if (GameState)
 	{
 		for (APlayerState* PlayerState : GameState->PlayerArray)
@@ -449,7 +423,7 @@ void ADefenseGameMode::HandleReturnToIntroMapRequested(APlayerController* Reques
 				}
 				else if (DefensePlayerState->IsGuest())
 				{
-					GuestPlayerState = DefensePlayerState;
+					GuestPlayerStates.Add(DefensePlayerState);
 				}
 			}
 		}
@@ -457,7 +431,7 @@ void ADefenseGameMode::HandleReturnToIntroMapRequested(APlayerController* Reques
 
 	if (UDefenseGameInstance* MutableDefenseGameInstance = GetGameInstance<UDefenseGameInstance>())
 	{
-		MutableDefenseGameInstance->SaveIntroPlayerRoles(HostPlayerState, GuestPlayerState);
+		MutableDefenseGameInstance->SaveIntroPlayerRoles(HostPlayerState, GuestPlayerStates);
 	}
 
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -524,14 +498,17 @@ void ADefenseGameMode::AssignGameRole(APlayerController* NewPlayer)
 	}
 
 	bool bHasHost = false;
-	int32 PlayerCount = 0;
+	int32 PlayablePlayerCount = 0;
 	if (GameState)
 	{
 		for (APlayerState* PlayerState : GameState->PlayerArray)
 		{
 			if (const ADefensePlayerState* ExistingDefensePlayerState = Cast<ADefensePlayerState>(PlayerState))
 			{
-				++PlayerCount;
+				if (ExistingDefensePlayerState->GetGameRole() != EDefensePlayerRole::Spectator)
+				{
+					++PlayablePlayerCount;
+				}
 				bHasHost |= ExistingDefensePlayerState->IsHost();
 			}
 		}
@@ -543,7 +520,10 @@ void ADefenseGameMode::AssignGameRole(APlayerController* NewPlayer)
 		return;
 	}
 
-	DefensePlayerState->SetGameRole(PlayerCount <= 2 ? EDefensePlayerRole::Guest : EDefensePlayerRole::Spectator);
+	DefensePlayerState->SetGameRole(
+		PlayablePlayerCount <= MaxPlayablePlayers
+			? EDefensePlayerRole::Guest
+			: EDefensePlayerRole::Spectator);
 }
 
 bool ADefenseGameMode::ShouldSpawnSpectatorController() const
@@ -553,13 +533,32 @@ bool ADefenseGameMode::ShouldSpawnSpectatorController() const
 		return false;
 	}
 
-	if (GameState && GameState->PlayerArray.Num() >= 2)
+	int32 PlayablePlayerCount = 0;
+	if (GameState)
+	{
+		for (const APlayerState* PlayerState : GameState->PlayerArray)
+		{
+			const ADefensePlayerState* DefensePlayerState = Cast<ADefensePlayerState>(PlayerState);
+			if (DefensePlayerState && DefensePlayerState->GetGameRole() != EDefensePlayerRole::Spectator)
+			{
+				++PlayablePlayerCount;
+			}
+		}
+	}
+
+	if (PlayablePlayerCount >= MaxPlayablePlayers)
 	{
 		return true;
 	}
 
 	const UDefenseGameInstance* DefenseGameInstance = GetGameInstance<UDefenseGameInstance>();
-	return !DefenseGameInstance || !DefenseGameInstance->HasSavedGuestPlayerId();
+	if (!DefenseGameInstance)
+	{
+		return true;
+	}
+
+	const int32 SavedPlayablePlayerCount = DefenseGameInstance->GetSavedPlayablePlayerCount();
+	return SavedPlayablePlayerCount <= 0 || PlayablePlayerCount >= SavedPlayablePlayerCount;
 }
 
 void ADefenseGameMode::PromoteRemainingGuestToHost()
@@ -1319,12 +1318,12 @@ int32 ADefenseGameMode::GetMaxWave()
 	return MaxWave;
 }
 	
-void ADefenseGameMode::AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator)
+ADefensePlayerState* ADefenseGameMode::AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator)
 {
-	if (!HasAuthority() || !Enemy) return;
+	if (!HasAuthority() || !Enemy) return nullptr;
 	
 	const int32 RewardCoin = Enemy->KillCoinReward;
-	if (RewardCoin <= 0) return;
+	if (RewardCoin <= 0) return nullptr;
 	
 	ADefensePlayerState* RewardTarget = nullptr;
 	
@@ -1341,7 +1340,8 @@ void ADefenseGameMode::AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* Damag
 		RewardTarget = DamageCauserPawn->GetPlayerState<ADefensePlayerState>();
 	}
 
-	if (!RewardTarget) return;
+	if (!RewardTarget) return nullptr;
 
 	RewardTarget->AddCoin(RewardCoin);
+	return RewardTarget;
 }

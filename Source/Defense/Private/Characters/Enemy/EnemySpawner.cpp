@@ -13,7 +13,6 @@
 #include "Components/BoxComponent.h"
 #include "Engine/World.h"
 #include "GameManager/DefenseGameMode.h"
-#include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 
 
@@ -35,22 +34,6 @@ void AEnemySpawner::BeginPlay()
 	// 서버에서만 overlap 이벤트 일어나도록 & pool 초기화
 	if (HasAuthority())
 	{
-		EnemyRoutes.Empty();
-		
-		TArray<AActor*> FoundRoutes;
-		UGameplayStatics::GetAllActorsOfClass(GetWorld(), AEnemyRoute::StaticClass(), FoundRoutes);
-		for (AActor* FoundRoute : FoundRoutes)
-		{
-			if (AEnemyRoute* EnemyRoute = Cast<AEnemyRoute>(FoundRoute))
-			{
-				EnemyRoutes.Add(EnemyRoute);
-			}
-		}
-
-		//UE_LOG(LogTemp, Error, TEXT("EnemySpawner BeginPlay | Spawner=%s FoundRoutes=%d"),
-			//*GetNameSafe(this),
-			//EnemyRoutes.Num());
-		
 		BoxComp->SetGenerateOverlapEvents(true);
 		
 		// 적 스폰 테스트
@@ -204,9 +187,15 @@ void AEnemySpawner::SpawnPreviewEnemy()
 	if (AEnemyBase* Enemy = EnemyPool->SpawnFromPool(SpawnPlan.EnemyClass, GetActorLocation(), GetActorRotation(), false))
 	{
 		AddActiveEnemy(Enemy);
-		ApplySpawnPlanToEnemy(Enemy, SpawnPlanIndex);
-		RestartEnemyLogic(Enemy);
-		++PreviewSpawnedCount;
+		if (ApplySpawnPlanToEnemy(Enemy, SpawnPlanIndex) && RestartEnemyLogic(Enemy))
+		{
+			++PreviewSpawnedCount;
+		}
+		else
+		{
+			RemoveActiveEnemy(Enemy);
+			EnemyPool->ReturnToPool(Enemy);
+		}
 	}
 }
 
@@ -229,6 +218,7 @@ void AEnemySpawner::StartCombatSpawn(int32 WaveNumber)
 	CurrentCombatBatchRemaining = 0;
 	CombatInitializedCount = 0;
 	CombatInitializationFailedCount = 0;
+	CombatInitializationRetryCount = 0;
 	CombatSpawnTargetCount = PrepareCombatSpawnPlans(WaveNumber);
 
 	//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner StartCombatSpawn | Spawner=%s TargetCount=%d"),
@@ -261,6 +251,7 @@ void AEnemySpawner::EndWave()
 	CurrentCombatBatchRemaining = 0;
 	CombatInitializedCount = 0;
 	CombatInitializationFailedCount = 0;
+	CombatInitializationRetryCount = 0;
 }
 
 // 일정시간 간격으로 한마리씩 스폰하되, 배치 크기는 2~4개로 랜덤하게 정함.
@@ -317,44 +308,67 @@ void AEnemySpawner::SpawnCombatBatch()
 	}
 
 	const FEnemySpawnPlan& SpawnPlan = CurrentWaveSpawnPlans[CombatSpawnedCount];
-	AEnemyBase* Enemy = EnemyPool->SpawnFromPool(SpawnPlan.EnemyClass, GetActorLocation(), GetActorRotation(), false);
+	AEnemyBase* Enemy = EnemyPool->SpawnFromPool(SpawnPlan.EnemyClass, GetActorLocation(), GetActorRotation(), true);
 	if (!Enemy)
 	{
-		GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
-		//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner SpawnCombatBatch stopped | Pool empty before target count | Spawner=%s Spawned=%d/%d"),
-			//*GetNameSafe(this),
-			//CombatSpawnedCount,
-			//CombatSpawnTargetCount);
-		/*UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit Summary | Spawner=%s Initialized=%d Failed=%d Spawned=%d Target=%d Reason=PoolEmpty"),
+		const float RetryDelay = FMath::Max(CombatSpawnInterval, 0.1f);
+		UE_LOG(LogTemp, Warning, TEXT("EnemySpawner SpawnCombatBatch retry | Spawner=%s Spawned=%d/%d RetryDelay=%.2f"),
 			*GetNameSafe(this),
-			CombatInitializedCount,
-			CombatInitializationFailedCount,
 			CombatSpawnedCount,
-			CombatSpawnTargetCount
-		);*/
-		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
-		{
-			GameMode->NotifySpawnerFinished(this);
-		}
+			CombatSpawnTargetCount,
+			RetryDelay);
+		GetWorldTimerManager().SetTimer(
+			SpawnTimerHandle,
+			this,
+			&AEnemySpawner::SpawnCombatBatch,
+			RetryDelay,
+			false
+		);
 		return;
 	}
 
-	Enemy->EnemyMode = EEnemyMode::Combat;
 	AddActiveEnemy(Enemy);
 	const bool bAppliedSpawnPlan = ApplySpawnPlanToEnemy(Enemy, CombatSpawnedCount);
-	AEnemyController* EnemyController = Cast<AEnemyController>(Enemy->GetController());
-	const bool bHasRouteBeforeRestart = EnemyController && EnemyController->EnemyRoute;
-	const bool bHasStateTree = EnemyController && EnemyController->StateTreeAIComp;
-	Enemy->SetCombat();
-	RestartEnemyLogic(Enemy);
-	const bool bInitComplete = bAppliedSpawnPlan && bHasRouteBeforeRestart && bHasStateTree;
+	Enemy->SetEnemyMode(EEnemyMode::Combat);
+	const bool bInitComplete = bAppliedSpawnPlan && RestartEnemyLogic(Enemy);
 	if (bInitComplete)
 	{
 		++CombatInitializedCount;
+		CombatInitializationRetryCount = 0;
 	}
 	else
 	{
+		RemoveActiveEnemy(Enemy);
+		EnemyPool->ReturnToPool(Enemy);
+		++CombatInitializationRetryCount;
+
+		if (CombatInitializationRetryCount <= MaxCombatInitializationRetries)
+		{
+			const float RetryDelay = FMath::Max(CombatSpawnInterval, 0.1f);
+			UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit retry | Spawner=%s Plan=%d/%d Attempt=%d/%d EnemyClass=%s"),
+				*GetNameSafe(this),
+				CombatSpawnedCount + 1,
+				CombatSpawnTargetCount,
+				CombatInitializationRetryCount,
+				MaxCombatInitializationRetries,
+				*GetNameSafe(SpawnPlan.EnemyClass));
+			GetWorldTimerManager().SetTimer(
+				SpawnTimerHandle,
+				this,
+				&AEnemySpawner::SpawnCombatBatch,
+				RetryDelay,
+				false
+			);
+			return;
+		}
+
 		++CombatInitializationFailedCount;
+		CombatInitializationRetryCount = 0;
+		UE_LOG(LogTemp, Error, TEXT("EnemySpawner CombatInit failed | Spawner=%s Plan=%d/%d EnemyClass=%s"),
+			*GetNameSafe(this),
+			CombatSpawnedCount + 1,
+			CombatSpawnTargetCount,
+			*GetNameSafe(SpawnPlan.EnemyClass));
 	}
 
 	/*UE_LOG(LogTemp, Warning, TEXT("EnemySpawner CombatInit | Spawner=%s Enemy=%s InitComplete=%d Initialized=%d Failed=%d SpawnedNext=%d/%d RouteApplied=%d HadRouteBeforeRestart=%d HasController=%d HasStateTree=%d Route=%s"),
@@ -371,9 +385,12 @@ void AEnemySpawner::SpawnCombatBatch()
 		bHasStateTree ? 1 : 0,
 		EnemyController ? *GetNameSafe(EnemyController->EnemyRoute) : TEXT("None")
 	);*/
-	if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+	if (bInitComplete)
 	{
-		GameMode->NotifyEnemyActivated(Enemy);
+		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+		{
+			GameMode->NotifyEnemyActivated(Enemy);
+		}
 	}
 	++CombatSpawnedCount;
 	--CurrentCombatBatchRemaining;
@@ -655,6 +672,10 @@ bool AEnemySpawner::ApplySpawnPlanToEnemy(AEnemyBase* Enemy, int32 SpawnPlanInde
 			//*GetNameSafe(Enemy));
 		Enemy->SpawnDefaultController();
 		EnemyController = Cast<AEnemyController>(Enemy->GetController());
+	}
+
+	if (!EnemyController || EnemyController->GetPawn() != Enemy)
+	{
 		return false;
 	}
 	
@@ -687,6 +708,10 @@ void AEnemySpawner::AssignRandomRouteToEnemy(AEnemyBase* Enemy) const
 			//*GetNameSafe(Enemy));
 		Enemy->SpawnDefaultController();
 		EnemyController = Cast<AEnemyController>(Enemy->GetController());
+	}
+
+	if (!EnemyController || EnemyController->GetPawn() != Enemy)
+	{
 		return;
 	}
 	
@@ -703,12 +728,12 @@ void AEnemySpawner::AssignRandomRouteToEnemy(AEnemyBase* Enemy) const
 }
 
 // 적의 StateTree 재시작
-void AEnemySpawner::RestartEnemyLogic(AEnemyBase* Enemy) const
+bool AEnemySpawner::RestartEnemyLogic(AEnemyBase* Enemy) const
 {
 	if (!Enemy)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner RestartLogic failed | Enemy null"));
-		return;
+		return false;
 	}
 
 	AEnemyController* EnemyController = Cast<AEnemyController>(Enemy->GetController());
@@ -718,12 +743,20 @@ void AEnemySpawner::RestartEnemyLogic(AEnemyBase* Enemy) const
 			//*GetNameSafe(Enemy));
 		Enemy->SpawnDefaultController();
 		EnemyController = Cast<AEnemyController>(Enemy->GetController());
-		return;
+	}
+
+	if (!EnemyController || EnemyController->GetPawn() != Enemy)
+	{
+		return false;
 	}
 	
 	if (!EnemyController->EnemyRoute)
 	{
 		AssignRandomRouteToEnemy(Enemy);
+	}
+	if (!EnemyController->EnemyRoute)
+	{
+		return false;
 	}
 	
 	if (EnemyController->StateTreeAIComp)
@@ -731,13 +764,12 @@ void AEnemySpawner::RestartEnemyLogic(AEnemyBase* Enemy) const
 		//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner RestartLogic | Enemy=%s Controller=%s"),
 			//*GetNameSafe(Enemy),
 			//*GetNameSafe(EnemyController));
+		EnemyController->StateTreeAIComp->SetComponentTickEnabled(true);
 		EnemyController->StateTreeAIComp->RestartLogic();
+		return EnemyController->StateTreeAIComp->IsRunning();
 	}
-	else
-	{
-		//UE_LOG(LogTemp, Warning, TEXT("EnemySpawner RestartLogic failed | StateTreeAIComp null | Controller=%s"),
-			//*GetNameSafe(EnemyController));
-	}
+
+	return false;
 }
 
 void AEnemySpawner::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,

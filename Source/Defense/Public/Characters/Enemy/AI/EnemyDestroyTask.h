@@ -16,11 +16,16 @@ struct FEnemyDestroyTaskInstanceData : public FEnemyBaseTaskInstanceData
 	UPROPERTY(EditAnywhere, Category = "Parameter")
 	float DestroyDuration = 1.2f;
 
+	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float DestroyHitTimeRatio = 0.5f;
+
 	UPROPERTY()
 	TObjectPtr<AEnemyDestroy> CachedEnemy = nullptr;
 
 	float ElapsedTime = 0.f;
 	bool bDestroyFinished = false;
+	bool bDestroyStarted = false;
+	bool bDestroyTaskCompleted = false;
 };
 
 USTRUCT(meta = (DisplayName = "Enemy Destroy", Category = "Enemy|AI"))
@@ -33,6 +38,7 @@ struct DEFENSE_API FEnemyDestroyTask : public FEnemyBaseTask
 
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	virtual EStateTreeRunStatus Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const override;
+	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 
 #if WITH_EDITOR
 	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
