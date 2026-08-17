@@ -30,8 +30,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
-#include "Traps/Barricade.h"
 #include "Traps/BarricadeTrap.h"
+#include "Traps/LightningTrap.h"
 #include "UI/EnemyHPUI.h"
 #include "UI/RewardUI.h"
 #include "Blueprint/UserWidget.h"
@@ -161,6 +161,7 @@ void AEnemyBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	ClearBurnTimers();
 	ClearDamageOutline();
+	ClearElectricHit();
 	SetBurnVisualActive(false);
 	RestoreDamageOverlay();
 
@@ -196,7 +197,7 @@ void AEnemyBase::SetTarget(AActor* NewTarget)
 	}
 
 	Target = NewTarget;
-	CurrentAttackDist = IsValid(Target) && (Target->IsA<ABarricade>() || Target->IsA<ABarricadeTrap>())
+	CurrentAttackDist = IsValid(Target) && (Target->IsA<ABarricadeTrap>())
 		? BarricadeAttackDist
 		: AttackDist;
 }
@@ -431,6 +432,7 @@ void AEnemyBase::SetPreview()
 	ResetPortalEntryState();
 	ResetRewardPopup();
 	ClearDamageOutline();
+	ClearElectricHit();
 
 	if (HasAuthority())
 	{
@@ -576,6 +578,7 @@ void AEnemyBase::SetInactive()
 	ResetPortalEntryState();
 	ResetRewardPopup();
 	ClearDamageOutline();
+	ClearElectricHit();
 
 	if (HasAuthority())
 	{
@@ -667,6 +670,7 @@ bool AEnemyBase::TryBeginPortalEntry(
 	SetTarget(nullptr);
 	EndBurnEffect();
 	ClearDamageOutline();
+	ClearElectricHit();
 	ApplyPortalCollisionState();
 
 	if (HpComp)
@@ -742,6 +746,7 @@ void AEnemyBase::MulticastRPC_BeginPortalClip_Implementation(
 	}
 
 	ClearDamageOutline();
+	ClearElectricHit();
 	SetBurnVisualActive(false);
 	if (HpComp)
 	{
@@ -980,6 +985,11 @@ void AEnemyBase::MulticastRPC_BurnReaction_Implementation()
 void AEnemyBase::MulticastRPC_ShowDamageOutline_Implementation()
 {
 	ShowDamageOutline();
+}
+
+void AEnemyBase::MulticastRPC_ShowElectricHit_Implementation()
+{
+	ShowElectricHit();
 }
 
 void AEnemyBase::MulticastRPC_DieMotion_Implementation()
@@ -1366,6 +1376,12 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	CurHP = FMath::Max(0.f, CurHP - ActualDamage);
 	const UClass* DamageTypeClass = DamageEvent.DamageTypeClass.Get();
 	const bool bIsBurnDamage = DamageTypeClass && DamageTypeClass->IsChildOf(UBurnDamageType::StaticClass());
+	const bool bIsLightningDamage = IsValid(DamageCauser) && DamageCauser->IsA<ALightningTrap>();
+
+	if (bIsLightningDamage)
+	{
+		MulticastRPC_ShowElectricHit();
+	}
 
 	/*ADefenseCharacter* AttackingCharacter = Cast<ADefenseCharacter>(DamageCauser);
 	if (!AttackingCharacter && EventInstigator)
@@ -1418,7 +1434,8 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	}
 	else if (!bIsBurnDamage)
 	{
-		if (EnemyState != EEnemyState::Stone || bShowDamageOutlineWhileStone)
+		if (!bIsLightningDamage
+			&& (EnemyState != EEnemyState::Stone || bShowDamageOutlineWhileStone))
 		{
 			MulticastRPC_ShowDamageOutline();
 		}
@@ -1593,6 +1610,7 @@ void AEnemyBase::InitializeDamageOverlay()
 
 		DamageOverlayMID->SetScalarParameterValue(TEXT("BurnAmount"), bIsBurning ? 1.f : 0.f);
 		DamageOverlayMID->SetScalarParameterValue(TEXT("OutlineAmount"), 0.f);
+		DamageOverlayMID->SetScalarParameterValue(TEXT("ElectricAmount"), 0.f);
 		DamageOverlayMID->SetVectorParameterValue(TEXT("BurnColor"), BurnColor);
 		DamageOverlayMID->SetScalarParameterValue(TEXT("BurnSpeed"), BurnPulseSpeed);
 	}
@@ -1631,6 +1649,43 @@ void AEnemyBase::SetBurnVisualActive(const bool bActive)
 	if (AnimInst)
 	{
 		AnimInst->StopBurnReactionMotion();
+	}
+}
+
+void AEnemyBase::ShowElectricHit()
+{
+	if (IsRunningDedicatedServer())
+	{
+		return;
+	}
+
+	InitializeDamageOverlay();
+	UWorld* World = GetWorld();
+	if (!DamageOverlayMID || !World)
+	{
+		return;
+	}
+
+	DamageOverlayMID->SetScalarParameterValue(TEXT("ElectricAmount"), 1.f);
+	World->GetTimerManager().SetTimer(
+		ElectricHitTimerHandle,
+		this,
+		&AEnemyBase::ClearElectricHit,
+		FMath::Max(ElectricHitDuration, UE_KINDA_SMALL_NUMBER),
+		false
+	);
+}
+
+void AEnemyBase::ClearElectricHit()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ElectricHitTimerHandle);
+	}
+
+	if (DamageOverlayMID)
+	{
+		DamageOverlayMID->SetScalarParameterValue(TEXT("ElectricAmount"), 0.f);
 	}
 }
 
