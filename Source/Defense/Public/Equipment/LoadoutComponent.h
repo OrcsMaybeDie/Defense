@@ -78,6 +78,8 @@ public:
 	
 protected:
 	virtual void BeginPlay() override;
+	
+	void InitializeSlotsFromProfile(); // 저장된 QuickSlot을 캐릭터의 런타임 LoadoutComp에 적용
 
 	UFUNCTION()
 	void OnRep_SelectedSlotIdx(); // 복제 처리
