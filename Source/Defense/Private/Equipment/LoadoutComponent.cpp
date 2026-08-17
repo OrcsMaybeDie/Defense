@@ -1,6 +1,6 @@
 ﻿#include "Equipment/LoadoutComponent.h"
 
-
+#include "Engine/AssetManager.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/Pawn.h"
 #include "Profile/ProfileSubsystem.h"
@@ -9,6 +9,15 @@
 #include "Equipment/WeaponData.h"
 #include "Net/UnrealNetwork.h"
 #include "Traps/TrapData.h"
+
+namespace
+{
+	constexpr int32 MaxSubmittedQuickSlotCount = 12;
+
+	const FPrimaryAssetType TrapDataAssetType(TEXT("TrapData"));
+	const FPrimaryAssetType WeaponDataAssetType(TEXT("WeaponData"));
+	const FPrimaryAssetType ItemDataAssetType(TEXT("ItemData"));
+}
 
 ULoadoutComponent::ULoadoutComponent()
 {
@@ -32,7 +41,7 @@ void ULoadoutComponent::BeginPlay()
 				&ULoadoutComponent::HandleProfileQuickSlotsChanged);
 		}
 
-		InitializeSlotsFromProfile();
+		SubmitProfileLoadout();
 	}
 
 	// 시작 장비 0번 슬롯으로 고정
@@ -54,51 +63,125 @@ void ULoadoutComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void ULoadoutComponent::InitializeSlotsFromProfile()
+void ULoadoutComponent::SubmitProfileLoadout()
 {
+	const APawn* OwnerPawn = Cast<APawn>(GetOwner());
+
+	if (!OwnerPawn || !OwnerPawn->IsLocallyControlled())
+	{
+		return;
+	}
+
 	UProfileSubsystem* ProfileSubsystem = GetProfileSubsystem();
 
 	if (!ProfileSubsystem)
 	{
 		return;
 	}
-	
-	const int32 QuickSlotCount = ProfileSubsystem->GetQuickSlotCount();
-	
-	EquippedSlots.SetNum(QuickSlotCount);
-	
-	for (int32 SlotIdx = 0; SlotIdx < QuickSlotCount; SlotIdx++)
+
+	const TArray<FPrimaryAssetId> EquipmentIds = ProfileSubsystem->GetQuickSlotEquipmentIds();
+
+	ServerRPC_SubmitProfileLoadout(EquipmentIds);
+}
+
+bool ULoadoutComponent::ValidateSubmittedEquipmentIds(const TArray<FPrimaryAssetId>& EquipmentIds) const
+{
+	if (EquipmentIds.IsEmpty()
+	|| EquipmentIds.Num() > MaxSubmittedQuickSlotCount)
 	{
-		UEquipmentData* EquipmentData =
-			ProfileSubsystem->GetQuickSlotEquipment(SlotIdx);
+		return false;
+	}
+
+	UAssetManager& AssetManager = UAssetManager::Get();
+	TSet<FPrimaryAssetId> UsedEquipmentIds;
+
+	for (const FPrimaryAssetId& EquipmentId : EquipmentIds)
+	{
+		// 빈 ID는 열린 빈 슬롯
+		if (!EquipmentId.IsValid())
+		{
+			continue;
+		}
+
+		const bool bIsSupportedType =
+			EquipmentId.PrimaryAssetType == TrapDataAssetType
+			|| EquipmentId.PrimaryAssetType == WeaponDataAssetType
+			|| EquipmentId.PrimaryAssetType == ItemDataAssetType;
+
+		if (!bIsSupportedType)
+		{
+			return false;
+		}
+
+		// 동일 장비 중복 등록 거절
+		if (UsedEquipmentIds.Contains(EquipmentId))
+		{
+			return false;
+		}
+
+		const FSoftObjectPath AssetPath = AssetManager.GetPrimaryAssetPath(EquipmentId);
+
+		if (!AssetPath.IsValid())
+		{
+			return false;
+		}
+
+		const UEquipmentData* EquipmentData = Cast<UEquipmentData>(AssetPath.TryLoad());
+
+		if (!EquipmentData || EquipmentData->GetPrimaryAssetId() != EquipmentId)
+		{
+			return false;
+		}
+
+		UsedEquipmentIds.Add(EquipmentId);
+	}
+
+	return true;
+}
+
+void ULoadoutComponent::RebuildEquippedSlotsFromReplicatedIds()
+{
+	EquippedSlots.SetNum(ReplicatedEquipmentIds.Num());
+
+	UAssetManager& AssetManager = UAssetManager::Get();
+
+	for (int32 SlotIdx = 0; SlotIdx < ReplicatedEquipmentIds.Num(); ++SlotIdx)
+	{
+		const FPrimaryAssetId& EquipmentId = ReplicatedEquipmentIds[SlotIdx];
+
+		UEquipmentData* EquipmentData = nullptr;
+
+		if (EquipmentId.IsValid())
+		{
+			const FSoftObjectPath AssetPath = AssetManager.GetPrimaryAssetPath(EquipmentId);
+
+			EquipmentData = Cast<UEquipmentData>(AssetPath.TryLoad());
+		}
 
 		EquippedSlots[SlotIdx].EquipmentData = EquipmentData;
-
-		// 런타임 Loadout 적용 확인용
-		UE_LOG(
-			LogTemp,
-			Log,
-			TEXT("[Loadout] EquippedSlots[%d] = %s"),
-			SlotIdx,
-			*GetNameSafe(EquipmentData));
 	}
-	
+
+	OnLoadoutSlotsChanged.Broadcast();
+
+	// 선택 번호가 같아도 선택 슬롯의 장비가 변경될 수 있음
+	OnSelectedEquipChanged.Broadcast(SelectedSlotIdx, GetCurEquipment());
+}
+
+void ULoadoutComponent::OnRep_ReplicatedEquipmentIds()
+{
+	RebuildEquippedSlotsFromReplicatedIds();
 }
 
 void ULoadoutComponent::HandleProfileQuickSlotsChanged()
 {
-	InitializeSlotsFromProfile();
-
-	OnLoadoutSlotsChanged.Broadcast();
-
-	// 선택 번호는 같아도 해당 슬롯의 장비가 바뀔 수 있음
-	OnSelectedEquipChanged.Broadcast(SelectedSlotIdx, GetCurEquipment());
+	SubmitProfileLoadout();
 }
 
 void ULoadoutComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	
+	DOREPLIFETIME(ULoadoutComponent, ReplicatedEquipmentIds);
 	DOREPLIFETIME(ULoadoutComponent, SelectedSlotIdx);
 }
 
@@ -156,6 +239,19 @@ void ULoadoutComponent::OnRep_SelectedSlotIdx()
 {
 	// Broadcast
 	OnSelectedEquipChanged.Broadcast(SelectedSlotIdx, GetCurEquipment());
+}
+
+void ULoadoutComponent::ServerRPC_SubmitProfileLoadout_Implementation(const TArray<FPrimaryAssetId>& EquipmentIds)
+{
+	if (!ValidateSubmittedEquipmentIds(EquipmentIds))
+	{
+		return;
+	}
+
+	ReplicatedEquipmentIds = EquipmentIds;
+
+	// RepNotify는 서버에서 자동 호출되지 X. 직접 호출
+	RebuildEquippedSlotsFromReplicatedIds();
 }
 
 UEquipmentData* ULoadoutComponent::GetCurEquipment() const

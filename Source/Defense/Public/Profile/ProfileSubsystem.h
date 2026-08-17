@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/PrimaryAssetId.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "ProfileSubsystem.generated.h"
 
@@ -43,6 +44,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Profile|QuickSlot")
 	int32 GetQuickSlotCount() const;
 	
+	// QuickSlot 장비 ID 목록 조회
+	TArray<FPrimaryAssetId> GetQuickSlotEquipmentIds() const;
+
 	// QuickSlot 확장 (확장 조건은 추후 결정)
 	UFUNCTION(BlueprintCallable, Category = "Profile|QuickSlot")
 	bool ExpandQuickSlots(int32 AddSlotCount);
