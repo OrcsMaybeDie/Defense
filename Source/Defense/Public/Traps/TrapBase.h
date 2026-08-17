@@ -42,7 +42,7 @@ protected:
 	TObjectPtr<UStaticMeshComponent> Mesh;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap|Components")
 	TObjectPtr<USkeletalMeshComponent> SkeletalMesh;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap|Components")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Trap|Components")
 	TObjectPtr<UBoxComponent> DamageArea;
 
 	UPROPERTY(ReplicatedUsing=OnRep_RuntimeState, VisibleInstanceOnly, BlueprintReadOnly, Category="Trap")

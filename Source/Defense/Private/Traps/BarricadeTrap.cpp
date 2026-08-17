@@ -36,8 +36,6 @@ ABarricadeTrap::ABarricadeTrap()
 	Sensor->SetGenerateOverlapEvents(false);
 	Sensor->SetAutoActivate(false);
 	Sensor->SetCanEverAffectNavigation(false);
-
-	ApplyBoxExtents();
 }
 
 void ABarricadeTrap::Tick(const float DeltaTime)
@@ -133,13 +131,13 @@ float ABarricadeTrap::GetDistanceToSurface(const FVector& FromLocation) const
 void ABarricadeTrap::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
-	ApplyBoxExtents();
+	ApplyDamageAreaExtent();
 }
 
 void ABarricadeTrap::BeginPlay()
 {
 	Super::BeginPlay();
-	ApplyBoxExtents();
+	ApplyDamageAreaExtent();
 
 	if (HasAuthority())
 	{
@@ -160,6 +158,14 @@ void ABarricadeTrap::BeginPlay()
 	{
 		Sensor->OnComponentBeginOverlap.AddUniqueDynamic(this, &ABarricadeTrap::OnSensorBeginOverlap);
 		Sensor->OnComponentEndOverlap.AddUniqueDynamic(this, &ABarricadeTrap::OnSensorEndOverlap);
+	}
+}
+
+void ABarricadeTrap::ApplyDamageAreaExtent()
+{
+	if (DamageArea)
+	{
+		DamageArea->SetBoxExtent(DamageAreaExtent);
 	}
 }
 
@@ -187,19 +193,6 @@ void ABarricadeTrap::RefreshHPUI()
 	if (HPUI)
 	{
 		HPUI->UpdateHPBar(HP, MaxHP);
-	}
-}
-
-void ABarricadeTrap::ApplyBoxExtents()
-{
-	if (DamageArea)
-	{
-		DamageArea->SetBoxExtent(FVector(100.0f, 100.0f, 100.0f));
-	}
-
-	if (Sensor)
-	{
-		Sensor->SetBoxExtent(FVector(52.f, 52.0f, 50.0f));
 	}
 }
 
