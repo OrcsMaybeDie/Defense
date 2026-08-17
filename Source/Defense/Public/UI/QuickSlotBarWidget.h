@@ -34,6 +34,9 @@ private:
 	UFUNCTION()
 	void HandleSelectedEquipChanged(int32 SelectedSlotIdx, UEquipmentData* SelectedEquipment);
 	
+	UFUNCTION()
+	void HandleLoadoutSlotsChanged();
+
 	void RefreshCoin();
 	void RefreshSlots();
 	void RefreshSelectedSlot();

@@ -8,6 +8,7 @@ class UEquipmentData;
 class UWeaponData;
 class UTrapData;
 class UItemData;
+class UProfileSubsystem;
 
 
 // Delegate (event) 선언
@@ -16,6 +17,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	int32, SelectedSlotIdx,
 	UEquipmentData*, SelectedEquipment
 );
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLoadoutSlotsChanged);
 
 USTRUCT(BlueprintType)
 struct FLoadoutSlot
@@ -66,9 +69,13 @@ public:
 	UFUNCTION(BlueprintPure, Category="Loadout")
 	UItemData* GetCurItem() const;
 
-	// event
+	// event) 선택 번호 or 현재 선택 장비가 변경됨
 	UPROPERTY(BlueprintAssignable, Category="Loadout")
 	FOnSelectedEquipmentChanged OnSelectedEquipChanged;
+
+	// event) Slot 개수 or 배치된 장비가 변경됨
+	UPROPERTY(BlueprintAssignable, Category="Loadout")
+	FOnLoadoutSlotsChanged OnLoadoutSlotsChanged;
 
 	// getter
 	UFUNCTION(BlueprintPure, Category="Loadout")
@@ -78,8 +85,14 @@ public:
 	
 protected:
 	virtual void BeginPlay() override;
-	
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 	void InitializeSlotsFromProfile(); // 저장된 QuickSlot을 캐릭터의 런타임 LoadoutComp에 적용
+
+	UFUNCTION()
+	void HandleProfileQuickSlotsChanged();
+
+	UProfileSubsystem* GetProfileSubsystem() const;
 
 	UFUNCTION()
 	void OnRep_SelectedSlotIdx(); // 복제 처리

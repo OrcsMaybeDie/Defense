@@ -25,6 +25,13 @@ void ULoadoutComponent::BeginPlay()
 	// 이 PC가 직접 조작하는 캐릭터에만 로컬 프로필 적용
 	if (OwnerPawn && OwnerPawn->IsLocallyControlled())
 	{
+		if (UProfileSubsystem* ProfileSubsystem = GetProfileSubsystem())
+		{
+			ProfileSubsystem->OnQuickSlotsChanged.AddUniqueDynamic(
+				this,
+				&ULoadoutComponent::HandleProfileQuickSlotsChanged);
+		}
+
 		InitializeSlotsFromProfile();
 	}
 
@@ -35,18 +42,22 @@ void ULoadoutComponent::BeginPlay()
 	}
 }
 
-void ULoadoutComponent::InitializeSlotsFromProfile()
+void ULoadoutComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	UWorld* World = GetWorld();
-	UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
-	
-	if (!GameInstance)
+	if (UProfileSubsystem* ProfileSubsystem = GetProfileSubsystem())
 	{
-		return;
+		ProfileSubsystem->OnQuickSlotsChanged.RemoveDynamic(
+			this,
+			&ULoadoutComponent::HandleProfileQuickSlotsChanged);
 	}
 	
-	UProfileSubsystem* ProfileSubsystem = GameInstance->GetSubsystem<UProfileSubsystem>();
-	
+	Super::EndPlay(EndPlayReason);
+}
+
+void ULoadoutComponent::InitializeSlotsFromProfile()
+{
+	UProfileSubsystem* ProfileSubsystem = GetProfileSubsystem();
+
 	if (!ProfileSubsystem)
 	{
 		return;
@@ -72,6 +83,16 @@ void ULoadoutComponent::InitializeSlotsFromProfile()
 			*GetNameSafe(EquipmentData));
 	}
 	
+}
+
+void ULoadoutComponent::HandleProfileQuickSlotsChanged()
+{
+	InitializeSlotsFromProfile();
+
+	OnLoadoutSlotsChanged.Broadcast();
+
+	// 선택 번호는 같아도 해당 슬롯의 장비가 바뀔 수 있음
+	OnSelectedEquipChanged.Broadcast(SelectedSlotIdx, GetCurEquipment());
 }
 
 void ULoadoutComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
@@ -121,6 +142,14 @@ UEquipmentData* ULoadoutComponent::GetEquipAtSlot(int32 SlotIdx) const
 {
 	return EquippedSlots.IsValidIndex(SlotIdx)
 	? EquippedSlots[SlotIdx].EquipmentData : nullptr;
+}
+
+UProfileSubsystem* ULoadoutComponent::GetProfileSubsystem() const
+{
+	UWorld* World = GetWorld();
+	UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+
+	return GameInstance ? GameInstance->GetSubsystem<UProfileSubsystem>() : nullptr;
 }
 
 void ULoadoutComponent::OnRep_SelectedSlotIdx()

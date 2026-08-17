@@ -28,6 +28,8 @@ void UQuickSlotBarWidget::NativeDestruct()
 	if (BoundLoadoutComp)
 	{
 		BoundLoadoutComp->OnSelectedEquipChanged.RemoveDynamic(this, &UQuickSlotBarWidget::HandleSelectedEquipChanged);
+
+		BoundLoadoutComp->OnLoadoutSlotsChanged.RemoveDynamic(this, &UQuickSlotBarWidget::HandleLoadoutSlotsChanged);
 	}
 	
 	Super::NativeDestruct();
@@ -61,6 +63,8 @@ void UQuickSlotBarWidget::BindLoadoutComponent(ULoadoutComponent* InLoadoutComp)
 	if (BoundLoadoutComp)
 	{
 		BoundLoadoutComp->OnSelectedEquipChanged.RemoveDynamic(this, &UQuickSlotBarWidget::HandleSelectedEquipChanged);
+
+		BoundLoadoutComp->OnLoadoutSlotsChanged.RemoveDynamic(this, &UQuickSlotBarWidget::HandleLoadoutSlotsChanged);
 	}
 
 	BoundLoadoutComp = InLoadoutComp;
@@ -68,6 +72,8 @@ void UQuickSlotBarWidget::BindLoadoutComponent(ULoadoutComponent* InLoadoutComp)
 	if (BoundLoadoutComp)
 	{
 		BoundLoadoutComp->OnSelectedEquipChanged.AddUniqueDynamic(this, &UQuickSlotBarWidget::HandleSelectedEquipChanged);
+
+		BoundLoadoutComp->OnLoadoutSlotsChanged.AddUniqueDynamic(this, &UQuickSlotBarWidget::HandleLoadoutSlotsChanged);
 	}
 
 	RefreshSlots();
@@ -91,6 +97,11 @@ void UQuickSlotBarWidget::HandleSelectedEquipChanged(int32 SelectedSlotIdx, UEqu
 {
 	// 현재는 선택 표시만 갱신한다. 슬롯 구성 변경 UI가 필요해지면 RefreshSlots()로 확장.
 	RefreshSelectedSlot();
+}
+
+void UQuickSlotBarWidget::HandleLoadoutSlotsChanged()
+{
+	RefreshSlots();
 }
 
 void UQuickSlotBarWidget::RefreshSlots()
