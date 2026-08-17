@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/PrimaryAssetId.h"
 #include "Components/ActorComponent.h"
 #include "LoadoutComponent.generated.h"
 
@@ -39,8 +40,13 @@ public:
 	ULoadoutComponent();
 
 protected:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Loadout")
+	// ReplicatedEquipmentIds로부터 재구성되는 런타임 캐시
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Transient, Category="Loadout")
 	TArray<FLoadoutSlot> EquippedSlots;
+
+	// 서버가 검증, 모든 클라이언트에 복제하는 QuickSlot 장비 ID
+	UPROPERTY(ReplicatedUsing=OnRep_ReplicatedEquipmentIds, BlueprintReadOnly, Category="Loadout")
+	TArray<FPrimaryAssetId> ReplicatedEquipmentIds;
 
 	UPROPERTY(ReplicatedUsing=OnRep_SelectedSlotIdx, BlueprintReadOnly, Category="Loadout")
 	int32 SelectedSlotIdx = 0;
@@ -87,7 +93,17 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-	void InitializeSlotsFromProfile(); // 저장된 QuickSlot을 캐릭터의 런타임 LoadoutComp에 적용
+	// 로컬 Profile의 QuickSlot을 서버에 제출
+	void SubmitProfileLoadout();
+
+	// 클라가 제출한 ID 배열 검증
+	bool ValidateSubmittedEquipmentIds(const TArray<FPrimaryAssetId>& EquipmentIds) const;
+
+	// 복제된 ID를 실제 장비 데이터로 변환
+	void RebuildEquippedSlotsFromReplicatedIds();
+
+	UFUNCTION()
+	void OnRep_ReplicatedEquipmentIds(); // 클라가 새 배열을 복제받았을 때 엔진이 호출
 
 	UFUNCTION()
 	void HandleProfileQuickSlotsChanged();
@@ -97,6 +113,9 @@ protected:
 	UFUNCTION()
 	void OnRep_SelectedSlotIdx(); // 복제 처리
 	
+	UFUNCTION(Server, Reliable)
+	void ServerRPC_SubmitProfileLoadout(const TArray<FPrimaryAssetId>& EquipmentIds);
+
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_RequestSelectSlot(int32 SlotIdx); // RPC
 	

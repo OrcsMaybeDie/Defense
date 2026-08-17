@@ -116,6 +116,16 @@ int32 UProfileSubsystem::GetQuickSlotCount() const
 	return CurrentProfile ? CurrentProfile->EquippedEquipmentIds.Num() : 0;
 }
 
+TArray<FPrimaryAssetId> UProfileSubsystem::GetQuickSlotEquipmentIds() const
+{
+	if (!CurrentProfile)
+	{
+		return {};
+	}
+
+	return CurrentProfile->EquippedEquipmentIds;
+}
+
 bool UProfileSubsystem::ExpandQuickSlots(int32 AddSlotCount)
 {
 	if (!CurrentProfile || AddSlotCount <= 0)
@@ -252,19 +262,6 @@ void UProfileSubsystem::CreateNewProfile()
 	InitializeDefaultUnlocks();
 	InitializeQuickSlots();
 	InitializeDefaultQuickSlotAssignments();
-
-	// QuickSlot default load 임시 로그
-	for (int32 SlotIndex = 0; SlotIndex < GetQuickSlotCount(); ++SlotIndex)
-	{
-		const UEquipmentData* EquipmentData = GetQuickSlotEquipment(SlotIndex);
-	
-		UE_LOG(
-			LogTemp,
-			Log,
-			TEXT("[Profile] QuickSlot[%d] = %s"),
-			SlotIndex,
-			EquipmentData ? *EquipmentData->GetName() : TEXT("Empty"));
-	}
 
 	SaveProfile();
 }
