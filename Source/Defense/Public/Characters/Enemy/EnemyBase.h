@@ -251,6 +251,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Damage|Visual", meta=(ClampMin="0.01", Units="s"))
 	float DamageOutlineDuration = 0.15f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Damage|Visual|Electric", meta=(ClampMin="0.01", Units="s"))
+	float ElectricHitDuration = 0.5f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Damage|Visual|Burn")
 	FLinearColor BurnColor = FLinearColor(1.f, 0.02f, 0.01f, 1.f);
 
@@ -365,10 +368,15 @@ private:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastRPC_ShowDamageOutline();
 
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastRPC_ShowElectricHit();
+
 	void ApplyBurnDamageTick();
 	void EndBurnEffect();
 	void InitializeDamageOverlay();
 	void SetBurnVisualActive(bool bActive);
+	void ShowElectricHit();
+	void ClearElectricHit();
 	void ShowDamageOutline();
 	void ClearDamageOutline();
 	void UpdateDamageOverlayForStoneState();
@@ -378,6 +386,7 @@ private:
 	FTimerHandle BurnDamageTimerHandle;
 	FTimerHandle BurnEndTimerHandle;
 	FTimerHandle DamageOutlineTimerHandle;
+	FTimerHandle ElectricHitTimerHandle;
 	float BurnDamagePerTick = 0.f;
 	float BurnEndTime = 0.f;
 

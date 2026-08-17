@@ -1,6 +1,9 @@
 ﻿#include "Equipment/LoadoutComponent.h"
 
 
+#include "Engine/GameInstance.h"
+#include "GameFramework/Pawn.h"
+#include "Profile/ProfileSubsystem.h"
 #include "Equipment/EquipmentData.h"
 #include "Equipment/ItemData.h"
 #include "Equipment/WeaponData.h"
@@ -16,12 +19,80 @@ ULoadoutComponent::ULoadoutComponent()
 void ULoadoutComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	const APawn* OwnerPawn = Cast<APawn>(GetOwner());
+	
+	// 이 PC가 직접 조작하는 캐릭터에만 로컬 프로필 적용
+	if (OwnerPawn && OwnerPawn->IsLocallyControlled())
+	{
+		if (UProfileSubsystem* ProfileSubsystem = GetProfileSubsystem())
+		{
+			ProfileSubsystem->OnQuickSlotsChanged.AddUniqueDynamic(
+				this,
+				&ULoadoutComponent::HandleProfileQuickSlotsChanged);
+		}
+
+		InitializeSlotsFromProfile();
+	}
 
 	// 시작 장비 0번 슬롯으로 고정
 	if (AActor* OwnerActor = GetOwner(); OwnerActor && OwnerActor->HasAuthority())
 	{
 		SetSelectedSlotIdx(0);
 	}
+}
+
+void ULoadoutComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UProfileSubsystem* ProfileSubsystem = GetProfileSubsystem())
+	{
+		ProfileSubsystem->OnQuickSlotsChanged.RemoveDynamic(
+			this,
+			&ULoadoutComponent::HandleProfileQuickSlotsChanged);
+	}
+	
+	Super::EndPlay(EndPlayReason);
+}
+
+void ULoadoutComponent::InitializeSlotsFromProfile()
+{
+	UProfileSubsystem* ProfileSubsystem = GetProfileSubsystem();
+
+	if (!ProfileSubsystem)
+	{
+		return;
+	}
+	
+	const int32 QuickSlotCount = ProfileSubsystem->GetQuickSlotCount();
+	
+	EquippedSlots.SetNum(QuickSlotCount);
+	
+	for (int32 SlotIdx = 0; SlotIdx < QuickSlotCount; SlotIdx++)
+	{
+		UEquipmentData* EquipmentData =
+			ProfileSubsystem->GetQuickSlotEquipment(SlotIdx);
+
+		EquippedSlots[SlotIdx].EquipmentData = EquipmentData;
+
+		// 런타임 Loadout 적용 확인용
+		UE_LOG(
+			LogTemp,
+			Log,
+			TEXT("[Loadout] EquippedSlots[%d] = %s"),
+			SlotIdx,
+			*GetNameSafe(EquipmentData));
+	}
+	
+}
+
+void ULoadoutComponent::HandleProfileQuickSlotsChanged()
+{
+	InitializeSlotsFromProfile();
+
+	OnLoadoutSlotsChanged.Broadcast();
+
+	// 선택 번호는 같아도 해당 슬롯의 장비가 바뀔 수 있음
+	OnSelectedEquipChanged.Broadcast(SelectedSlotIdx, GetCurEquipment());
 }
 
 void ULoadoutComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
@@ -71,6 +142,14 @@ UEquipmentData* ULoadoutComponent::GetEquipAtSlot(int32 SlotIdx) const
 {
 	return EquippedSlots.IsValidIndex(SlotIdx)
 	? EquippedSlots[SlotIdx].EquipmentData : nullptr;
+}
+
+UProfileSubsystem* ULoadoutComponent::GetProfileSubsystem() const
+{
+	UWorld* World = GetWorld();
+	UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+
+	return GameInstance ? GameInstance->GetSubsystem<UProfileSubsystem>() : nullptr;
 }
 
 void ULoadoutComponent::OnRep_SelectedSlotIdx()

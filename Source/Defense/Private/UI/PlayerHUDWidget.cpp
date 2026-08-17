@@ -9,7 +9,7 @@
 #include "GameManager/DefenseGameState.h"
 #include "TimerManager.h"
 #include "Characters/Player/DefensePlayerState.h"
-#include "UI/LoadoutBarWidget.h"
+#include "UI/QuickSlotBarWidget.h"
 #include "UI/NoticeWidget.h"
 #include "UI/PlayerStatusWidget.h"
 
@@ -62,9 +62,9 @@ void UPlayerHUDWidget::TryBindPlayer()
 			bSelfBound = true;
 		}
 		
-		if (LoadoutBar)
+		if (QuickSlotBar)
 		{
-			LoadoutBar->BindLoadoutComponent(SelfChar->GetLoadoutComponent());
+			QuickSlotBar->BindLoadoutComponent(SelfChar->GetLoadoutComponent());
 		}
 	}
 	
@@ -72,9 +72,9 @@ void UPlayerHUDWidget::TryBindPlayer()
 	APlayerState* LocalPlayerState = OwningPC->PlayerState;
 	ADefensePlayerState* DefensePlayerState = Cast<ADefensePlayerState>(LocalPlayerState);
 	
-	if (LoadoutBar && DefensePlayerState)
+	if (QuickSlotBar && DefensePlayerState)
 	{
-		LoadoutBar->BindPlayerState(DefensePlayerState);
+		QuickSlotBar->BindPlayerState(DefensePlayerState);
 	}
 
 	if (WBP_Notice)

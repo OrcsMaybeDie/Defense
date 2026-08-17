@@ -44,11 +44,14 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Destroyed() override;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Barricade|Components")
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category="Barricade|Components")
 	TObjectPtr<UBoxComponent> Sensor;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Barricade|Components")
 	TObjectPtr<UWidgetComponent> HpComp;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Barricade|Collision", meta=(ClampMin="1.0"))
+	FVector DamageAreaExtent = FVector(100.0f, 100.0f, 100.0f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Barricade|Sensor", meta=(ClampMin="0.0"))
 	float SensorActivationDelay = 1.0f;
@@ -76,7 +79,7 @@ protected:
 	void ReleaseAllEnemies();
 	void NotifyNearbyWaitingRunEnemies();
 	void ScheduleSensorActivation();
-	void ApplyBoxExtents();
+	void ApplyDamageAreaExtent();
 	void RefreshHPUI();
 
 	UFUNCTION()

@@ -70,5 +70,6 @@ private:
 	void CreateNewProfile();
 	void InitializeDefaultUnlocks(); // 기본 해금 장비
 	void InitializeQuickSlots();
+	void InitializeDefaultQuickSlotAssignments();
 	bool SaveProfile();
 };

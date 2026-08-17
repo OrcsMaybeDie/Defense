@@ -2,18 +2,19 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "LoadoutBarWidget.generated.h"
+#include "QuickSlotBarWidget.generated.h"
 
 
+class UHorizontalBox;
+class UQuickSlotEntryWidget;
 class UTextBlock;
-class UImage;
 class ULoadoutComponent;
 class UEquipmentData;
 class ADefensePlayerState;
 
 
 UCLASS()
-class DEFENSE_API ULoadoutBarWidget : public UUserWidget
+class DEFENSE_API UQuickSlotBarWidget : public UUserWidget
 {
 	GENERATED_BODY()
 	
@@ -25,10 +26,7 @@ private:
 	TObjectPtr<ULoadoutComponent> BoundLoadoutComp;
 	
 	UPROPERTY()
-	TArray<TObjectPtr<UImage>> SlotImages;
-	
-	UPROPERTY()
-	TArray<TObjectPtr<UTextBlock>> SlotCostTexts;
+	TArray<TObjectPtr<UQuickSlotEntryWidget>> SlotEntries;
 	
 	UFUNCTION()
 	void HandleCoinChanged(int32 NewCoin);
@@ -36,10 +34,13 @@ private:
 	UFUNCTION()
 	void HandleSelectedEquipChanged(int32 SelectedSlotIdx, UEquipmentData* SelectedEquipment);
 	
+	UFUNCTION()
+	void HandleLoadoutSlotsChanged();
+
 	void RefreshCoin();
 	void RefreshSlots();
 	void RefreshSelectedSlot();
-	
+
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
@@ -47,30 +48,12 @@ protected:
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UTextBlock> CoinText;
 
-	UPROPERTY(meta=(BindWidgetOptional))
-	TObjectPtr<UImage> SlotImage_0;
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UHorizontalBox> SlotContainer;
 
-	UPROPERTY(meta=(BindWidgetOptional))
-	TObjectPtr<UImage> SlotImage_1;
+	UPROPERTY(EditDefaultsOnly, Category="QuickSlot")
+	TSubclassOf<UQuickSlotEntryWidget> SlotEntryWidgetClass;
 
-	UPROPERTY(meta=(BindWidgetOptional))
-	TObjectPtr<UImage> SlotImage_2;
-
-	UPROPERTY(meta=(BindWidgetOptional))
-	TObjectPtr<UImage> SlotImage_3;
-
-	UPROPERTY(meta=(BindWidgetOptional))
-	TObjectPtr<UTextBlock> SlotCostText_0;
-
-	UPROPERTY(meta=(BindWidgetOptional))
-	TObjectPtr<UTextBlock> SlotCostText_1;
-
-	UPROPERTY(meta=(BindWidgetOptional))
-	TObjectPtr<UTextBlock> SlotCostText_2;
-
-	UPROPERTY(meta=(BindWidgetOptional))
-	TObjectPtr<UTextBlock> SlotCostText_3;
-	
 public:
 	void BindPlayerState(ADefensePlayerState* InPlayerState);
 	void BindLoadoutComponent(ULoadoutComponent* InLoadoutComp);

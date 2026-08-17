@@ -6,7 +6,7 @@
 #include "PlayerHUDWidget.generated.h"
 
 
-class ULoadoutBarWidget;
+class UQuickSlotBarWidget;
 class UNoticeWidget;
 class UPlayerStatusWidget;
 class UTextBlock;
@@ -33,7 +33,7 @@ protected:
 	TObjectPtr<UTextBlock> AllyName;
 	
 	UPROPERTY(meta=(BindWidget))
-	TObjectPtr<ULoadoutBarWidget> LoadoutBar;
+	TObjectPtr<UQuickSlotBarWidget> QuickSlotBar;
 
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UNoticeWidget> WBP_Notice;
