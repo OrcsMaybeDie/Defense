@@ -43,6 +43,9 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Destroyed() override;
+	virtual void HandleDamageApplied(float AppliedDamage, AActor* DamageCauser);
+	virtual void HandleHPDepleted(AActor* DamageCauser);
+	void ScheduleSensorActivation();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category="Barricade|Components")
 	TObjectPtr<UBoxComponent> Sensor;
@@ -78,7 +81,6 @@ protected:
 	void ReleaseEnemy(AEnemyBase* Enemy);
 	void ReleaseAllEnemies();
 	void NotifyNearbyWaitingRunEnemies();
-	void ScheduleSensorActivation();
 	void ApplyDamageAreaExtent();
 	void RefreshHPUI();
 
