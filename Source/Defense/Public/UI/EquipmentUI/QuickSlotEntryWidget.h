@@ -4,6 +4,8 @@
 #include "Blueprint/UserWidget.h"
 #include "QuickSlotEntryWidget.generated.h"
 
+class UDragDropOperation;
+class UProfileSubsystem;
 class UEquipmentData;
 class UImage;
 class UTextBlock;
@@ -23,7 +25,12 @@ public:
 private:
 	int32 SlotIndex = INDEX_NONE;
 
+	// 프로필 접근
+	UProfileSubsystem* GetProfileSubsystem() const;
+
 protected:
+	virtual bool NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
+
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UImage> EquipmentIconImage;
 
