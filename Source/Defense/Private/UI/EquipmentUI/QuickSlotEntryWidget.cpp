@@ -1,4 +1,4 @@
-﻿#include "UI/QuickSlotEntryWidget.h"
+﻿#include "UI/EquipmentUI/QuickSlotEntryWidget.h"
 
 #include "Components/Image.h"
 #include "Components/TextBlock.h"

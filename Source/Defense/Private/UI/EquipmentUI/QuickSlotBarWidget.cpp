@@ -1,4 +1,4 @@
-﻿#include "UI/QuickSlotBarWidget.h"
+﻿#include "UI/EquipmentUI/QuickSlotBarWidget.h"
 
 #include "Characters/Player/DefensePlayerState.h"
 #include "Components/HorizontalBox.h"
@@ -7,7 +7,7 @@
 #include "Components/TextBlock.h"
 #include "Equipment/LoadoutComponent.h"
 #include "Traps/TrapData.h"
-#include "UI/QuickSlotEntryWidget.h"
+#include "UI/EquipmentUI/QuickSlotEntryWidget.h"
 
 
 void UQuickSlotBarWidget::NativeConstruct()
