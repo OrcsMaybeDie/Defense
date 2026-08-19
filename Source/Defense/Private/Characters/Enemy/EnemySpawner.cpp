@@ -125,15 +125,44 @@ void AEnemySpawner::StartPreviewSpawn(int32 WaveNumber)
 		return;
 	}
 
+	if (InitialSpawnDelay > 0.0f)
+	{
+		if (PreviewSpawnInterval > 0.0f)
+		{
+			GetWorldTimerManager().SetTimer(
+				SpawnTimerHandle,
+				this,
+				&AEnemySpawner::SpawnPreviewEnemy,
+				PreviewSpawnInterval,
+				true,
+				InitialSpawnDelay
+			);
+		}
+		else
+		{
+			GetWorldTimerManager().SetTimer(
+				SpawnTimerHandle,
+				this,
+				&AEnemySpawner::SpawnPreviewEnemy,
+				InitialSpawnDelay,
+				false
+			);
+		}
+		return;
+	}
+
 	SpawnPreviewEnemy();
 
-	GetWorldTimerManager().SetTimer(
-		SpawnTimerHandle,
-		this,
-		&AEnemySpawner::SpawnPreviewEnemy,
-		PreviewSpawnInterval,
-		true
-	);
+	if (PreviewSpawnInterval > 0.0f)
+	{
+		GetWorldTimerManager().SetTimer(
+			SpawnTimerHandle,
+			this,
+			&AEnemySpawner::SpawnPreviewEnemy,
+			PreviewSpawnInterval,
+			true
+		);
+	}
 }
 
 void AEnemySpawner::StopPreviewSpawn()
@@ -231,6 +260,18 @@ void AEnemySpawner::StartCombatSpawn(int32 WaveNumber)
 		{
 			GameMode->NotifySpawnerFinished(this);
 		}
+		return;
+	}
+
+	if (InitialSpawnDelay > 0.0f)
+	{
+		GetWorldTimerManager().SetTimer(
+			SpawnTimerHandle,
+			this,
+			&AEnemySpawner::SpawnCombatBatch,
+			InitialSpawnDelay,
+			false
+		);
 		return;
 	}
 

@@ -49,6 +49,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wave")
 	TArray<int32> SpawnWaves;
 
+	// 스폰 모드 시작 후 첫 적을 스폰하기까지의 대기 시간
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MyVar", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float InitialSpawnDelay = 0.f;
+
 	// 프리뷰 스폰시 시간 간격
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MyVar")
 	float PreviewSpawnInterval = 5.f;
