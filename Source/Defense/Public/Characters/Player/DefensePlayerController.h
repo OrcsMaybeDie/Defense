@@ -6,6 +6,7 @@
 #include "GameFramework/PlayerController.h"
 #include "DefensePlayerController.generated.h"
 
+class UEquipmentMenuWidget;
 class UInputMappingContext;
 class UUserWidget;
 
@@ -54,13 +55,15 @@ protected:
 	/** Returns true if the player should use UMG touch controls */
 	bool ShouldUseTouchControls() const;
 
-	// Ready
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<class UInputAction> ReadyAction;
 
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<class UInputAction> IA_ESC;
-	
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<class UInputAction> IA_EquipmentMenu;
+
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_RequestReady();
 
@@ -86,6 +89,12 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UESCUI> ESCUI;
 	
+	UPROPERTY(EditDefaultsOnly, Category="UI")
+	TSubclassOf<UEquipmentMenuWidget> EquipmentMenuWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<UEquipmentMenuWidget> EquipmentMenuWidget;
+
 public:
 	void RequestReady();
 	void RequestGameEndRetry();
@@ -94,6 +103,8 @@ public:
 	bool IsGameHostPlayer() const;
 	void ToggleESCUI();
 	void SubmitClientIdentity();
+
+	void ToggleEquipmentMenu(); // 장비창
 	
 	// 게임 끝났을 때 UI
 	UPROPERTY(EditAnywhere, Category="UI")

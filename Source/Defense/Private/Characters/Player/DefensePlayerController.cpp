@@ -18,6 +18,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "UI/EquipmentUI/EquipmentMenuWidget.h"
 #include "UI/GameEndUI.h"
 #include "UI/ESCUI.h"
 #include "Widgets/Input/SVirtualJoystick.h"
@@ -106,6 +107,12 @@ void ADefensePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		ESCUI = nullptr;
 	}
 
+	if (EquipmentMenuWidget)
+	{
+		EquipmentMenuWidget->RemoveFromParent();
+		EquipmentMenuWidget = nullptr;
+	}
+
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -151,6 +158,16 @@ void ADefensePlayerController::SetupInputComponent()
 				ETriggerEvent::Started,
 				this,
 				&ADefensePlayerController::ToggleESCUI
+			);
+		}
+
+		if (IA_EquipmentMenu)
+		{
+			EnhancedInputComponent->BindAction(
+				IA_EquipmentMenu,
+				ETriggerEvent::Started,
+				this,
+				&ADefensePlayerController::ToggleEquipmentMenu
 			);
 		}
 	}
@@ -348,6 +365,49 @@ void ADefensePlayerController::SubmitClientIdentity()
 	}
 
 	ServerRPC_SubmitClientIdentity(MakeLocalClientIdentity());
+}
+
+void ADefensePlayerController::ToggleEquipmentMenu()
+{
+	if (!IsLocalPlayerController() || !EquipmentMenuWidgetClass.Get())
+	{
+		return;
+	}
+
+	// 메뉴 닫기
+	if (EquipmentMenuWidget && EquipmentMenuWidget->IsInViewport())
+	{
+		EquipmentMenuWidget->RemoveFromParent();
+		bShowMouseCursor = false;
+
+		FInputModeGameOnly InputMode;
+		SetInputMode(InputMode);
+		return;
+	}
+
+	// ESC 메뉴가 열려 있으면 장비 메뉴를 열지 않음
+	if (ESCUI && ESCUI->IsInViewport())
+	{
+		return;
+	}
+
+	if (!EquipmentMenuWidget)
+	{
+		EquipmentMenuWidget = CreateWidget<UEquipmentMenuWidget>(this, EquipmentMenuWidgetClass);
+	}
+
+	if (!EquipmentMenuWidget)
+	{
+		return;
+	}
+
+	EquipmentMenuWidget->AddToViewport();
+	bShowMouseCursor = true;
+
+	FInputModeGameAndUI InputMode;
+	InputMode.SetWidgetToFocus(EquipmentMenuWidget->TakeWidget());
+	InputMode.SetHideCursorDuringCapture(false);
+	SetInputMode(InputMode);
 }
 
 bool ADefensePlayerController::IsGameHostPlayer() const

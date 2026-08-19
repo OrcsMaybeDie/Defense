@@ -111,6 +111,20 @@ TArray<UEquipmentData*> UProfileSubsystem::GetAllEquipmentData() const
 	return AllEquipmentData;
 }
 
+TArray<UEquipmentData*> UProfileSubsystem::GetUnlockedEquipmentData() const
+{
+	TArray<UEquipmentData*> UnlockedEquipmentData;
+
+	for (UEquipmentData* EquipmentData : GetAllEquipmentData())
+	{
+		if (IsEquipmentUnlocked(EquipmentData))
+		{
+			UnlockedEquipmentData.Add(EquipmentData);
+		}
+	}
+	return UnlockedEquipmentData;
+}
+
 int32 UProfileSubsystem::GetQuickSlotCount() const
 {
 	return CurrentProfile ? CurrentProfile->EquippedEquipmentIds.Num() : 0;

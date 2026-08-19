@@ -9,7 +9,7 @@
 #include "GameManager/DefenseGameState.h"
 #include "TimerManager.h"
 #include "Characters/Player/DefensePlayerState.h"
-#include "UI/QuickSlotBarWidget.h"
+#include "UI/EquipmentUI/QuickSlotBarWidget.h"
 #include "UI/NoticeWidget.h"
 #include "UI/PlayerStatusWidget.h"
 

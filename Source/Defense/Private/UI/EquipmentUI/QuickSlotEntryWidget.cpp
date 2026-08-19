@@ -1,4 +1,7 @@
-﻿#include "UI/QuickSlotEntryWidget.h"
+﻿#include "UI/EquipmentUI/QuickSlotEntryWidget.h"
+#include "UI/EquipmentUI/EquipmentDragDrop.h"
+#include "Profile/ProfileSubsystem.h"
+#include "Engine/GameInstance.h"
 
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
@@ -47,4 +50,31 @@ void UQuickSlotEntryWidget::SetSelected(bool bSelected)
 		bSelected
 		? FVector2D(0.f, -8.f)
 		: FVector2D::ZeroVector);
+}
+
+UProfileSubsystem* UQuickSlotEntryWidget::GetProfileSubsystem() const
+{
+	UWorld* World = GetWorld();
+	UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+
+	return GameInstance ? GameInstance->GetSubsystem<UProfileSubsystem>() : nullptr;
+}
+
+bool UQuickSlotEntryWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+	UEquipmentDragDrop* EquipmentDragOperation = Cast<UEquipmentDragDrop>(InOperation);
+
+	if (!EquipmentDragOperation || !EquipmentDragOperation->EquipmentData || SlotIndex == INDEX_NONE)
+	{
+		return Super::NativeOnDrop(InGeometry, InDragDropEvent, InOperation);
+	}
+
+	UProfileSubsystem* ProfileSubsystem = GetProfileSubsystem();
+
+	if (!ProfileSubsystem)
+	{
+		return false;
+	}
+
+	return ProfileSubsystem->AssignEquipmentToQuickSlot(SlotIndex, EquipmentDragOperation->EquipmentData);
 }

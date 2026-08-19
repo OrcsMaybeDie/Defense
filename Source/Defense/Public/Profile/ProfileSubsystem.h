@@ -40,6 +40,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Profile")
 	TArray<UEquipmentData*> GetAllEquipmentData() const;
 	
+	// 해금된 장비 조회
+	UFUNCTION(BlueprintCallable, Category = "Profile")
+	TArray<UEquipmentData*> GetUnlockedEquipmentData() const;
+
 	// QuickSlot 개수 조회
 	UFUNCTION(BlueprintPure, Category = "Profile|QuickSlot")
 	int32 GetQuickSlotCount() const;
