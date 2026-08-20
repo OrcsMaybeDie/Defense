@@ -13,8 +13,14 @@ class DEFENSE_API UProfileSaveGame : public USaveGame
 	
 public:
 	
+	static constexpr int32 CurrentSaveVersion = 2;
+
 	UPROPERTY(SaveGame)
-	int32 SaveVersion = 1;
+	int32 SaveVersion = CurrentSaveVersion;
+
+	// 케르베로스의 인장
+	UPROPERTY(SaveGame)
+	int32 Seal = 0;
 	
 	// 해금된 장비 목록
 	UPROPERTY(SaveGame)
