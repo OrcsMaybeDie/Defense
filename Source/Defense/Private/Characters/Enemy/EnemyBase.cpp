@@ -17,6 +17,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/TextBlock.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Camera/PlayerCameraManager.h"
@@ -113,6 +114,26 @@ AEnemyBase::AEnemyBase()
 	RewardComp->SetWidgetSpace(EWidgetSpace::Screen);
 	RewardComp->SetDrawAtDesiredSize(true);
 	RewardComp->SetVisibility(false);
+
+	Weapon = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Weapon"));
+	Weapon->SetupAttachment(GetMesh());
+	Weapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Weapon->SetCanEverAffectNavigation(false);
+	Weapon->SetHiddenInGame(true);
+}
+
+void AEnemyBase::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	if (Weapon && GetMesh())
+	{
+		Weapon->AttachToComponent(
+			GetMesh(),
+			FAttachmentTransformRules::KeepRelativeTransform,
+			WeaponSocketName
+		);
+	}
 }
 
 // Called when the game starts or when spawned
@@ -433,6 +454,7 @@ void AEnemyBase::SetPreview()
 	ResetRewardPopup();
 	ClearDamageOutline();
 	ClearElectricHit();
+	Weapon->SetHiddenInGame(true);
 
 	if (HasAuthority())
 	{
@@ -471,8 +493,10 @@ void AEnemyBase::SetPreview()
 		{
 			if (PreviewMaterial)
 			{
-				EnemyMesh->SetMaterial(0, PreviewMaterial);
-				EnemyMesh->SetMaterial(1, PreviewMaterial);
+				for (int32 MaterialIndex = 0; MaterialIndex < EnemyMesh->GetNumMaterials(); ++MaterialIndex)
+				{
+					EnemyMesh->SetMaterial(MaterialIndex, PreviewMaterial);
+				}
 			}
 		}
 		// 틱 처리
@@ -516,6 +540,7 @@ void AEnemyBase::SetCombat()
 {
 	ResetPortalEntryState();
 	ResetStoneVisual();
+	Weapon->SetHiddenInGame(false);
 
 	if (!EnemyMesh)
 	{
@@ -540,10 +565,12 @@ void AEnemyBase::SetCombat()
 	{
 		if (EnemyMesh)
 		{
-			if (CombatMaterial)
+			for (int32 MaterialIndex = 0; MaterialIndex < EnemyMesh->GetNumMaterials(); ++MaterialIndex)
 			{
-				EnemyMesh->SetMaterial(0, CombatMaterial);
-				EnemyMesh->SetMaterial(1, CombatMaterial);
+				if (CombatMaterials.IsValidIndex(MaterialIndex) && CombatMaterials[MaterialIndex])
+				{
+					EnemyMesh->SetMaterial(MaterialIndex, CombatMaterials[MaterialIndex]);
+				}
 			}
 		}
 		bHpUIVisible = false;

@@ -95,13 +95,23 @@ float ABarricadeTrap::TakeDamage(
 	}
 
 	ForceNetUpdate();
+	HandleDamageApplied(AppliedDamage, DamageCauser);
 
 	if (HP <= 0.0f)
 	{
-		Destroy();
+		HandleHPDepleted(DamageCauser);
 	}
 
 	return AppliedDamage;
+}
+
+void ABarricadeTrap::HandleDamageApplied(const float, AActor*)
+{
+}
+
+void ABarricadeTrap::HandleHPDepleted(AActor*)
+{
+	Destroy();
 }
 
 float ABarricadeTrap::GetDistanceToSurface(const FVector& FromLocation) const

@@ -73,6 +73,8 @@ public:
 	AEnemyBase();
 
 protected:
+	virtual void OnConstruction(const FTransform& Transform) override;
+
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -97,6 +99,12 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
 	TObjectPtr<class UWidgetComponent> RewardComp;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	TObjectPtr<class UStaticMeshComponent> Weapon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Weapon")
+	FName WeaponSocketName = NAME_None;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Data")
 	TObjectPtr<class UEnemyData> EnemyData;
@@ -143,11 +151,11 @@ public:
 	UPROPERTY()
 	TObjectPtr<class UMeshComponent> EnemyMesh;
 	
-	UPROPERTY(editAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Materials")
 	TObjectPtr<class UMaterialInterface> PreviewMaterial;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UMaterialInterface> CombatMaterial;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Materials")
+	TArray<TObjectPtr<class UMaterialInterface>> CombatMaterials;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Stone")
 	TObjectPtr<class UMaterialInterface> StoneMaterial;
