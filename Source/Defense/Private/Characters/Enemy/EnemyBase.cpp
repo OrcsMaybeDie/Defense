@@ -1178,6 +1178,13 @@ void AEnemyBase::PrepareForRegularAnimation()
 	ResetStoneVisual();
 }
 
+const FGameplayTagContainer& AEnemyBase::GetEnemyTags() const
+{
+	static const FGameplayTagContainer EmptyEnemyTags;
+
+	return EnemyData ? EnemyData->EnemyTags : EmptyEnemyTags;
+}
+
 void AEnemyBase::EnterStoneVisual()
 {
 	if (IsRunningDedicatedServer() || bStoneVisualActive)
@@ -1432,12 +1439,14 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 		LastDeathRetryTime = -BIG_NUMBER;
 		if (GameMode)
 		{
-			if (ADefensePlayerState* RewardTarget = GameMode->AwardEnemyKillCoin(this, DamageCauser, EventInstigator))
+			if (ADefensePlayerState* KillerPlayerState = GameMode->HandleEnemyKilled(this, DamageCauser, EventInstigator))
 			{
-				if (ADefensePlayerController* RewardPlayerController =
-					Cast<ADefensePlayerController>(RewardTarget->GetPlayerController()))
+				if (KillCoinReward > 0)
 				{
-					RewardPlayerController->ClientRPC_ShowRewardPopup(this, KillCoinReward);
+					if (ADefensePlayerController* PlayerController = Cast<ADefensePlayerController>(KillerPlayerState->GetPlayerController()))
+					{
+						PlayerController->ClientRPC_ShowRewardPopup(this, KillCoinReward);
+					}
 				}
 			}
 		}

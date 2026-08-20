@@ -7,6 +7,7 @@
 #include "TimerManager.h"
 #include "EnemyBase.generated.h"
 
+struct FGameplayTagContainer;
 enum class EEnemyType : uint8;
 
 UENUM(BlueprintType)
@@ -316,6 +317,8 @@ public:
 	virtual void ApplyEnemyData();
 	void PrepareForRegularAnimation();
 	
+	const FGameplayTagContainer& GetEnemyTags() const; // for mission
+
 	//--------------석화------------------
 
 private:

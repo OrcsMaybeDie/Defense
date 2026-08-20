@@ -9,6 +9,9 @@
 #include "DefenseGameMode.generated.h"
 
 class ADefenseCharacter;
+class ADefensePlayerState;
+class AEnemyBase;
+class UMissionRunTrackerComponent;
 
 UENUM(BlueprintType)
 enum class EEnemyRemoveReason : uint8
@@ -148,6 +151,13 @@ protected:
 
 	float RespawnDelay = 3.f;
 
+	// 미션 진행도
+	UPROPERTY(VisibleAnywhere, Category = "Mission")
+	TObjectPtr<UMissionRunTrackerComponent> MissionRunTrackerComponent;
+
+	// Enemy Kill Player 판별 (재화/미션)
+	ADefensePlayerState* ResolveEnemyKillOwner(AActor* DamageCauser, AController* EventInstigator) const;
+
 public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -182,6 +192,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Economy")
 	int32 InitCoin = 3000;
 
-	class ADefensePlayerState* AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator);
-	// 추가할 것 : wave 보상
+	// Kill : Coin & Count
+	ADefensePlayerState* HandleEnemyKilled(AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator);
 };
