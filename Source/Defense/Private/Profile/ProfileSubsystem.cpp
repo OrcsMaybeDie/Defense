@@ -337,6 +337,75 @@ bool UProfileSubsystem::ClearQuickSlot(int32 SlotIndex)
 	return false;
 }
 
+bool UProfileSubsystem::IsMissionCompleted(FName MissionId) const
+{
+	return CurrentProfile && !MissionId.IsNone() && CurrentProfile->CompletedMissionIds.Contains(MissionId);
+}
+
+bool UProfileSubsystem::ApplyMissionCompletions(const TArray<FMissionCompletionResult>& Results)
+{
+	if (!CurrentProfile || Results.IsEmpty())
+	{
+		return false;
+	}
+
+	TArray<FName> UpdatedMissionIds = CurrentProfile->CompletedMissionIds;
+	TArray<FName> NewlyCompletedMissionIds;
+	int64 UpdatedSeal = CurrentProfile->Seal;
+
+	for (const FMissionCompletionResult& Result : Results)
+	{
+		if (Result.MissionId.IsNone() || Result.SealReward < 0)
+		{
+			return false;
+		}
+
+		if (UpdatedMissionIds.Contains(Result.MissionId))
+		{
+			continue;
+		}
+
+		UpdatedSeal += Result.SealReward;
+		if (UpdatedSeal > MAX_int32)
+		{
+			return false;
+		}
+
+		UpdatedMissionIds.Add(Result.MissionId);
+		NewlyCompletedMissionIds.Add(Result.MissionId);
+	}
+
+	if (NewlyCompletedMissionIds.IsEmpty())
+	{
+		return false;
+	}
+
+	const int32 PreviousSeal = CurrentProfile->Seal;
+	const TArray<FName> PreviousMissionIds = CurrentProfile->CompletedMissionIds;
+
+	CurrentProfile->Seal = static_cast<int32>(UpdatedSeal);
+	CurrentProfile->CompletedMissionIds = MoveTemp(UpdatedMissionIds);
+
+	if (!SaveProfile())
+	{
+		CurrentProfile->Seal = PreviousSeal;
+		CurrentProfile->CompletedMissionIds = PreviousMissionIds;
+		return false;
+	}
+
+	if (CurrentProfile->Seal != PreviousSeal)
+	{
+		OnSealChanged.Broadcast(CurrentProfile->Seal);
+	}
+
+	for (const FName MissionId : NewlyCompletedMissionIds)
+	{
+		OnMissionCompleted.Broadcast(MissionId);
+	}
+
+	return true;
+}
+
 bool UProfileSubsystem::MigrateProfile()
 {
 	if (!CurrentProfile)
@@ -351,6 +420,13 @@ bool UProfileSubsystem::MigrateProfile()
 	{
 		CurrentProfile->Seal = 0;
 		CurrentProfile->SaveVersion = 2;
+		bWasModified = true;
+	}
+
+	// Version 2 -> 3
+	if (CurrentProfile->SaveVersion < 3)
+	{
+		CurrentProfile->SaveVersion = 3;
 		bWasModified = true;
 	}
 

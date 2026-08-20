@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "GameplayTagContainer.h"
 #include "EnemyData.generated.h"
 
 /**
@@ -24,6 +25,9 @@ class DEFENSE_API UEnemyData : public UDataAsset
 	GENERATED_BODY()
 
 public:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Enemy|Tags")
+	FGameplayTagContainer EnemyTags;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Minimap")
 	FVector2D Size = FVector2D(6.0f, 6.0f);
 

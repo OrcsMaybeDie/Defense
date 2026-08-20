@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "Mission/MissionCompletionResult.h"
 #include "UObject/PrimaryAssetId.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "ProfileSubsystem.generated.h"
@@ -16,6 +17,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnQuickSlotsChanged);
 
 // 케르베로스의 인장 변경 이벤트
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSealChanged, int32, NewSeal);
+
+// 미션 완료 이벤트
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMissionCompleted, FName, MissionId);
 
 UCLASS()
 class DEFENSE_API UProfileSubsystem : public UGameInstanceSubsystem
@@ -92,6 +96,16 @@ public:
 	// Slot 장비 해제
 	UFUNCTION(BlueprintCallable, Category = "Profile|QuickSlot")
 	bool ClearQuickSlot(int32 SlotIndex);
+
+	// 미션
+	UFUNCTION(BlueprintPure, Category = "Profile|Mission")
+	bool IsMissionCompleted(FName MissionId) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Profile|Mission")
+	bool ApplyMissionCompletions(const TArray<FMissionCompletionResult>& Results);
+
+	UPROPERTY(BlueprintAssignable, Category = "Profile|Mission")
+	FOnMissionCompleted OnMissionCompleted;
 
 private:
 
