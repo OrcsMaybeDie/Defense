@@ -23,10 +23,11 @@ public:
 	TObjectPtr<class UWidgetSwitcher> WidgetSwitcher;
 	
 	UPROPERTY(meta=(BindWidget))
-	TObjectPtr<class UWidgetSwitcher> Retry_Switcher;
-	
-	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<class UButton> Button_Exit;
+
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<class UButton> Button_Menu;
+
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<class UButton> Button_Retry;
 	
@@ -42,5 +43,11 @@ public:
 	UFUNCTION()
 	void RetryGame();
 
+	UFUNCTION()
+	void ReturnToIntroMap();
+
 	void ShowEndLoading();
+
+private:
+	void RefreshHostButtons();
 };

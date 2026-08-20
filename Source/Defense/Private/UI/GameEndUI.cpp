@@ -11,20 +11,35 @@
 void UGameEndUI::NativeConstruct()
 {
 	Super::NativeConstruct();
-	Button_Exit->OnClicked.AddDynamic(this, &UGameEndUI::ExitGame);
-	Button_Retry->OnClicked.AddDynamic(this, &UGameEndUI::RetryGame);
-	
-	Retry_Switcher->SetActiveWidgetIndex(0);
+
+	if (Button_Exit)
+	{
+		Button_Exit->OnClicked.AddUniqueDynamic(this, &UGameEndUI::ExitGame);
+	}
+
+	if (Button_Menu)
+	{
+		Button_Menu->OnClicked.AddUniqueDynamic(this, &UGameEndUI::ReturnToIntroMap);
+	}
+
+	if (Button_Retry)
+	{
+		Button_Retry->OnClicked.AddUniqueDynamic(this, &UGameEndUI::RetryGame);
+	}
+
+	RefreshHostButtons();
 }
 
 void UGameEndUI::GameClear()
 {
 	WidgetSwitcher->SetActiveWidgetIndex(0);
+	RefreshHostButtons();
 }
 
 void UGameEndUI::GameOver()
 {
 	WidgetSwitcher->SetActiveWidgetIndex(1);
+	RefreshHostButtons();
 }
 
 void UGameEndUI::ExitGame()
@@ -44,10 +59,34 @@ void UGameEndUI::RetryGame()
 	}
 }
 
+void UGameEndUI::ReturnToIntroMap()
+{
+	if (ADefensePlayerController* PC = GetOwningPlayer<ADefensePlayerController>())
+	{
+		PC->RequestReturnToIntroMap();
+	}
+}
+
 void UGameEndUI::ShowEndLoading()
 {
 	if (SwitcherEndLoading)
 	{
 		SwitcherEndLoading->SetActiveWidgetIndex(1);
+	}
+}
+
+void UGameEndUI::RefreshHostButtons()
+{
+	const ADefensePlayerController* PC = GetOwningPlayer<ADefensePlayerController>();
+	const bool bIsHost = PC && PC->IsGameHostPlayer();
+
+	if (Button_Menu)
+	{
+		Button_Menu->SetIsEnabled(bIsHost);
+	}
+
+	if (Button_Retry)
+	{
+		Button_Retry->SetIsEnabled(bIsHost);
 	}
 }

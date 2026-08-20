@@ -91,6 +91,7 @@ public:
 
 	void StartPreviewSpawn(int32 WaveNumber);
 	void StopPreviewSpawn();
+	void StopSpawning();
 	void ClearPreviewEnemies();
 	void StartCombatSpawn(int32 WaveNumber);
 	void EndWave();

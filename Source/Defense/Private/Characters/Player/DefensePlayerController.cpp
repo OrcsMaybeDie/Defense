@@ -293,7 +293,12 @@ void ADefensePlayerController::RequestReady()
 
 void ADefensePlayerController::RequestGameEndRetry()
 {
-	if (IsGameHostPlayer() && GameEndUI)
+	if (!IsGameHostPlayer())
+	{
+		return;
+	}
+
+	if (GameEndUI)
 	{
 		GameEndUI->ShowEndLoading();
 	}
@@ -303,7 +308,16 @@ void ADefensePlayerController::RequestGameEndRetry()
 
 void ADefensePlayerController::RequestReturnToIntroMap()
 {
-	if (IsGameHostPlayer() && ESCUI)
+	if (!IsGameHostPlayer())
+	{
+		return;
+	}
+
+	if (GameEndUI && GameEndUI->IsInViewport())
+	{
+		GameEndUI->ShowEndLoading();
+	}
+	else if (ESCUI)
 	{
 		ESCUI->ShowESCLoading();
 	}

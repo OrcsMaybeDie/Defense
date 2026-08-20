@@ -167,6 +167,11 @@ void AEnemySpawner::StartPreviewSpawn(int32 WaveNumber)
 
 void AEnemySpawner::StopPreviewSpawn()
 {
+	StopSpawning();
+}
+
+void AEnemySpawner::StopSpawning()
+{
 	if (!HasAuthority())
 	{
 		return;
