@@ -37,6 +37,7 @@ void ADefenseGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(ADefenseGameState, AlivePlayerCount);
 	DOREPLIFETIME(ADefenseGameState, DestScore);
 	DOREPLIFETIME(ADefenseGameState, bReadyInputRequired);
+	DOREPLIFETIME(ADefenseGameState, bGameClear);
 }
 
 void ADefenseGameState::OnRep_DestScore()
@@ -73,4 +74,21 @@ void ADefenseGameState::SetReadyInputRequired(bool bRequired)
 void ADefenseGameState::OnRep_ReadyInputRequired()
 {
 	OnReadyInputRequiredChanged.Broadcast(bReadyInputRequired);
+}
+
+void ADefenseGameState::SetGameClear(bool bNewGameClear)
+{
+	if (!HasAuthority() || bGameClear == bNewGameClear)
+	{
+		return;
+	}
+
+	bGameClear = bNewGameClear;
+	OnRep_GameClear();
+	ForceNetUpdate();
+}
+
+void ADefenseGameState::OnRep_GameClear()
+{
+	OnGameClearChanged.Broadcast(bGameClear);
 }

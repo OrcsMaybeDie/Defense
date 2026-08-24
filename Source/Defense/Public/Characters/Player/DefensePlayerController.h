@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/SlateWrapperTypes.h"
 #include "GameFramework/PlayerController.h"
 #include "Mission/MissionCompletionResult.h"
 #include "DefensePlayerController.generated.h"
@@ -84,6 +85,9 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> HUDWidget;
 
+	bool bCinematicHUDHidden = false;
+	ESlateVisibility HUDVisibilityBeforeCinematic = ESlateVisibility::Visible;
+
 	UPROPERTY(EditDefaultsOnly, Category="UI")
 	TSubclassOf<class UESCUI> ESCUIClass;
 
@@ -104,6 +108,7 @@ public:
 	bool IsGameHostPlayer() const;
 	void ToggleESCUI();
 	void SubmitClientIdentity();
+	void SetCinematicHUDHidden(bool bShouldHide);
 
 	void ToggleEquipmentMenu(); // 장비창
 
@@ -113,7 +118,11 @@ public:
 	
 	UPROPERTY()
 	TObjectPtr<UGameEndUI> GameEndUI;
-	
+
+	// 게임 종료가 확정되는 즉시 로컬 플레이 입력 차단
+	UFUNCTION(Client, Reliable)
+	void ClientRPC_EnterGameEndState();
+
 	// GameEndUI (+ Mission)
 	UFUNCTION(Client, Reliable)
 	void ClientRPC_ShowGameEndUI(bool bGameClear, const TArray<FMissionCompletionResult>& Results);

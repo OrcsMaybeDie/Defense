@@ -170,6 +170,12 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Stone|Fracture")
 	TSubclassOf<class AStoneFractureActor> StoneFractureActorClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Audio")
+	TObjectPtr<class USoundBase> NormalDeathSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Audio")
+	TObjectPtr<class USoundBase> StoneDeathSound;
 	
 	UPROPERTY()
 	TObjectPtr<class UEnemyAnim> AnimInst;

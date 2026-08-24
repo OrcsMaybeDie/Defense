@@ -1027,6 +1027,11 @@ void AEnemyBase::MulticastRPC_DieMotion_Implementation()
 		return;
 	}
 
+	if (NormalDeathSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, NormalDeathSound, GetActorLocation());
+	}
+
 	PrepareForRegularAnimation();
 	if (HpComp)
 	{
@@ -1070,6 +1075,11 @@ void AEnemyBase::MulticastRPC_StoneDieVisual_Implementation()
 	if (IsRunningDedicatedServer())
 	{
 		return;
+	}
+
+	if (StoneDeathSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, StoneDeathSound, GetActorLocation());
 	}
 
 	bPendingLocomotionResume = false;
