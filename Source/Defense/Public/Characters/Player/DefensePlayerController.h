@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "Mission/MissionCompletionResult.h"
 #include "DefensePlayerController.generated.h"
 
 class UEquipmentMenuWidget;
@@ -105,7 +106,7 @@ public:
 	void SubmitClientIdentity();
 
 	void ToggleEquipmentMenu(); // 장비창
-	
+
 	// 게임 끝났을 때 UI
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<class UGameEndUI> GameEndUIClass;
@@ -113,9 +114,9 @@ public:
 	UPROPERTY()
 	TObjectPtr<UGameEndUI> GameEndUI;
 	
-	// GameEndUI
+	// GameEndUI (+ Mission)
 	UFUNCTION(Client, Reliable)
-	void ClientRPC_ShowGameEndUI(bool bGameClear);
+	void ClientRPC_ShowGameEndUI(bool bGameClear, const TArray<FMissionCompletionResult>& Results);
 	
 	// 게임 다시 시작할 때 커서 및 입력모드 되돌리기
 	UFUNCTION(Client, Reliable)

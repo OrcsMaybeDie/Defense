@@ -348,19 +348,29 @@ void ADefenseGameMode::GameEnd()
 	
 	bool bGameClear = false;
 	
-	if (!AreAllActivePlayersDead()
+	if (DefenseGameState
+		&& !AreAllActivePlayersDead()
 		&& DefenseGameState->DestScore > 0
 		&& CurrentWave >= MaxWave)
 	{
 		bGameClear = true;
 	}
 	
-	// 모든 클라이언트에게 ShowGameEndUI 실행시키기
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		if (ADefensePlayerController* PC = Cast<ADefensePlayerController>(It->Get()))
 		{
-			PC->ClientRPC_ShowGameEndUI(bGameClear);
+			ADefensePlayerState* PlayerState = PC->GetPlayerState<ADefensePlayerState>();
+
+			TArray<FMissionCompletionResult> Results;
+
+			if (MissionRunTrackerComponent && PlayerState)
+			{
+				Results = MissionRunTrackerComponent->CollectMissionResults(PlayerState, bGameClear);
+			}
+
+			// 미션, 종료 UI 표시
+			PC->ClientRPC_ShowGameEndUI(bGameClear, Results);
 		}
 	}
 	

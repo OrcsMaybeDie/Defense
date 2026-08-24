@@ -11,6 +11,7 @@
 
 #include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Player/DefensePlayerState.h"
+#include "Engine/GameInstance.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameManager/DefenseGameMode.h"
 #include "GameManager/DefenseGameState.h"
@@ -18,6 +19,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Profile/ProfileSubsystem.h"
 #include "UI/EquipmentUI/EquipmentMenuWidget.h"
 #include "UI/GameEndUI.h"
 #include "UI/ESCUI.h"
@@ -192,13 +194,24 @@ bool ADefensePlayerController::ShouldUseTouchControls() const
 	return SVirtualJoystick::ShouldDisplayTouchInterface() || bForceTouchControls;
 }
 
-void ADefensePlayerController::ClientRPC_ShowGameEndUI_Implementation(bool bGameClear)
+void ADefensePlayerController::ClientRPC_ShowGameEndUI_Implementation(bool bGameClear, const TArray<FMissionCompletionResult>& Results)
 {
 	bShowMouseCursor = true;
 
 	FInputModeUIOnly InputMode;
 	// 또는 게임 입력도 살릴 거면 FInputModeGameAndUI
 	SetInputMode(InputMode);
+
+	TArray<FMissionCompletionResult> NewlyCompletedResults;
+
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UProfileSubsystem* ProfileSubsystem = GameInstance->GetSubsystem<UProfileSubsystem>())
+		{
+			// 이번에 실제로 새로 저장된 미션만 받음
+			ProfileSubsystem->ApplyMissionCompletions(Results, NewlyCompletedResults);
+		}
+	}
 
 	if (!GameEndUI && GameEndUIClass)
 	{
