@@ -198,6 +198,16 @@ bool ADefensePlayerController::ShouldUseTouchControls() const
 	return SVirtualJoystick::ShouldDisplayTouchInterface() || bForceTouchControls;
 }
 
+void ADefensePlayerController::ClientRPC_EnterGameEndState_Implementation()
+{
+	bShowMouseCursor = false;
+
+	FInputModeUIOnly InputMode;
+	SetInputMode(InputMode);
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+}
+
 void ADefensePlayerController::ClientRPC_ShowGameEndUI_Implementation(bool bGameClear)
 {
 	bShowMouseCursor = true;
@@ -241,6 +251,8 @@ void ADefensePlayerController::ClientRPC_HideGameEndUI_Implementation()
 	FInputModeGameOnly InputMode;
 
 	SetInputMode(InputMode);
+	SetIgnoreMoveInput(false);
+	SetIgnoreLookInput(false);
 	
 }
 

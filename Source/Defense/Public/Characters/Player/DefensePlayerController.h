@@ -118,6 +118,10 @@ public:
 	UPROPERTY()
 	TObjectPtr<UGameEndUI> GameEndUI;
 	
+	// 게임 종료가 확정되는 즉시 로컬 플레이 입력 차단
+	UFUNCTION(Client, Reliable)
+	void ClientRPC_EnterGameEndState();
+
 	// GameEndUI
 	UFUNCTION(Client, Reliable)
 	void ClientRPC_ShowGameEndUI(bool bGameClear);
