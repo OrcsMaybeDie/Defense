@@ -351,6 +351,21 @@ void ADefenseGameMode::GameEnd()
 	bPendingGameClear = !AreAllActivePlayersDead()
 		&& DefenseGameState->DestScore > 0
 		&& CurrentWave >= MaxWave;
+	DefenseGameState->SetGameClear(bPendingGameClear);
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (ADefensePlayerController* PC = Cast<ADefensePlayerController>(It->Get()))
+		{
+			PC->ClientRPC_EnterGameEndState();
+
+			// TODO: 플레이어 게임 종료 모션 함수 구현 완료 후 이 위치에서 호출
+			// if (ADefenseCharacter* Character = Cast<ADefenseCharacter>(PC->GetPawn()))
+			// {
+			// 	Character->PlayGameEndMotion(bPendingGameClear);
+			// }
+		}
+	}
 
 	if (GameEndUIDelaySeconds <= 0.0f)
 	{
