@@ -1,0 +1,441 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#include "GameManager/Cinematics/FinalWaveCinematicController.h"
+
+#include "Characters/Enemy/EnemyAttackBoss.h"
+#include "Characters/Enemy/EnemySpawner.h"
+#include "Characters/Player/DefenseCharacter.h"
+#include "Characters/Player/DefensePlayerController.h"
+#include "Engine/TargetPoint.h"
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
+#include "GameManager/Cinematics/DestructibleSetPieceActor.h"
+#include "Kismet/GameplayStatics.h"
+#include "LevelSequenceActor.h"
+#include "LevelSequence.h"
+#include "LevelSequencePlayer.h"
+#include "MovieScene.h"
+#include "MovieSceneSection.h"
+#include "MovieSceneSequencePlaybackSettings.h"
+#include "Net/UnrealNetwork.h"
+#include "TimerManager.h"
+#include "Tracks/MovieSceneCameraCutTrack.h"
+
+AFinalWaveCinematicController::AFinalWaveCinematicController()
+{
+	PrimaryActorTick.bCanEverTick = false;
+	bReplicates = true;
+	bAlwaysRelevant = true;
+	SetNetUpdateFrequency(10.0f);
+}
+
+void AFinalWaveCinematicController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	GetWorldTimerManager().ClearTimer(DestructionTimerHandle);
+	GetWorldTimerManager().ClearTimer(FinishTimerHandle);
+	GetWorldTimerManager().ClearTimer(LocalStartRetryTimerHandle);
+	FinishLocalPlayback();
+
+	Super::EndPlay(EndPlayReason);
+}
+
+void AFinalWaveCinematicController::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AFinalWaveCinematicController, CinematicState);
+	DOREPLIFETIME(AFinalWaveCinematicController, ServerStartTime);
+}
+
+bool AFinalWaveCinematicController::CanStartForWave(const int32 WaveNumber) const
+{
+	if (CinematicState != EFinalWaveCinematicState::Idle)
+	{
+		return false;
+	}
+
+	return WaveNumber == TriggerWaveNumber;
+}
+
+bool AFinalWaveCinematicController::TryStartBossCinematic(AEnemyAttackBoss* Boss, const int32 WaveNumber)
+{
+	if (!HasAuthority()
+		|| !Boss
+		|| !CinematicSequence
+		|| !DestructibleSetPiece
+		|| !BossResumePoint
+		|| ServerCinematicDuration <= 0.0f
+		|| !CanStartForWave(WaveNumber)
+		|| !Boss->BeginCinematicHold())
+	{
+		return false;
+	}
+
+	GameplayBoss = Boss;
+	ServerStartTime = GetWorld()->GetGameState<AGameStateBase>()
+		? GetWorld()->GetGameState<AGameStateBase>()->GetServerWorldTimeSeconds()
+		: GetWorld()->GetTimeSeconds();
+	CinematicState = EFinalWaveCinematicState::Playing;
+
+	if (bPauseEnemySpawners)
+	{
+		SetEnemySpawnersPaused(true);
+	}
+
+	if (DestructionCueTime <= 0.0f)
+	{
+		TriggerDestructionNow();
+	}
+	else if (DestructionCueTime < ServerCinematicDuration)
+	{
+		GetWorldTimerManager().SetTimer(
+			DestructionTimerHandle,
+			this,
+			&AFinalWaveCinematicController::TriggerDestructionNow,
+			DestructionCueTime,
+			false
+		);
+	}
+
+	GetWorldTimerManager().SetTimer(
+		FinishTimerHandle,
+		this,
+		&AFinalWaveCinematicController::FinishBossCinematic,
+		ServerCinematicDuration,
+		false
+	);
+
+	OnRep_CinematicState();
+	ForceNetUpdate();
+	return true;
+}
+
+void AFinalWaveCinematicController::TriggerDestructionNow()
+{
+	if (!HasAuthority() || CinematicState != EFinalWaveCinematicState::Playing)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(DestructionTimerHandle);
+	if (DestructibleSetPiece)
+	{
+		DestructibleSetPiece->TriggerDestruction();
+	}
+}
+
+void AFinalWaveCinematicController::FinishBossCinematic()
+{
+	if (!HasAuthority() || CinematicState != EFinalWaveCinematicState::Playing)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(DestructionTimerHandle);
+	GetWorldTimerManager().ClearTimer(FinishTimerHandle);
+
+	if (DestructibleSetPiece)
+	{
+		if (!DestructibleSetPiece->IsDestroyed())
+		{
+			DestructibleSetPiece->TriggerDestruction();
+		}
+		DestructibleSetPiece->ClearDestructionDebris();
+	}
+
+	if (GameplayBoss && BossResumePoint)
+	{
+		GameplayBoss->EndCinematicHold(BossResumePoint->GetActorTransform());
+	}
+
+	if (bPauseEnemySpawners)
+	{
+		SetEnemySpawnersPaused(false);
+	}
+
+	GameplayBoss = nullptr;
+	CinematicState = EFinalWaveCinematicState::Completed;
+	OnRep_CinematicState();
+	ForceNetUpdate();
+}
+
+void AFinalWaveCinematicController::OnRep_CinematicState()
+{
+	switch (CinematicState)
+	{
+	case EFinalWaveCinematicState::Playing:
+		StartLocalPlayback();
+		if (!bLocalPlaybackActive && GetWorld() && GetNetMode() != NM_DedicatedServer)
+		{
+			GetWorldTimerManager().SetTimer(
+				LocalStartRetryTimerHandle,
+				this,
+				&AFinalWaveCinematicController::StartLocalPlayback,
+				0.25f,
+				true
+			);
+		}
+		break;
+
+	case EFinalWaveCinematicState::Completed:
+		FinishLocalPlayback();
+		break;
+
+	default:
+		break;
+	}
+}
+
+void AFinalWaveCinematicController::StartLocalPlayback()
+{
+	if (bLocalPlaybackActive || !CinematicSequence || !GetWorld() || GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	APlayerController* LocalPlayerController = UGameplayStatics::GetPlayerController(this, 0);
+	if (!LocalPlayerController || !LocalPlayerController->IsLocalController())
+	{
+		return;
+	}
+
+	const AGameStateBase* GameState = GetWorld()->GetGameState<AGameStateBase>();
+	const double CurrentServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	const float ElapsedTime = FMath::Max(0.0, CurrentServerTime - ServerStartTime);
+	if (ElapsedTime >= ServerCinematicDuration)
+	{
+		return;
+	}
+
+	bLocalPlaybackActive = true;
+	GetWorldTimerManager().ClearTimer(LocalStartRetryTimerHandle);
+	LocalCinematicPlayerController = Cast<ADefensePlayerController>(LocalPlayerController);
+	if (LocalCinematicPlayerController)
+	{
+		LocalCinematicPlayerController->SetCinematicHUDHidden(true);
+	}
+
+	if (bHideAllPlayerVisuals)
+	{
+		RefreshHiddenPlayerVisuals();
+		GetWorldTimerManager().SetTimer(
+			PlayerVisibilityRefreshTimerHandle,
+			this,
+			&AFinalWaveCinematicController::RefreshHiddenPlayerVisuals,
+			0.25f,
+			true
+		);
+	}
+
+	FMovieSceneSequencePlaybackSettings PlaybackSettings;
+	PlaybackSettings.bAutoPlay = false;
+	PlaybackSettings.bDisableMovementInput = true;
+	PlaybackSettings.bDisableLookAtInput = true;
+	PlaybackSettings.bHidePlayer = false;
+	PlaybackSettings.FinishCompletionStateOverride = EMovieSceneCompletionModeOverride::ForceRestoreState;
+
+	LocalPlaybackSequence = DuplicateObject<ULevelSequence>(CinematicSequence, this);
+	if (!LocalPlaybackSequence)
+	{
+		FinishLocalPlayback();
+		return;
+	}
+	ConfigureLocalCameraBlendOut(LocalPlaybackSequence);
+
+	ALevelSequenceActor* CreatedSequenceActor = nullptr;
+	LocalSequencePlayer = ULevelSequencePlayer::CreateLevelSequencePlayer(
+		this,
+		LocalPlaybackSequence,
+		PlaybackSettings,
+		CreatedSequenceActor
+	);
+	LocalSequenceActor = CreatedSequenceActor;
+
+	if (!LocalSequencePlayer)
+	{
+		FinishLocalPlayback();
+		return;
+	}
+
+	LocalSequencePlayer->OnFinished.AddDynamic(this, &AFinalWaveCinematicController::HandleLocalSequenceFinished);
+	LocalSequencePlayer->OnStop.AddDynamic(this, &AFinalWaveCinematicController::HandleLocalSequenceStopped);
+
+	if (ElapsedTime > KINDA_SMALL_NUMBER)
+	{
+		LocalSequencePlayer->SetPlaybackPosition(
+			FMovieSceneSequencePlaybackParams(ElapsedTime, EUpdatePositionMethod::Jump)
+		);
+	}
+
+	LocalSequencePlayer->Play();
+	OnLocalCinematicStarted();
+}
+
+void AFinalWaveCinematicController::FinishLocalPlayback()
+{
+	if (!bLocalPlaybackActive
+		&& !LocalSequencePlayer
+		&& !LocalPlaybackSequence
+		&& !LocalSequenceActor
+		&& !LocalCinematicPlayerController
+		&& LocallyHiddenPlayers.Num() == 0)
+	{
+		return;
+	}
+
+	bLocalPlaybackActive = false;
+	GetWorldTimerManager().ClearTimer(LocalStartRetryTimerHandle);
+	GetWorldTimerManager().ClearTimer(PlayerVisibilityRefreshTimerHandle);
+
+	if (LocalSequencePlayer)
+	{
+		LocalSequencePlayer->OnFinished.RemoveDynamic(this, &AFinalWaveCinematicController::HandleLocalSequenceFinished);
+		LocalSequencePlayer->OnStop.RemoveDynamic(this, &AFinalWaveCinematicController::HandleLocalSequenceStopped);
+		LocalSequencePlayer->Stop();
+	}
+
+	if (LocalSequenceActor)
+	{
+		LocalSequenceActor->Destroy();
+	}
+
+	LocalSequencePlayer = nullptr;
+	LocalPlaybackSequence = nullptr;
+	LocalSequenceActor = nullptr;
+
+	if (LocalCinematicPlayerController)
+	{
+		LocalCinematicPlayerController->SetCinematicHUDHidden(false);
+		LocalCinematicPlayerController = nullptr;
+	}
+
+	for (const TWeakObjectPtr<ADefenseCharacter>& HiddenPlayer : LocallyHiddenPlayers)
+	{
+		if (HiddenPlayer.IsValid())
+		{
+			HiddenPlayer->SetCinematicVisualHidden(false);
+		}
+	}
+	LocallyHiddenPlayers.Empty();
+
+	OnLocalCinematicFinished();
+}
+
+void AFinalWaveCinematicController::HandleLocalSequenceFinished()
+{
+	FinishLocalPlayback();
+}
+
+void AFinalWaveCinematicController::HandleLocalSequenceStopped()
+{
+	FinishLocalPlayback();
+}
+
+void AFinalWaveCinematicController::ConfigureLocalCameraBlendOut(ULevelSequence* Sequence) const
+{
+	if (!Sequence)
+	{
+		return;
+	}
+
+	UMovieScene* MovieScene = Sequence->GetMovieScene();
+	UMovieSceneCameraCutTrack* CameraCutTrack = MovieScene
+		? Cast<UMovieSceneCameraCutTrack>(MovieScene->GetCameraCutTrack())
+		: nullptr;
+	if (!CameraCutTrack)
+	{
+		return;
+	}
+
+	UMovieSceneSection* FirstSection = nullptr;
+	UMovieSceneSection* LastSection = nullptr;
+	for (UMovieSceneSection* Section : CameraCutTrack->GetAllSections())
+	{
+		if (!Section || !Section->HasStartFrame() || !Section->HasEndFrame())
+		{
+			continue;
+		}
+
+		if (!FirstSection || Section->GetInclusiveStartFrame() < FirstSection->GetInclusiveStartFrame())
+		{
+			FirstSection = Section;
+		}
+		if (!LastSection || Section->GetExclusiveEndFrame() > LastSection->GetExclusiveEndFrame())
+		{
+			LastSection = Section;
+		}
+	}
+
+	if (!FirstSection || !LastSection)
+	{
+		return;
+	}
+
+	// Always cut directly to the first sequence camera to avoid a disorienting blend at playback start.
+	FirstSection->Easing.AutoEaseInDuration = 0;
+	FirstSection->Easing.bManualEaseIn = true;
+	FirstSection->Easing.ManualEaseInDuration = 0;
+
+	CameraCutTrack->bCanBlend = true;
+	if (CameraBlendDuration <= 0.0f)
+	{
+		LastSection->Easing.AutoEaseOutDuration = 0;
+		LastSection->Easing.bManualEaseOut = true;
+		LastSection->Easing.ManualEaseOutDuration = 0;
+		return;
+	}
+
+	const int32 DesiredBlendFrames = FMath::Max(
+		1,
+		MovieScene->GetTickResolution().AsFrameTime(CameraBlendDuration).RoundToFrame().Value
+	);
+
+	const int32 LastSectionFrames = FMath::Max(
+		0,
+		LastSection->GetExclusiveEndFrame().Value - LastSection->GetInclusiveStartFrame().Value
+	);
+
+	const int32 EaseOutFrames = FMath::Min(DesiredBlendFrames, LastSectionFrames);
+	LastSection->Easing.bManualEaseOut = true;
+	LastSection->Easing.ManualEaseOutDuration = EaseOutFrames;
+}
+
+void AFinalWaveCinematicController::RefreshHiddenPlayerVisuals()
+{
+	if (!bLocalPlaybackActive || !bHideAllPlayerVisuals)
+	{
+		return;
+	}
+
+	const AGameStateBase* GameState = GetWorld() ? GetWorld()->GetGameState<AGameStateBase>() : nullptr;
+	if (!GameState)
+	{
+		return;
+	}
+
+	for (APlayerState* PlayerState : GameState->PlayerArray)
+	{
+		if (ADefenseCharacter* PlayerCharacter = PlayerState ? Cast<ADefenseCharacter>(PlayerState->GetPawn()) : nullptr)
+		{
+			PlayerCharacter->SetCinematicVisualHidden(true);
+			LocallyHiddenPlayers.Add(PlayerCharacter);
+		}
+	}
+}
+
+void AFinalWaveCinematicController::SetEnemySpawnersPaused(const bool bPaused)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	for (AEnemySpawner* EnemySpawner : EnemySpawnersToPause)
+	{
+		if (EnemySpawner)
+		{
+			EnemySpawner->SetCombatSpawnPaused(bPaused);
+		}
+	}
+}

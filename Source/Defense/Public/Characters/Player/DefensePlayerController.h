@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/SlateWrapperTypes.h"
 #include "GameFramework/PlayerController.h"
 #include "DefensePlayerController.generated.h"
 
@@ -83,6 +84,9 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> HUDWidget;
 
+	bool bCinematicHUDHidden = false;
+	ESlateVisibility HUDVisibilityBeforeCinematic = ESlateVisibility::Visible;
+
 	UPROPERTY(EditDefaultsOnly, Category="UI")
 	TSubclassOf<class UESCUI> ESCUIClass;
 
@@ -103,6 +107,7 @@ public:
 	bool IsGameHostPlayer() const;
 	void ToggleESCUI();
 	void SubmitClientIdentity();
+	void SetCinematicHUDHidden(bool bShouldHide);
 
 	void ToggleEquipmentMenu(); // 장비창
 	

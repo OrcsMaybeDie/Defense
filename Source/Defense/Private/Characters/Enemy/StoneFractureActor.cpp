@@ -100,6 +100,8 @@ bool AStoneFractureActor::ActivateFromSkeletalMesh(USkeletalMeshComponent* Sourc
 		PartComponent->SetWorldTransform(PartWorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
 		PartComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		PartComponent->SetVisibility(true, true);
+		
+		// 물리 켜기
 		PartComponent->SetSimulatePhysics(true);
 
 		AccumulatedOrigin += PartWorldTransform.GetLocation();
@@ -263,5 +265,4 @@ void AStoneFractureActor::ReturnSelfToPool()
 		}
 	}
 
-	DeactivateToPool();
 }

@@ -71,6 +71,7 @@ protected:
 	
 	// 모든 웨이브가 끝나고 입력 멈춤
 	void GameEnd();
+	void ShowGameEndUI();
 	
 	// 게임 재시작 -> 맵 오픈
 	void RetryGame();
@@ -85,6 +86,8 @@ protected:
 	
 	// 맵에 남아있는 적 제거
 	void CleanupCurrentWave();
+	// 게임 종료 시 맵에 있는 적은 유지하고 추가 스폰만 중지
+	void StopCurrentWaveSpawning();
 	// 다음 웨이브 진행
 	void AdvanceToNextWave();
 	
@@ -148,6 +151,9 @@ protected:
 	FTimerHandle AutoWaveCountdownTimerHandle;
 	FTimerHandle ReadyWaveCountdownTimerHandle;
 	FTimerHandle EnemyCleanupTimerHandle;
+	FTimerHandle GameEndUITimerHandle;
+
+	bool bPendingGameClear = false;
 
 	float RespawnDelay = 3.f;
 
@@ -174,6 +180,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wave|Cleanup", meta=(ClampMin="0.0"))
 	float MaxDistanceFromOwningSpawner = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Game End", meta=(ClampMin="0.0"))
+	float GameEndUIDelaySeconds = 10.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TArray<class AEnemySpawner*> EnemySpawners;

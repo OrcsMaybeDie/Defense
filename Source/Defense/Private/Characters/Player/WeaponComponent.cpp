@@ -60,6 +60,30 @@ void UWeaponComponent::Attack(EWeaponAttackType AttackType)
 	ServerRPC_RequestAttack(AttackType);
 }
 
+void UWeaponComponent::SetCinematicVisualHidden(bool bHidden)
+{
+	if (bCinematicVisualHidden == bHidden)
+	{
+		return;
+	}
+
+	bCinematicVisualHidden = bHidden;
+	if (!EquippedWeaponActor)
+	{
+		return;
+	}
+
+	if (bHidden)
+	{
+		bWeaponWasHiddenBeforeCinematic = EquippedWeaponActor->IsHidden();
+		EquippedWeaponActor->SetActorHiddenInGame(true);
+	}
+	else
+	{
+		EquippedWeaponActor->SetActorHiddenInGame(bWeaponWasHiddenBeforeCinematic);
+	}
+}
+
 
 void UWeaponComponent::ServerRPC_RequestAttack_Implementation(EWeaponAttackType AttackType)
 {
@@ -208,6 +232,12 @@ void UWeaponComponent::SpawnAndAttachWeaponActor(UWeaponData* WeaponData)
 		WeaponData->WeaponAttachSocket
 	);
 	EquippedWeaponActor->SetActorRelativeTransform(WeaponData->WeaponAttachTransform);
+
+	if (bCinematicVisualHidden)
+	{
+		bWeaponWasHiddenBeforeCinematic = EquippedWeaponActor->IsHidden();
+		EquippedWeaponActor->SetActorHiddenInGame(true);
+	}
 }
 
 void UWeaponComponent::ApplyWeaponAnimLayer(UWeaponData* WeaponData)

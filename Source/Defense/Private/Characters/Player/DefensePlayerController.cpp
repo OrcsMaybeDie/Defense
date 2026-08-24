@@ -83,6 +83,12 @@ void ADefensePlayerController::BeginPlay()
 		{
 			HUDWidget->ClearFlags(RF_Transactional);
 			HUDWidget->AddToPlayerScreen();
+
+			if (bCinematicHUDHidden)
+			{
+				HUDVisibilityBeforeCinematic = HUDWidget->GetVisibility();
+				HUDWidget->SetVisibility(ESlateVisibility::Collapsed);
+			}
 		}
 	}
 }
@@ -293,7 +299,12 @@ void ADefensePlayerController::RequestReady()
 
 void ADefensePlayerController::RequestGameEndRetry()
 {
-	if (IsGameHostPlayer() && GameEndUI)
+	if (!IsGameHostPlayer())
+	{
+		return;
+	}
+
+	if (GameEndUI)
 	{
 		GameEndUI->ShowEndLoading();
 	}
@@ -303,7 +314,16 @@ void ADefensePlayerController::RequestGameEndRetry()
 
 void ADefensePlayerController::RequestReturnToIntroMap()
 {
-	if (IsGameHostPlayer() && ESCUI)
+	if (!IsGameHostPlayer())
+	{
+		return;
+	}
+
+	if (GameEndUI && GameEndUI->IsInViewport())
+	{
+		GameEndUI->ShowEndLoading();
+	}
+	else if (ESCUI)
 	{
 		ESCUI->ShowESCLoading();
 	}
@@ -365,6 +385,30 @@ void ADefensePlayerController::SubmitClientIdentity()
 	}
 
 	ServerRPC_SubmitClientIdentity(MakeLocalClientIdentity());
+}
+
+void ADefensePlayerController::SetCinematicHUDHidden(const bool bShouldHide)
+{
+	if (!IsLocalPlayerController() || bCinematicHUDHidden == bShouldHide)
+	{
+		return;
+	}
+
+	bCinematicHUDHidden = bShouldHide;
+	if (!HUDWidget)
+	{
+		return;
+	}
+
+	if (bShouldHide)
+	{
+		HUDVisibilityBeforeCinematic = HUDWidget->GetVisibility();
+		HUDWidget->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	else
+	{
+		HUDWidget->SetVisibility(HUDVisibilityBeforeCinematic);
+	}
 }
 
 void ADefensePlayerController::ToggleEquipmentMenu()

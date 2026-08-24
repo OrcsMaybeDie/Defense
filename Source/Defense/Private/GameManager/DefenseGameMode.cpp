@@ -334,37 +334,55 @@ void ADefenseGameMode::GameStart()
 
 void ADefenseGameMode::GameEnd()
 {
-	CleanupCurrentWave();
+	StopCurrentWaveSpawning();
+	GetWorldTimerManager().ClearTimer(GameEndUITimerHandle);
 
-	if (DefenseGameState)
+	if (!DefenseGameState)
 	{
-		DefenseGameState->CountdownRemaining = 0;
-		DefenseGameState->SetReadyInputRequired(false);
-		
+		return;
 	}
+
+	DefenseGameState->CountdownRemaining = 0;
+	DefenseGameState->SetReadyInputRequired(false);
 	
 	// 모든 플레이어 레디 초기화
 	ResetAllPlayersReady();
 	
-	bool bGameClear = false;
-	
-	if (!AreAllActivePlayersDead()
+	bPendingGameClear = !AreAllActivePlayersDead()
 		&& DefenseGameState->DestScore > 0
-		&& CurrentWave >= MaxWave)
+		&& CurrentWave >= MaxWave;
+
+	if (GameEndUIDelaySeconds <= 0.0f)
 	{
-		bGameClear = true;
+		ShowGameEndUI();
+		return;
 	}
-	
-	// 모든 클라이언트에게 ShowGameEndUI 실행시키기
+
+	GetWorldTimerManager().SetTimer(
+		GameEndUITimerHandle,
+		this,
+		&ADefenseGameMode::ShowGameEndUI,
+		GameEndUIDelaySeconds,
+		false
+	);
+}
+
+void ADefenseGameMode::ShowGameEndUI()
+{
+	if (!HasAuthority() || !DefenseGameState || DefenseGameState->GamePhase != EGamePhase::GameEnded)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(GameEndUITimerHandle);
+
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		if (ADefensePlayerController* PC = Cast<ADefensePlayerController>(It->Get()))
 		{
-			PC->ClientRPC_ShowGameEndUI(bGameClear);
+			PC->ClientRPC_ShowGameEndUI(bPendingGameClear);
 		}
 	}
-	
-	
 }
 
 void ADefenseGameMode::RetryGame()
@@ -448,7 +466,14 @@ void ADefenseGameMode::HandleReturnToIntroMapRequested(APlayerController* Reques
 	{
 		if (ADefensePlayerController* PC = Cast<ADefensePlayerController>(It->Get()))
 		{
-			PC->ClientRPC_ShowESCLoadingUI();
+			if (DefenseGameState && DefenseGameState->GamePhase == EGamePhase::GameEnded)
+			{
+				PC->ClientRPC_ShowEndLoadingUI();
+			}
+			else
+			{
+				PC->ClientRPC_ShowESCLoadingUI();
+			}
 		}
 	}
 
@@ -897,6 +922,22 @@ void ADefenseGameMode::CleanupCurrentWave()
 	ParticipatingSpawners.Empty();
 	FinishedSpawners.Empty();
 	CurrentEnemyCount = 0;
+}
+
+void ADefenseGameMode::StopCurrentWaveSpawning()
+{
+	bIsWaveActive = false;
+	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(ReadyWaveCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(EnemyCleanupTimerHandle);
+
+	for (AEnemySpawner* Spawner : EnemySpawners)
+	{
+		if (Spawner)
+		{
+			Spawner->StopSpawning();
+		}
+	}
 }
 
 // 적의 수 감소 -> Destination에 overlap했을 때, 적이 처치됐을 때 호출

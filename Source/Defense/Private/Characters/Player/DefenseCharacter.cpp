@@ -284,6 +284,33 @@ void ADefenseCharacter::NotifyFireWeapon()
 	TimeSinceFiredWeapon = 0.f;
 }
 
+void ADefenseCharacter::SetCinematicVisualHidden(bool bShouldHide)
+{
+	if (bCinematicVisualHidden == bShouldHide)
+	{
+		return;
+	}
+
+	bCinematicVisualHidden = bShouldHide;
+	if (USkeletalMeshComponent* CharacterMesh = GetMesh())
+	{
+		if (bShouldHide)
+		{
+			bMeshWasHiddenBeforeCinematic = CharacterMesh->bHiddenInGame;
+			CharacterMesh->SetHiddenInGame(true, true);
+		}
+		else
+		{
+			CharacterMesh->SetHiddenInGame(bMeshWasHiddenBeforeCinematic, true);
+		}
+	}
+
+	if (WeaponComp)
+	{
+		WeaponComp->SetCinematicVisualHidden(bShouldHide);
+	}
+}
+
 void ADefenseCharacter::AltAttack()
 {
 	if (!StatusComp->IsAlive()) return;
