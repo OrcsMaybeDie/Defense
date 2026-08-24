@@ -168,5 +168,13 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="Weapon")
 	void NotifyFireWeapon();
+
+	/** Hides only this machine's character and locally spawned weapon visuals. */
+	UFUNCTION(BlueprintCallable, Category="Cinematic")
+	void SetCinematicVisualHidden(bool bShouldHide);
+
+private:
+	bool bCinematicVisualHidden = false;
+	bool bMeshWasHiddenBeforeCinematic = false;
 };
 

@@ -22,6 +22,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Weapon")
 	void Attack(EWeaponAttackType AttackType);
 
+	/** Local-only visual override used while a cinematic camera is active. */
+	UFUNCTION(BlueprintCallable, Category="Cinematic")
+	void SetCinematicVisualHidden(bool bHidden);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -56,4 +60,7 @@ protected:
 	// animlayer
 	UPROPERTY(Transient)
 	TSubclassOf<UAnimInstance> AppliedAnimLayerClass;
+
+	bool bCinematicVisualHidden = false;
+	bool bWeaponWasHiddenBeforeCinematic = false;
 };

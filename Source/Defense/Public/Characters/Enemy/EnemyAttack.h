@@ -41,7 +41,7 @@ public:
 	TObjectPtr<class UAISenseConfig_Sight> SightConfig;
 	
 	UFUNCTION()
-	void OnTargetPerceptionUpdated(AActor* Actor, struct FAIStimulus Stimulus);
+	virtual void OnTargetPerceptionUpdated(AActor* Actor, struct FAIStimulus Stimulus);
 
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Target")
 	bool bLockedTarget = false;
@@ -61,9 +61,9 @@ public:
 	
 	// 공격 StateTree Task에서 실행. 서버에서만 실행. Enemy가 서버에서 스폰되기때문에 RPC지정X
 	UFUNCTION(BlueprintCallable)
-	void AttackTarget();
+	virtual void AttackTarget();
 
-	bool CanAttack() const;
+	virtual bool CanAttack() const;
 	void MarkAttackFinished();
 	float GetAttackDuration(float DefaultDuration = 1.2f) const;
 	

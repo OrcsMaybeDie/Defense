@@ -4,6 +4,7 @@
 #include "Characters/Enemy/EnemySpawner.h"
 
 #include "Characters/Enemy/EnemyBase.h"
+#include "Characters/Enemy/EnemyAttackBoss.h"
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
 #include "Characters/Enemy/EnemyRoute.h"
 #include "Characters/Enemy/AI/EnemyController.h"
@@ -13,6 +14,7 @@
 #include "Components/BoxComponent.h"
 #include "Engine/World.h"
 #include "GameManager/DefenseGameMode.h"
+#include "GameManager/Cinematics/FinalWaveCinematicController.h"
 #include "TimerManager.h"
 
 
@@ -180,6 +182,41 @@ void AEnemySpawner::StopSpawning()
 	GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
 }
 
+void AEnemySpawner::SetCombatSpawnPaused(const bool bPaused)
+{
+	if (!HasAuthority() || bCombatSpawnPaused == bPaused)
+	{
+		return;
+	}
+
+	bCombatSpawnPaused = bPaused;
+	if (bCombatSpawnPaused)
+	{
+		if (GetWorldTimerManager().IsTimerActive(SpawnTimerHandle))
+		{
+			GetWorldTimerManager().PauseTimer(SpawnTimerHandle);
+		}
+		return;
+	}
+
+	if (GetWorldTimerManager().IsTimerPaused(SpawnTimerHandle))
+	{
+		GetWorldTimerManager().UnPauseTimer(SpawnTimerHandle);
+		return;
+	}
+
+	if (EnemyPool && CombatSpawnTargetCount > CombatSpawnedCount)
+	{
+		GetWorldTimerManager().SetTimer(
+			SpawnTimerHandle,
+			this,
+			&AEnemySpawner::SpawnCombatBatch,
+			FMath::Max(CombatSpawnInterval, 0.01f),
+			false
+		);
+	}
+}
+
 void AEnemySpawner::ClearPreviewEnemies()
 {
 	if (!HasAuthority())
@@ -277,6 +314,23 @@ void AEnemySpawner::StartCombatSpawn(int32 WaveNumber)
 			InitialSpawnDelay,
 			false
 		);
+		if (bCombatSpawnPaused)
+		{
+			GetWorldTimerManager().PauseTimer(SpawnTimerHandle);
+		}
+		return;
+	}
+
+	if (bCombatSpawnPaused)
+	{
+		GetWorldTimerManager().SetTimer(
+			SpawnTimerHandle,
+			this,
+			&AEnemySpawner::SpawnCombatBatch,
+			0.01f,
+			false
+		);
+		GetWorldTimerManager().PauseTimer(SpawnTimerHandle);
 		return;
 	}
 
@@ -298,6 +352,7 @@ void AEnemySpawner::EndWave()
 	CombatInitializedCount = 0;
 	CombatInitializationFailedCount = 0;
 	CombatInitializationRetryCount = 0;
+	bCombatSpawnPaused = false;
 }
 
 // 일정시간 간격으로 한마리씩 스폰하되, 배치 크기는 2~4개로 랜덤하게 정함.
@@ -310,6 +365,11 @@ void AEnemySpawner::SpawnCombatBatch()
 		{
 			GameMode->NotifySpawnerFinished(this);
 		}
+		return;
+	}
+
+	if (bCombatSpawnPaused)
+	{
 		return;
 	}
 
@@ -376,7 +436,15 @@ void AEnemySpawner::SpawnCombatBatch()
 	AddActiveEnemy(Enemy);
 	const bool bAppliedSpawnPlan = ApplySpawnPlanToEnemy(Enemy, CombatSpawnedCount);
 	Enemy->SetEnemyMode(EEnemyMode::Combat);
-	const bool bInitComplete = bAppliedSpawnPlan && RestartEnemyLogic(Enemy);
+	bool bCinematicStarted = false;
+	if (bAppliedSpawnPlan && FinalWaveCinematicController)
+	{
+		if (AEnemyAttackBoss* Boss = Cast<AEnemyAttackBoss>(Enemy))
+		{
+			bCinematicStarted = FinalWaveCinematicController->TryStartBossCinematic(Boss, PreparedWaveNumber);
+		}
+	}
+	const bool bInitComplete = bAppliedSpawnPlan && (bCinematicStarted || RestartEnemyLogic(Enemy));
 	if (bInitComplete)
 	{
 		++CombatInitializedCount;
@@ -455,6 +523,11 @@ void AEnemySpawner::SpawnCombatBatch()
 		{
 			GameMode->NotifySpawnerFinished(this);
 		}
+		return;
+	}
+
+	if (bCombatSpawnPaused)
+	{
 		return;
 	}
 

@@ -83,6 +83,12 @@ void ADefensePlayerController::BeginPlay()
 		{
 			HUDWidget->ClearFlags(RF_Transactional);
 			HUDWidget->AddToPlayerScreen();
+
+			if (bCinematicHUDHidden)
+			{
+				HUDVisibilityBeforeCinematic = HUDWidget->GetVisibility();
+				HUDWidget->SetVisibility(ESlateVisibility::Collapsed);
+			}
 		}
 	}
 }
@@ -379,6 +385,30 @@ void ADefensePlayerController::SubmitClientIdentity()
 	}
 
 	ServerRPC_SubmitClientIdentity(MakeLocalClientIdentity());
+}
+
+void ADefensePlayerController::SetCinematicHUDHidden(const bool bShouldHide)
+{
+	if (!IsLocalPlayerController() || bCinematicHUDHidden == bShouldHide)
+	{
+		return;
+	}
+
+	bCinematicHUDHidden = bShouldHide;
+	if (!HUDWidget)
+	{
+		return;
+	}
+
+	if (bShouldHide)
+	{
+		HUDVisibilityBeforeCinematic = HUDWidget->GetVisibility();
+		HUDWidget->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	else
+	{
+		HUDWidget->SetVisibility(HUDVisibilityBeforeCinematic);
+	}
 }
 
 void ADefensePlayerController::ToggleEquipmentMenu()
