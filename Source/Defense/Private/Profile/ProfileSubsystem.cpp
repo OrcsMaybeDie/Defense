@@ -342,15 +342,18 @@ bool UProfileSubsystem::IsMissionCompleted(FName MissionId) const
 	return CurrentProfile && !MissionId.IsNone() && CurrentProfile->CompletedMissionIds.Contains(MissionId);
 }
 
-bool UProfileSubsystem::ApplyMissionCompletions(const TArray<FMissionCompletionResult>& Results)
+bool UProfileSubsystem::ApplyMissionCompletions(const TArray<FMissionCompletionResult>& Results, TArray<FMissionCompletionResult>& OutNewlyCompletedResults)
 {
+	OutNewlyCompletedResults.Reset();
+
 	if (!CurrentProfile || Results.IsEmpty())
 	{
 		return false;
 	}
 
+	// 저장 전에 유효성 검사, 중복 제외, Seal 보상 계산
 	TArray<FName> UpdatedMissionIds = CurrentProfile->CompletedMissionIds;
-	TArray<FName> NewlyCompletedMissionIds;
+	TArray<FMissionCompletionResult> NewlyCompletedResults;
 	int64 UpdatedSeal = CurrentProfile->Seal;
 
 	for (const FMissionCompletionResult& Result : Results)
@@ -360,6 +363,7 @@ bool UProfileSubsystem::ApplyMissionCompletions(const TArray<FMissionCompletionR
 			return false;
 		}
 
+		// 이전 판에서 이미 완료한 미션은 보상 X
 		if (UpdatedMissionIds.Contains(Result.MissionId))
 		{
 			continue;
@@ -372,10 +376,10 @@ bool UProfileSubsystem::ApplyMissionCompletions(const TArray<FMissionCompletionR
 		}
 
 		UpdatedMissionIds.Add(Result.MissionId);
-		NewlyCompletedMissionIds.Add(Result.MissionId);
+		NewlyCompletedResults.Add(Result);
 	}
 
-	if (NewlyCompletedMissionIds.IsEmpty())
+	if (NewlyCompletedResults.IsEmpty())
 	{
 		return false;
 	}
@@ -383,24 +387,30 @@ bool UProfileSubsystem::ApplyMissionCompletions(const TArray<FMissionCompletionR
 	const int32 PreviousSeal = CurrentProfile->Seal;
 	const TArray<FName> PreviousMissionIds = CurrentProfile->CompletedMissionIds;
 
+	// 신규 완료 기록과 Seal을 한 번만 저장
 	CurrentProfile->Seal = static_cast<int32>(UpdatedSeal);
 	CurrentProfile->CompletedMissionIds = MoveTemp(UpdatedMissionIds);
 
 	if (!SaveProfile())
 	{
+		// 저장 실패 시 메모리 상태 복구
 		CurrentProfile->Seal = PreviousSeal;
 		CurrentProfile->CompletedMissionIds = PreviousMissionIds;
 		return false;
 	}
 
+	// 저장된 신규 결과만 호출자에게 전달
+	OutNewlyCompletedResults = MoveTemp(NewlyCompletedResults);
+
+	// 저장 성공 후에만 UI 등 구독자에게 변경 사실을 알림
 	if (CurrentProfile->Seal != PreviousSeal)
 	{
 		OnSealChanged.Broadcast(CurrentProfile->Seal);
 	}
 
-	for (const FName MissionId : NewlyCompletedMissionIds)
+	for (const FMissionCompletionResult& Result : OutNewlyCompletedResults)
 	{
-		OnMissionCompleted.Broadcast(MissionId);
+		OnMissionCompleted.Broadcast(Result.MissionId);
 	}
 
 	return true;

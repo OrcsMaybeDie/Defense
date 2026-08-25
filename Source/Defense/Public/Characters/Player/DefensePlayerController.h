@@ -5,11 +5,13 @@
 #include "CoreMinimal.h"
 #include "Components/SlateWrapperTypes.h"
 #include "GameFramework/PlayerController.h"
+#include "Mission/MissionCompletionResult.h"
 #include "DefensePlayerController.generated.h"
 
 class UEquipmentMenuWidget;
 class UInputMappingContext;
 class UUserWidget;
+class UWeaponCrosshairWidget;
 
 /**
  *  Basic PlayerController class for a third person game
@@ -76,7 +78,7 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_SubmitClientIdentity(const FString& ClientIdentity);
-	
+
 	// UI
 	UPROPERTY(EditDefaultsOnly, Category="UI")
 	TSubclassOf<UUserWidget> HUDWidgetClass;
@@ -86,6 +88,9 @@ protected:
 
 	bool bCinematicHUDHidden = false;
 	ESlateVisibility HUDVisibilityBeforeCinematic = ESlateVisibility::Visible;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UWeaponCrosshairWidget> CrosshairWidget;
 
 	UPROPERTY(EditDefaultsOnly, Category="UI")
 	TSubclassOf<class UESCUI> ESCUIClass;
@@ -110,21 +115,21 @@ public:
 	void SetCinematicHUDHidden(bool bShouldHide);
 
 	void ToggleEquipmentMenu(); // 장비창
-	
+
 	// 게임 끝났을 때 UI
 	UPROPERTY(EditAnywhere, Category="UI")
 	TSubclassOf<class UGameEndUI> GameEndUIClass;
 	
 	UPROPERTY()
 	TObjectPtr<UGameEndUI> GameEndUI;
-	
+
 	// 게임 종료가 확정되는 즉시 로컬 플레이 입력 차단
 	UFUNCTION(Client, Reliable)
 	void ClientRPC_EnterGameEndState();
 
-	// GameEndUI
+	// GameEndUI (+ Mission)
 	UFUNCTION(Client, Reliable)
-	void ClientRPC_ShowGameEndUI(bool bGameClear);
+	void ClientRPC_ShowGameEndUI(bool bGameClear, const TArray<FMissionCompletionResult>& Results);
 	
 	// 게임 다시 시작할 때 커서 및 입력모드 되돌리기
 	UFUNCTION(Client, Reliable)

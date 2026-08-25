@@ -46,6 +46,10 @@
 		{
 			"Name": "AnimPhys",
 			"Enabled": true
+		},
+		{
+			"Name": "Effekseer",
+			"Enabled": true
 		}
 	]
 }

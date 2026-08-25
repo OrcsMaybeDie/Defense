@@ -7,6 +7,10 @@
 
 class ATrapBase;
 class AGridManager;
+class UAnimInstance;
+class UAnimMontage;
+class UAnimSequenceBase;
+class UEquipmentData;
 class UTrapData;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
@@ -17,6 +21,7 @@ class DEFENSE_API UBuildComponent : public UActorComponent
 public:
 	UBuildComponent();
 
+	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -33,11 +38,25 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Trap|Build", meta=(ClampMin="1"))
 	float BuildTraceRange = 5000.f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Trap|Animation")
+	TObjectPtr<UAnimSequenceBase> TrapBuildAnimation;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Trap|Animation")
+	FName TrapBuildAnimationSlot = TEXT("UpperBodySlot");
+
 	UPROPERTY(Transient)
 	TObjectPtr<ATrapBase> TrapPreviewActor;
 
 	UPROPERTY(Transient)
 	TObjectPtr<AGridManager> CachedGridManager;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveTrapBuildMontage;
+
+	TMap<TWeakObjectPtr<UAnimInstance>, float> TrapUpperBodyWeightOverrides;
+
+	bool bTrapBuildAnimationApplied = false;
+	FTimerHandle TrapBuildAnimationRefreshTimer;
 
 	UTrapData* GetSelectedTrapData() const;
 	APawn* GetOwnerPawn() const;
@@ -46,6 +65,12 @@ protected:
 	AGridManager* FindGridManager();
 	void UpdateTrapPreview();
 	void DestroyTrapPreview();
+	void RefreshTrapBuildAnimation();
+	void ApplyTrapBuildAnimation(bool bEnable);
+	void ApplyTrapUpperBodyWeight(bool bEnable);
+
+	UFUNCTION()
+	void HandleSelectedEquipmentChanged(int32 SelectedSlotIdx, UEquipmentData* SelectedEquipment);
 
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_RequestBuildTrap(const FTrapCellKey& AnchorCell);
