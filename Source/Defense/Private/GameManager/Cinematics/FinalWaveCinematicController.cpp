@@ -16,12 +16,9 @@
 #include "LevelSequenceActor.h"
 #include "LevelSequence.h"
 #include "LevelSequencePlayer.h"
-#include "MovieScene.h"
-#include "MovieSceneSection.h"
 #include "MovieSceneSequencePlaybackSettings.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
-#include "Tracks/MovieSceneCameraCutTrack.h"
 
 AFinalWaveCinematicController::AFinalWaveCinematicController()
 {
@@ -236,18 +233,10 @@ void AFinalWaveCinematicController::StartLocalPlayback()
 	PlaybackSettings.bHidePlayer = false;
 	PlaybackSettings.FinishCompletionStateOverride = EMovieSceneCompletionModeOverride::ForceRestoreState;
 
-	LocalPlaybackSequence = DuplicateObject<ULevelSequence>(CinematicSequence, this);
-	if (!LocalPlaybackSequence)
-	{
-		FinishLocalPlayback();
-		return;
-	}
-	ConfigureLocalCameraBlendOut(LocalPlaybackSequence);
-
 	ALevelSequenceActor* CreatedSequenceActor = nullptr;
 	LocalSequencePlayer = ULevelSequencePlayer::CreateLevelSequencePlayer(
 		this,
-		LocalPlaybackSequence,
+		CinematicSequence,
 		PlaybackSettings,
 		CreatedSequenceActor
 	);
@@ -288,7 +277,6 @@ void AFinalWaveCinematicController::FinishLocalPlayback(const bool bRestartBackg
 {
 	if (!bLocalPlaybackActive
 		&& !LocalSequencePlayer
-		&& !LocalPlaybackSequence
 		&& !LocalSequenceActor
 		&& !LocalCinematicPlayerController
 		&& LocallyHiddenPlayers.Num() == 0
@@ -314,7 +302,6 @@ void AFinalWaveCinematicController::FinishLocalPlayback(const bool bRestartBackg
 	}
 
 	LocalSequencePlayer = nullptr;
-	LocalPlaybackSequence = nullptr;
 	LocalSequenceActor = nullptr;
 
 	if (LocalCinematicPlayerController)
@@ -354,75 +341,6 @@ void AFinalWaveCinematicController::HandleLocalSequenceFinished()
 void AFinalWaveCinematicController::HandleLocalSequenceStopped()
 {
 	FinishLocalPlayback();
-}
-
-void AFinalWaveCinematicController::ConfigureLocalCameraBlendOut(ULevelSequence* Sequence) const
-{
-	if (!Sequence)
-	{
-		return;
-	}
-
-	UMovieScene* MovieScene = Sequence->GetMovieScene();
-	UMovieSceneCameraCutTrack* CameraCutTrack = MovieScene
-		? Cast<UMovieSceneCameraCutTrack>(MovieScene->GetCameraCutTrack())
-		: nullptr;
-	if (!CameraCutTrack)
-	{
-		return;
-	}
-
-	UMovieSceneSection* FirstSection = nullptr;
-	UMovieSceneSection* LastSection = nullptr;
-	for (UMovieSceneSection* Section : CameraCutTrack->GetAllSections())
-	{
-		if (!Section || !Section->HasStartFrame() || !Section->HasEndFrame())
-		{
-			continue;
-		}
-
-		if (!FirstSection || Section->GetInclusiveStartFrame() < FirstSection->GetInclusiveStartFrame())
-		{
-			FirstSection = Section;
-		}
-		if (!LastSection || Section->GetExclusiveEndFrame() > LastSection->GetExclusiveEndFrame())
-		{
-			LastSection = Section;
-		}
-	}
-
-	if (!FirstSection || !LastSection)
-	{
-		return;
-	}
-
-	// Always cut directly to the first sequence camera to avoid a disorienting blend at playback start.
-	FirstSection->Easing.AutoEaseInDuration = 0;
-	FirstSection->Easing.bManualEaseIn = true;
-	FirstSection->Easing.ManualEaseInDuration = 0;
-
-	CameraCutTrack->bCanBlend = true;
-	if (CameraBlendDuration <= 0.0f)
-	{
-		LastSection->Easing.AutoEaseOutDuration = 0;
-		LastSection->Easing.bManualEaseOut = true;
-		LastSection->Easing.ManualEaseOutDuration = 0;
-		return;
-	}
-
-	const int32 DesiredBlendFrames = FMath::Max(
-		1,
-		MovieScene->GetTickResolution().AsFrameTime(CameraBlendDuration).RoundToFrame().Value
-	);
-
-	const int32 LastSectionFrames = FMath::Max(
-		0,
-		LastSection->GetExclusiveEndFrame().Value - LastSection->GetInclusiveStartFrame().Value
-	);
-
-	const int32 EaseOutFrames = FMath::Min(DesiredBlendFrames, LastSectionFrames);
-	LastSection->Easing.bManualEaseOut = true;
-	LastSection->Easing.ManualEaseOutDuration = EaseOutFrames;
 }
 
 void AFinalWaveCinematicController::RefreshHiddenPlayerVisuals()

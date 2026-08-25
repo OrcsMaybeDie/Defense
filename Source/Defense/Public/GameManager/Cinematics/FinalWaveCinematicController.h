@@ -48,10 +48,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cinematic")
 	TObjectPtr<ULevelSequence> CinematicSequence;
 
-	/** Blend time from the last sequence camera back to the local player's gameplay camera. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cinematic|Camera", meta = (ClampMin = "0.0", UIMin = "0.0", Units = "s"))
-	float CameraBlendDuration = 0.5f;
-
 	/** Must match the sequence playback length used for authoritative server completion. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cinematic", meta = (ClampMin = "0.01", UIMin = "0.01", Units = "s"))
 	float ServerCinematicDuration = 5.0f;
@@ -114,7 +110,6 @@ private:
 
 	void StartLocalPlayback();
 	void FinishLocalPlayback(bool bRestartBackgroundMusic = true);
-	void ConfigureLocalCameraBlendOut(ULevelSequence* Sequence) const;
 	void RefreshHiddenPlayerVisuals();
 	void SetEnemySpawnersPaused(bool bPaused);
 
@@ -129,9 +124,6 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<ULevelSequencePlayer> LocalSequencePlayer;
-
-	UPROPERTY(Transient)
-	TObjectPtr<ULevelSequence> LocalPlaybackSequence;
 
 	UPROPERTY(Transient)
 	TObjectPtr<ALevelSequenceActor> LocalSequenceActor;
