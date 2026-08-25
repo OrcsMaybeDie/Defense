@@ -14,6 +14,8 @@ class UCameraComponent;
 class UInputAction;
 class UAnimMontage; // Death
 class UAnimSequenceBase;
+class USkeletalMesh;
+class UTexture2D;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -89,10 +91,22 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Anim")
 	TObjectPtr<UAnimSequenceBase> GameClearAnimation;
+
+	// (P3 시연용) BP_PlayerBase 기준 Mesh 순서
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Appearance")
+	TArray<TObjectPtr<USkeletalMesh>> PlayerMeshes;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Appearance")
+	TArray<TObjectPtr<UTexture2D>> PlayerProfileImages;
+
+	UPROPERTY(ReplicatedUsing=OnRep_AppearanceIndex, VisibleInstanceOnly, BlueprintReadOnly, Category="Appearance")
+	uint8 AppearanceIndex = MAX_uint8;
 	
 public:
 	/** Constructor */
 	ADefenseCharacter();	
+	virtual void PossessedBy(AController* NewController) override;
+	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
 	virtual void BeginPlay() override;
@@ -110,6 +124,11 @@ protected:
 	
 	UFUNCTION()
 	void HandleLifeStateChanged(EPlayerLifeState NewLifeState);
+
+	// (P3 시연용)
+	UFUNCTION()
+	void OnRep_AppearanceIndex();
+	void ApplyAppearance();
 	
 	void SelectLoadoutIdx(const FInputActionValue& Value);
 
@@ -161,6 +180,13 @@ public:
 	FORCEINLINE class UStatusComponent* GetStatusComp() const { return StatusComp; }
 	FORCEINLINE class ULoadoutComponent* GetLoadoutComponent() const { return LoadoutComp; }
 	FORCEINLINE class UBuildComponent* GetBuildComp() const { return BuildComp; }
+	FORCEINLINE uint8 GetAppearanceIndex() const { return AppearanceIndex; }
+	FORCEINLINE UTexture2D* GetAppearanceProfileImage() const
+	{
+		return PlayerProfileImages.IsValidIndex(AppearanceIndex)
+			? PlayerProfileImages[AppearanceIndex].Get()
+			: nullptr;
+	}
 	
 	// test
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;

@@ -5,6 +5,7 @@
 
 #include "Components/Button.h"
 #include "Components/ScrollBox.h"
+#include "Components/Widget.h"
 #include "Components/WidgetSwitcher.h"
 #include "GameManager/DefenseGameInstance.h"
 #include "GameManager/Data/MapConfigData.h"
@@ -107,6 +108,11 @@ void UIntroMenu::RefreshMenuState()
 
 void UIntroMenu::ShowIntroLoading()
 {
+	if (WBP_EquipEntryButton)
+	{
+		WBP_EquipEntryButton->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
 	if (SwitcherIntroLoading)
 	{
 		SwitcherIntroLoading->SetActiveWidgetIndex(1);

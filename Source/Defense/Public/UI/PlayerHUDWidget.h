@@ -28,6 +28,10 @@ protected:
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UPlayerStatusWidget> AllyStatus;
+
+	// 3인 시연용 두 번째 아군 상태. 에디터에서 추가하기 전에도 빌드 가능하다.
+	UPROPERTY(meta=(BindWidgetOptional))
+	TObjectPtr<UPlayerStatusWidget> AllyStatus2;
 	
 	UPROPERTY(meta=(BindWidgetOptional))
 	TObjectPtr<UTextBlock> AllyName;

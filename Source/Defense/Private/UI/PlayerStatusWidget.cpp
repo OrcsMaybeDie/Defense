@@ -2,6 +2,7 @@
 
 #include "Characters/Player/DefenseCharacter.h"
 #include "Characters/Player/WeaponComponent.h"
+#include "Components/Image.h"
 #include "Components/ProgressBar.h"
 
 void UPlayerStatusWidget::NativeConstruct()
@@ -35,6 +36,9 @@ void UPlayerStatusWidget::NativeDestruct()
 		BoundStatusComp->OnManaChanged.RemoveDynamic(this, &UPlayerStatusWidget::HandleManaChanged);
 		BoundStatusComp = nullptr;
 	}
+
+	BoundCharacter = nullptr;
+	AppliedProfileTexture = nullptr;
 	
 	Super::NativeDestruct();
 }
@@ -42,6 +46,7 @@ void UPlayerStatusWidget::NativeDestruct()
 void UPlayerStatusWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+	RefreshProfileImage();
 
 	DisplayedChargeManaPercent = FMath::FInterpTo(
 		DisplayedChargeManaPercent,
@@ -114,6 +119,8 @@ void UPlayerStatusWidget::BindStatusComp(UStatusComponent* InStatComp)
 	}
 
 	BoundStatusComp = InStatComp;
+	BoundCharacter = Cast<ADefenseCharacter>(InStatComp->GetOwner());
+	AppliedProfileTexture = nullptr;
 	BoundStatusComp->OnHealthChanged.AddDynamic(this, &UPlayerStatusWidget::HandleHealthChanged);
 	BoundStatusComp->OnManaChanged.AddDynamic(this, &UPlayerStatusWidget::HandleManaChanged);
 
@@ -131,6 +138,24 @@ void UPlayerStatusWidget::BindStatusComp(UStatusComponent* InStatComp)
 	HandleHealthChanged(BoundStatusComp->Health, BoundStatusComp->MaxHealth);
 	HandleManaChanged(BoundStatusComp->Mana, BoundStatusComp->MaxMana);
 	HandleChargePreviewChanged(EWeaponChargeStage::None, 0.f, 0.f);
+	RefreshProfileImage();
+}
+
+void UPlayerStatusWidget::RefreshProfileImage()
+{
+	if (!ProfileImage || !BoundCharacter)
+	{
+		return;
+	}
+
+	UTexture2D* DesiredTexture = BoundCharacter->GetAppearanceProfileImage();
+	if (!DesiredTexture || DesiredTexture == AppliedProfileTexture)
+	{
+		return;
+	}
+
+	ProfileImage->SetBrushFromTexture(DesiredTexture, false);
+	AppliedProfileTexture = DesiredTexture;
 }
 
 void UPlayerStatusWidget::HandleHealthChanged(float CurValue, float MaxValue)

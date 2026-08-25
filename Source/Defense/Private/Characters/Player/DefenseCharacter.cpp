@@ -3,6 +3,7 @@
 #include "Characters/Player/DefenseCharacter.h"
 #include "Collision/DefenseCollisionChannels.h"
 #include "Engine/LocalPlayer.h"
+#include "EngineUtils.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -19,7 +20,10 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimSequenceBase.h"
+#include "Animation/Skeleton.h"
+#include "Engine/SkeletalMesh.h"
 #include "GameManager/DefenseGameMode.h"
+#include "Net/UnrealNetwork.h"
 
 ADefenseCharacter::ADefenseCharacter ()
 {
@@ -75,6 +79,85 @@ ADefenseCharacter::ADefenseCharacter ()
 	WeaponComp = CreateDefaultSubobject<UWeaponComponent>(TEXT("WeaponComp"));
 	LoadoutComp = CreateDefaultSubobject<ULoadoutComponent>(TEXT("LoadoutComp"));
 	BuildComp = CreateDefaultSubobject<UBuildComponent>(TEXT("BuildComp"));
+}
+
+void ADefenseCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+
+	if (!HasAuthority() || PlayerMeshes.IsEmpty())
+	{
+		return;
+	}
+
+	TSet<uint8> UsedAppearanceIndices;
+	for (TActorIterator<ADefenseCharacter> It(GetWorld()); It; ++It)
+	{
+		const ADefenseCharacter* OtherCharacter = *It;
+		if (!IsValid(OtherCharacter) || OtherCharacter == this || !OtherCharacter->GetController())
+		{
+			continue;
+		}
+
+		if (OtherCharacter->AppearanceIndex != MAX_uint8)
+		{
+			UsedAppearanceIndices.Add(OtherCharacter->AppearanceIndex);
+		}
+	}
+
+	TArray<uint8> AvailableAppearanceIndices;
+	for (int32 Index = 0; Index < PlayerMeshes.Num() && Index < MAX_uint8; ++Index)
+	{
+		if (PlayerMeshes[Index] && !UsedAppearanceIndices.Contains(static_cast<uint8>(Index)))
+		{
+			AvailableAppearanceIndices.Add(static_cast<uint8>(Index));
+		}
+	}
+
+	if (AvailableAppearanceIndices.IsEmpty())
+	{
+		UE_LOG(LogDefense, Error, TEXT("No unused player appearance is available. Character=%s"), *GetNameSafe(this));
+		return;
+	}
+
+	AppearanceIndex = AvailableAppearanceIndices[FMath::RandHelper(AvailableAppearanceIndices.Num())];
+	ApplyAppearance();
+	ForceNetUpdate();
+}
+
+void ADefenseCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ADefenseCharacter, AppearanceIndex);
+}
+
+void ADefenseCharacter::OnRep_AppearanceIndex()
+{
+	ApplyAppearance();
+}
+
+void ADefenseCharacter::ApplyAppearance()
+{
+	if (!GetMesh() || !PlayerMeshes.IsValidIndex(AppearanceIndex))
+	{
+		return;
+	}
+
+	USkeletalMesh* NewMesh = PlayerMeshes[AppearanceIndex];
+	if (!NewMesh)
+	{
+		return;
+	}
+
+	const USkeletalMesh* ReferenceMesh = PlayerMeshes.IsValidIndex(0) ? PlayerMeshes[0].Get() : nullptr;
+	const USkeleton* ExpectedSkeleton = ReferenceMesh ? ReferenceMesh->GetSkeleton() : nullptr;
+	const USkeleton* SelectedSkeleton = NewMesh->GetSkeleton();
+	if (ExpectedSkeleton && SelectedSkeleton && ExpectedSkeleton != SelectedSkeleton)
+	{
+		UE_LOG(LogDefense, Warning, TEXT("Player appearance skeleton mismatch: Mesh=%s Skeleton=%s Expected=%s"), *GetNameSafe(NewMesh), *GetNameSafe(SelectedSkeleton), *GetNameSafe(ExpectedSkeleton));
+	}
+
+	GetMesh()->SetSkeletalMesh(NewMesh);
 }
 
 void ADefenseCharacter::BeginPlay()

@@ -7,10 +7,10 @@
 #include "PlayerStatusWidget.generated.h"
 
 class UWeaponComponent;
+class ADefenseCharacter;
+class UImage;
+class UTexture2D;
 
-/**
- * 
- */
 UCLASS()
 class DEFENSE_API UPlayerStatusWidget : public UUserWidget
 {
@@ -24,9 +24,13 @@ public:
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<class UProgressBar> MPBar;
 
-	// 같은 위치에 초록 ProgressBar를 추가하면 차지 예정 마나가 부드럽게 증가/감소한다.
+	// (hold) 초록 ProgressBar를 추가하면 차지 예정 마나가 부드럽게 증가/감소
 	UPROPERTY(meta=(BindWidgetOptional))
 	TObjectPtr<class UProgressBar> MPChargeBar;
+
+	// (시연용) 바인딩된 캐릭터의 Appearance 인덱스에 맞춰 자동으로 교체
+	UPROPERTY(meta=(BindWidgetOptional))
+	TObjectPtr<UImage> ProfileImage;
 	
 	void BindStatusComp(UStatusComponent* InStatComp);
 	
@@ -61,11 +65,19 @@ private:
 		float PreviewManaCost
 	);
 
+	void RefreshProfileImage();
+
 	UPROPERTY()
 	TObjectPtr<UStatusComponent> BoundStatusComp;
 
 	UPROPERTY()
 	TObjectPtr<UWeaponComponent> BoundWeaponComp;
+
+	UPROPERTY()
+	TObjectPtr<ADefenseCharacter> BoundCharacter;
+
+	UPROPERTY()
+	TObjectPtr<UTexture2D> AppliedProfileTexture;
 
 	EWeaponChargeStage CachedChargeStage = EWeaponChargeStage::None;
 	float CachedChargeRatio = 0.f;
