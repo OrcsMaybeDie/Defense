@@ -8,6 +8,7 @@
 
 class ADefenseCharacter;
 class ADefensePlayerController;
+class ABackgroundMusicActor;
 class ADestructibleSetPieceActor;
 class AEnemyAttackBoss;
 class AEnemySpawner;
@@ -47,10 +48,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cinematic")
 	TObjectPtr<ULevelSequence> CinematicSequence;
 
-	/** Blend time from the last sequence camera back to the local player's gameplay camera. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cinematic|Camera", meta = (ClampMin = "0.0", UIMin = "0.0", Units = "s"))
-	float CameraBlendDuration = 0.5f;
-
 	/** Must match the sequence playback length used for authoritative server completion. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cinematic", meta = (ClampMin = "0.01", UIMin = "0.01", Units = "s"))
 	float ServerCinematicDuration = 5.0f;
@@ -69,6 +66,10 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cinematic|Spawning")
 	bool bPauseEnemySpawners = true;
+
+	/** If true, stop the local background music during the cinematic and restart it afterward. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cinematic|Audio")
+	bool bStopBackgroundMusicDuringCinematic = true;
 
 	/** Placed spawners to pause; assign them directly in the level. */
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Cinematic|Spawning", meta = (EditCondition = "bPauseEnemySpawners"))
@@ -108,8 +109,7 @@ private:
 	void HandleLocalSequenceStopped();
 
 	void StartLocalPlayback();
-	void FinishLocalPlayback();
-	void ConfigureLocalCameraBlendOut(ULevelSequence* Sequence) const;
+	void FinishLocalPlayback(bool bRestartBackgroundMusic = true);
 	void RefreshHiddenPlayerVisuals();
 	void SetEnemySpawnersPaused(bool bPaused);
 
@@ -126,13 +126,13 @@ private:
 	TObjectPtr<ULevelSequencePlayer> LocalSequencePlayer;
 
 	UPROPERTY(Transient)
-	TObjectPtr<ULevelSequence> LocalPlaybackSequence;
-
-	UPROPERTY(Transient)
 	TObjectPtr<ALevelSequenceActor> LocalSequenceActor;
 
 	UPROPERTY(Transient)
 	TObjectPtr<ADefensePlayerController> LocalCinematicPlayerController;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ABackgroundMusicActor> LocalBackgroundMusicActor;
 
 	TSet<TWeakObjectPtr<ADefenseCharacter>> LocallyHiddenPlayers;
 	FTimerHandle DestructionTimerHandle;
@@ -140,4 +140,5 @@ private:
 	FTimerHandle LocalStartRetryTimerHandle;
 	FTimerHandle PlayerVisibilityRefreshTimerHandle;
 	bool bLocalPlaybackActive = false;
+	bool bLocalBackgroundMusicStopped = false;
 };

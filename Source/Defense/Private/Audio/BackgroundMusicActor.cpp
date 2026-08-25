@@ -47,24 +47,50 @@ void ABackgroundMusicActor::BeginPlay()
 		return;
 	}
 
-	BoundGameState = GetWorld() ? GetWorld()->GetGameState<ADefenseGameState>() : nullptr;
-	if (BoundGameState)
+	TryBindGameState();
+	if (!BoundGameState)
 	{
-		BoundGameState->OnGameClearChanged.AddUniqueDynamic(this, &ABackgroundMusicActor::HandleGameClearChanged);
-
-		// 늦게 참가했거나 복제가 먼저 완료된 경우에도 현재 결과를 즉시 반영합니다.
-		HandleGameClearChanged(BoundGameState->IsGameClear());
+		GetWorldTimerManager().SetTimer(
+			BindGameStateTimerHandle,
+			this,
+			&ABackgroundMusicActor::TryBindGameState,
+			0.1f,
+			true
+		);
 	}
 }
 
 void ABackgroundMusicActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	GetWorldTimerManager().ClearTimer(BindGameStateTimerHandle);
+
 	if (BoundGameState)
 	{
 		BoundGameState->OnGameClearChanged.RemoveDynamic(this, &ABackgroundMusicActor::HandleGameClearChanged);
 	}
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void ABackgroundMusicActor::TryBindGameState()
+{
+	if (BoundGameState)
+	{
+		GetWorldTimerManager().ClearTimer(BindGameStateTimerHandle);
+		return;
+	}
+
+	BoundGameState = GetWorld() ? GetWorld()->GetGameState<ADefenseGameState>() : nullptr;
+	if (!BoundGameState)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(BindGameStateTimerHandle);
+	BoundGameState->OnGameClearChanged.AddUniqueDynamic(this, &ABackgroundMusicActor::HandleGameClearChanged);
+
+	// 늦게 참가했거나 복제가 먼저 완료된 경우에도 현재 결과를 즉시 반영합니다.
+	HandleGameClearChanged(BoundGameState->IsGameClear());
 }
 
 void ABackgroundMusicActor::PlayDefaultMusic()

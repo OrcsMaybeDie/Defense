@@ -187,6 +187,10 @@ public:
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Portal")
 	bool bEnteringPortal = false;
 
+	/** Maximum time an enemy may remain in portal transit before server-side forced cleanup. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Failsafe", meta=(ClampMin="0.1", Units="s"))
+	float PortalEntryFailsafeTimeout = 5.f;
+
 	bool TryBeginPortalEntry(
 		class APortal* Portal,
 		const FVector& ExitLocation,
@@ -248,6 +252,10 @@ public:
 	bool bDeathHandled = false;
 	bool bDeathTaskStarted = false;
 	EEnemyPendingDeathType PendingDeathType = EEnemyPendingDeathType::None;
+
+	/** Allows the normal death task to finish, then removes enemies whose death transition is stuck. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Failsafe", meta=(ClampMin="0.1", Units="s"))
+	float DeathFailsafeTimeout = 8.f;
 	
 	// 플레이어가 한 공격 받기
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
@@ -355,6 +363,8 @@ private:
 	ECollisionEnabled::Type MeshCollisionEnabledBeforePortal = ECollisionEnabled::NoCollision;
 	float LastDeathRetryTime = -BIG_NUMBER;
 	static constexpr float DeathRetryInterval = 0.25f;
+	FTimerHandle DeathFailsafeTimerHandle;
+	FTimerHandle PortalEntryFailsafeTimerHandle;
 
 	void EnterStoneVisual();
 	void ExitStoneVisual(bool bResumeMontage, bool bWaitForMovement);
@@ -372,6 +382,13 @@ private:
 	void ApplyPortalCollisionState();
 	void RestorePortalCollisionState();
 	void ResetPortalEntryState();
+	void StartDeathFailsafeTimer();
+	void ClearDeathFailsafeTimer();
+	void HandleDeathFailsafeTimeout();
+	void StartPortalEntryFailsafeTimer();
+	void ClearPortalEntryFailsafeTimer();
+	void HandlePortalEntryFailsafeTimeout();
+	void ForceReturnToPoolFromFailsafe(bool bReachedDestination);
 	void ApplyEnemyCollisionPolicy();
 	void UpdateRewardPopup(float DeltaTime);
 	void ResetRewardPopup();
