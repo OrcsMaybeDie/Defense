@@ -11,6 +11,7 @@
 #include "Characters/Enemy/AI/EnemyController.h"
 #include "Characters/Enemy/Data/EnemyData.h"
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
+#include "Characters/Enemy/EnemySpawner.h"
 #include "Characters/Player/DefenseCharacter.h"
 #include "Characters/Player/DefensePlayerController.h"
 #include "Characters/Player/DefensePlayerState.h"
@@ -180,6 +181,8 @@ void AEnemyBase::ApplyEnemyCollisionPolicy()
 
 void AEnemyBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ClearDeathFailsafeTimer();
+	ClearPortalEntryFailsafeTimer();
 	ClearBurnTimers();
 	ClearDamageOutline();
 	ClearElectricHit();
@@ -329,6 +332,7 @@ void AEnemyBase::EndStoneGameplay()
 
 void AEnemyBase::ResetStoneStateForPool()
 {
+	ClearDeathFailsafeTimer();
 	bDeathHandled = false;
 	bDeathTaskStarted = false;
 	PendingDeathType = EEnemyPendingDeathType::None;
@@ -602,6 +606,7 @@ void AEnemyBase::SetCombat()
 
 void AEnemyBase::SetInactive()
 {
+	ClearDeathFailsafeTimer();
 	ResetPortalEntryState();
 	ResetRewardPopup();
 	ClearDamageOutline();
@@ -739,6 +744,7 @@ bool AEnemyBase::TryBeginPortalEntry(
 		FMath::Max(PortalHalfWidth, 1.f),
 		FMath::Max(PortalHalfHeight, 1.f)
 	);
+	StartPortalEntryFailsafeTimer();
 
 	return true;
 }
@@ -752,6 +758,7 @@ bool AEnemyBase::FinishPortalEntry(const APortal* Portal)
 
 	bEnteringPortal = false;
 	EnteringPortal = nullptr;
+	ClearPortalEntryFailsafeTimer();
 	RestorePortalCollisionState();
 	return true;
 }
@@ -899,10 +906,151 @@ void AEnemyBase::RestorePortalCollisionState()
 
 void AEnemyBase::ResetPortalEntryState()
 {
+	ClearPortalEntryFailsafeTimer();
 	bEnteringPortal = false;
 	EnteringPortal = nullptr;
 	RestorePortalCollisionState();
 	ResetPortalClipVisual();
+}
+
+void AEnemyBase::StartDeathFailsafeTimer()
+{
+	if (!HasAuthority() || DeathFailsafeTimeout <= 0.f)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(DeathFailsafeTimerHandle);
+	GetWorldTimerManager().SetTimer(
+		DeathFailsafeTimerHandle,
+		this,
+		&AEnemyBase::HandleDeathFailsafeTimeout,
+		DeathFailsafeTimeout,
+		false
+	);
+}
+
+void AEnemyBase::ClearDeathFailsafeTimer()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(DeathFailsafeTimerHandle);
+	}
+}
+
+void AEnemyBase::HandleDeathFailsafeTimeout()
+{
+	if (!HasAuthority() || !bDeathHandled || EnemyMode != EEnemyMode::Combat)
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Enemy death failsafe forced cleanup | Enemy=%s State=%s"),
+		*GetNameSafe(this),
+		LexToString(EnemyState));
+
+	ForceReturnToPoolFromFailsafe(false);
+}
+
+void AEnemyBase::StartPortalEntryFailsafeTimer()
+{
+	if (!HasAuthority() || PortalEntryFailsafeTimeout <= 0.f)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(PortalEntryFailsafeTimerHandle);
+	GetWorldTimerManager().SetTimer(
+		PortalEntryFailsafeTimerHandle,
+		this,
+		&AEnemyBase::HandlePortalEntryFailsafeTimeout,
+		PortalEntryFailsafeTimeout,
+		false
+	);
+}
+
+void AEnemyBase::ClearPortalEntryFailsafeTimer()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(PortalEntryFailsafeTimerHandle);
+	}
+}
+
+void AEnemyBase::HandlePortalEntryFailsafeTimeout()
+{
+	if (!HasAuthority()
+		|| !bEnteringPortal
+		|| (EnemyMode != EEnemyMode::Combat && EnemyMode != EEnemyMode::Preview))
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Enemy portal-entry failsafe forced cleanup | Enemy=%s Mode=%s Location=%s"),
+		*GetNameSafe(this),
+		LexToString(EnemyMode),
+		*GetActorLocation().ToString());
+
+	ResetPortalEntryState();
+	ForceReturnToPoolFromFailsafe(true);
+}
+
+void AEnemyBase::ForceReturnToPoolFromFailsafe(const bool bReachedDestination)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (!EnemyController)
+	{
+		EnemyController = Cast<AEnemyController>(GetController());
+	}
+	if (EnemyController)
+	{
+		EnemyController->StopMovement();
+	}
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->StopMovementImmediately();
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const bool bWasCombatEnemy = EnemyMode == EEnemyMode::Combat;
+	if (bWasCombatEnemy)
+	{
+		ADefenseGameMode* AuthGameMode = World->GetAuthGameMode<ADefenseGameMode>();
+		if (AuthGameMode)
+		{
+			GameMode = AuthGameMode;
+			AuthGameMode->NotifyEnemyRemoved(
+				this,
+				bReachedDestination ? EEnemyRemoveReason::ReachedDestination : EEnemyRemoveReason::Killed
+			);
+		}
+		else if (OwningSpawner)
+		{
+			OwningSpawner->RemoveActiveEnemy(this);
+		}
+	}
+	else if (OwningSpawner)
+	{
+		OwningSpawner->RemoveActiveEnemy(this);
+	}
+
+	if (UEnemyPoolSubsystem* EnemyPool = World->GetSubsystem<UEnemyPoolSubsystem>())
+	{
+		EnemyPool->ReturnToPool(this);
+	}
+	else
+	{
+		SetEnemyMode(EEnemyMode::Inactive);
+	}
 }
 
 // Gameplay Tag 이벤트 보내기
@@ -1447,6 +1595,19 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 			? EEnemyPendingDeathType::Stone
 			: EEnemyPendingDeathType::Normal;
 		LastDeathRetryTime = -BIG_NUMBER;
+		if (!EnemyController)
+		{
+			EnemyController = Cast<AEnemyController>(GetController());
+		}
+		if (EnemyController)
+		{
+			EnemyController->StopMovement();
+		}
+		if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+		{
+			MovementComponent->StopMovementImmediately();
+		}
+		StartDeathFailsafeTimer();
 		if (GameMode)
 		{
 			if (ADefensePlayerState* KillerPlayerState = GameMode->HandleEnemyKilled(this, DamageCauser, EventInstigator))

@@ -6,6 +6,7 @@
 
 class AFractureDoorDebris;
 class USceneComponent;
+class USoundBase;
 
 /**
  * A barricade that plays a cosmetic hit shake and replaces itself with
@@ -34,6 +35,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Fracture Door|Fracture")
 	TSubclassOf<AFractureDoorDebris> FractureDebrisClass;
 
+	/** Spatial sound played for every client when the door is destroyed. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Fracture Door|Audio")
+	TObjectPtr<USoundBase> DestructionSound;
+
+	/** Spatial sound played when the door takes non-lethal damage. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Fracture Door|Audio")
+	TObjectPtr<USoundBase> HitSound;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Fracture Door|Hit Shake", meta=(ClampMin="0.01", Units="s"))
 	float HitShakeDuration = 0.25f;
 
@@ -51,6 +60,9 @@ protected:
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlayHitShake();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayDestructionSound();
 
 private:
 	FTransform DoorVisualRestTransform = FTransform::Identity;

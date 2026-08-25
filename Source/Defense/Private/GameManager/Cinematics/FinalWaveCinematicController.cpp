@@ -2,6 +2,7 @@
 
 #include "GameManager/Cinematics/FinalWaveCinematicController.h"
 
+#include "Audio/BackgroundMusicActor.h"
 #include "Characters/Enemy/EnemyAttackBoss.h"
 #include "Characters/Enemy/EnemySpawner.h"
 #include "Characters/Player/DefenseCharacter.h"
@@ -35,7 +36,7 @@ void AFinalWaveCinematicController::EndPlay(const EEndPlayReason::Type EndPlayRe
 	GetWorldTimerManager().ClearTimer(DestructionTimerHandle);
 	GetWorldTimerManager().ClearTimer(FinishTimerHandle);
 	GetWorldTimerManager().ClearTimer(LocalStartRetryTimerHandle);
-	FinishLocalPlayback();
+	FinishLocalPlayback(false);
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -268,18 +269,30 @@ void AFinalWaveCinematicController::StartLocalPlayback()
 		);
 	}
 
+	if (bStopBackgroundMusicDuringCinematic)
+	{
+		LocalBackgroundMusicActor = Cast<ABackgroundMusicActor>(
+			UGameplayStatics::GetActorOfClass(this, ABackgroundMusicActor::StaticClass()));
+		if (LocalBackgroundMusicActor)
+		{
+			LocalBackgroundMusicActor->StopMusic();
+			bLocalBackgroundMusicStopped = true;
+		}
+	}
+
 	LocalSequencePlayer->Play();
 	OnLocalCinematicStarted();
 }
 
-void AFinalWaveCinematicController::FinishLocalPlayback()
+void AFinalWaveCinematicController::FinishLocalPlayback(const bool bRestartBackgroundMusic)
 {
 	if (!bLocalPlaybackActive
 		&& !LocalSequencePlayer
 		&& !LocalPlaybackSequence
 		&& !LocalSequenceActor
 		&& !LocalCinematicPlayerController
-		&& LocallyHiddenPlayers.Num() == 0)
+		&& LocallyHiddenPlayers.Num() == 0
+		&& !bLocalBackgroundMusicStopped)
 	{
 		return;
 	}
@@ -318,6 +331,17 @@ void AFinalWaveCinematicController::FinishLocalPlayback()
 		}
 	}
 	LocallyHiddenPlayers.Empty();
+
+	if (bLocalBackgroundMusicStopped)
+	{
+		if (bRestartBackgroundMusic && LocalBackgroundMusicActor)
+		{
+			LocalBackgroundMusicActor->PlayDefaultMusic();
+		}
+
+		bLocalBackgroundMusicStopped = false;
+		LocalBackgroundMusicActor = nullptr;
+	}
 
 	OnLocalCinematicFinished();
 }

@@ -55,6 +55,7 @@ void AFractureDoor::HandleDamageApplied(const float AppliedDamage, AActor* Damag
 void AFractureDoor::HandleHPDepleted(AActor* DamageCauser)
 {
 	RestoreDoorVisual();
+	Multicast_PlayDestructionSound();
 
 	if (UWorld* World = GetWorld(); HasAuthority() && FractureDebrisClass && World)
 	{
@@ -85,13 +86,33 @@ void AFractureDoor::HandleHPDepleted(AActor* DamageCauser)
 
 void AFractureDoor::Multicast_PlayHitShake_Implementation()
 {
-	if (IsRunningDedicatedServer() || !DoorVisualRoot)
+	if (IsRunningDedicatedServer())
+	{
+		return;
+	}
+
+	if (HitSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation());
+	}
+
+	if (!DoorVisualRoot)
 	{
 		return;
 	}
 
 	HitShakeElapsed = 0.0f;
 	bHitShakeActive = true;
+}
+
+void AFractureDoor::Multicast_PlayDestructionSound_Implementation()
+{
+	if (IsRunningDedicatedServer() || !DestructionSound)
+	{
+		return;
+	}
+
+	UGameplayStatics::PlaySoundAtLocation(this, DestructionSound, GetActorLocation());
 }
 
 void AFractureDoor::UpdateHitShake(const float DeltaTime)
