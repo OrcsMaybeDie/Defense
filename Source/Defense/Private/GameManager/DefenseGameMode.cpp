@@ -347,7 +347,7 @@ void ADefenseGameMode::GameEnd()
 	
 	// 모든 플레이어 레디 초기화
 	ResetAllPlayersReady();
-	
+
 	bPendingGameClear = !AreAllActivePlayersDead()
 		&& DefenseGameState->DestScore > 0
 		&& CurrentWave >= MaxWave;
@@ -359,11 +359,10 @@ void ADefenseGameMode::GameEnd()
 		{
 			PC->ClientRPC_EnterGameEndState();
 
-			// TODO: 플레이어 게임 종료 모션 함수 구현 완료 후 이 위치에서 호출
-			// if (ADefenseCharacter* Character = Cast<ADefenseCharacter>(PC->GetPawn()))
-			// {
-			// 	Character->PlayGameEndMotion(bPendingGameClear);
-			// }
+			if (ADefenseCharacter* Character = Cast<ADefenseCharacter>(PC->GetPawn()))
+			{
+				Character->PlayGameEndMotion(bPendingGameClear);
+			}
 		}
 	}
 
@@ -395,7 +394,17 @@ void ADefenseGameMode::ShowGameEndUI()
 	{
 		if (ADefensePlayerController* PC = Cast<ADefensePlayerController>(It->Get()))
 		{
-			PC->ClientRPC_ShowGameEndUI(bPendingGameClear);
+			ADefensePlayerState* PlayerState = PC->GetPlayerState<ADefensePlayerState>();
+			TArray<FMissionCompletionResult> Results;
+
+			if (MissionRunTrackerComponent && PlayerState)
+			{
+				Results = MissionRunTrackerComponent->CollectMissionResults(
+					PlayerState,
+					bPendingGameClear);
+			}
+
+			PC->ClientRPC_ShowGameEndUI(bPendingGameClear, Results);
 		}
 	}
 }

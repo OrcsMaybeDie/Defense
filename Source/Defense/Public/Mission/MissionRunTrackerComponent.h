@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
+#include "Mission/MissionCompletionResult.h"
 #include "MissionRunTrackerComponent.generated.h"
 
 class ADefensePlayerState;
@@ -35,6 +36,9 @@ public:
 
 	void RecordEnemyKill(ADefensePlayerState* KillerPlayerState, const FGameplayTagContainer& EnemyTags);
 
+	// 정상 클리어 시 해당 플레이어에게 전달할 미션 달성 결과 수집
+	TArray<FMissionCompletionResult> CollectMissionResults(ADefensePlayerState* PlayerState, bool bGameClear) const;
+
 private:
 
 	UPROPERTY(Transient)
@@ -44,6 +48,6 @@ private:
 
 	FPlayerMissionProgress PartyProgress;
 
-	// 게임이 실제 시작된 시각 기록 (Player 입장/준비 시간 제외)
-	double RunStartTimeSeconds = 0.0;
+	// 게임이 실제 시작된 시각 기록 (Player 입장/준비 시간 제외) - 시작되지 않은 상태
+	double RunStartTimeSeconds = -1.0;
 };

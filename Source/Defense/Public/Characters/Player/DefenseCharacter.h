@@ -13,6 +13,7 @@ class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
 class UAnimMontage; // Death
+class UAnimSequenceBase;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -85,6 +86,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Anim")
 	TObjectPtr<UAnimMontage> DeathMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Anim")
+	TObjectPtr<UAnimSequenceBase> GameClearAnimation;
 	
 public:
 	/** Constructor */
@@ -127,21 +131,22 @@ public:
 	virtual void DoJumpEnd();
 	
 	UFUNCTION(BlueprintCallable, Category="Input")
-	void HandleLClick();
+	void HandleFireStarted();
 
 	UFUNCTION(BlueprintCallable, Category="Input")
-	void HandleLClickTriggered();
+	void HandleFireTriggered();
 
 	UFUNCTION(BlueprintCallable, Category="Input")
-	void HandleRClick();
+	void HandleChargeStarted();
 
 	UFUNCTION(BlueprintCallable, Category="Input")
-	void FireWeapon();
-	
+	void HandleChargeCompleted();
+
 	UFUNCTION(BlueprintCallable, Category="Input")
-	void Attack();	
+	void HandleChargeCanceled();
+
 	UFUNCTION(BlueprintCallable, Category="Input")
-	void AltAttack();
+	void CancelWeaponCharge();
 
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void SellTrap();
@@ -160,20 +165,37 @@ public:
 	// test
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 	
-	UFUNCTION(BlueprintImplementableEvent, Category="Weapon")
-	void OnAttackAccepted(EWeaponAttackType AttackType);
+	// 애니메이션, 카메라, 사운드 등 캐릭터 쪽 표현을 Blueprint에서 연결한다.
+	UFUNCTION(BlueprintImplementableEvent, Category="Weapon|Presentation")
+	void OnWeaponAction(
+		EWeaponActionType ActionType,
+		EWeaponActionPhase Phase,
+		EWeaponChargeStage ChargeStage,
+		float ChargeRatio
+	);
 
 	UPROPERTY(BlueprintReadOnly, Category="Weapon")
 	float TimeSinceFiredWeapon = 999.f;
 
 	UFUNCTION(BlueprintCallable, Category="Weapon")
-	void NotifyFireWeapon();
+	void NotifyWeaponFired();
+
+	// 서버에서 확정된 게임 결과 모션을 모든 클라이언트에 재생
+	void PlayGameEndMotion(bool bGameClear);
+
+	/** Stage 공격의 후딜 동안 캐릭터 행동 입력을 잠근다. 카메라 조작은 유지한다. */
+	void SetWeaponMovementLocked(bool bLocked);
+	bool IsWeaponMovementLocked() const { return bWeaponMovementLocked; }
 
 	/** Hides only this machine's character and locally spawned weapon visuals. */
 	UFUNCTION(BlueprintCallable, Category="Cinematic")
 	void SetCinematicVisualHidden(bool bShouldHide);
 
 private:
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRPC_PlayGameEndMotion(bool bGameClear);
+
+	bool bWeaponMovementLocked = false;
 	bool bCinematicVisualHidden = false;
 	bool bMeshWasHiddenBeforeCinematic = false;
 };

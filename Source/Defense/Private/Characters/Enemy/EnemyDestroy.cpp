@@ -246,8 +246,10 @@ void AEnemyDestroy::DestroyTargetTrap()
 			continue;
 		}
 
-		// TrapBase 무력화 함수가 추가되면 여기에서 TargetTrap에 호출한다.
-		TargetTrap->Destroy();
+		if (ATrapBase* Trap = Cast<ATrapBase>(TargetTrap))
+		{
+			Trap->DestroyByEnemy();
+		}
 	}
 
 	TargetTraps.Empty();

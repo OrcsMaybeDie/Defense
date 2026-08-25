@@ -12,5 +12,8 @@ struct DEFENSE_API FMissionCompletionResult
 	FName MissionId = NAME_None;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Mission")
+	FText DisplayName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Mission")
 	int32 SealReward = 0;
 };

@@ -102,7 +102,7 @@ public:
 	bool IsMissionCompleted(FName MissionId) const;
 
 	UFUNCTION(BlueprintCallable, Category = "Profile|Mission")
-	bool ApplyMissionCompletions(const TArray<FMissionCompletionResult>& Results);
+	bool ApplyMissionCompletions(const TArray<FMissionCompletionResult>& Results, TArray<FMissionCompletionResult>& OutNewlyCompletedResults);
 
 	UPROPERTY(BlueprintAssignable, Category = "Profile|Mission")
 	FOnMissionCompleted OnMissionCompleted;
