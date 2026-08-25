@@ -109,8 +109,14 @@ void ABarricadeTrap::HandleDamageApplied(const float, AActor*)
 {
 }
 
-void ABarricadeTrap::HandleHPDepleted(AActor*)
+void ABarricadeTrap::HandleHPDepleted(AActor* DamageCauser)
 {
+	if (DamageCauser && DamageCauser->IsA<AEnemyBase>())
+	{
+		DestroyByEnemy();
+		return;
+	}
+
 	Destroy();
 }
 

@@ -23,6 +23,7 @@
 #include "UI/EquipmentUI/EquipmentMenuWidget.h"
 #include "UI/GameEndUI.h"
 #include "UI/ESCUI.h"
+#include "UI/WeaponCrosshairWidget.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
 namespace
@@ -93,10 +94,30 @@ void ADefensePlayerController::BeginPlay()
 			}
 		}
 	}
+
+	// Crosshair
+	if (IsLocalPlayerController())
+	{
+		CrosshairWidget = CreateWidget<UWeaponCrosshairWidget>(
+			this,
+			UWeaponCrosshairWidget::StaticClass()
+		);
+		if (CrosshairWidget)
+		{
+			CrosshairWidget->ClearFlags(RF_Transactional);
+			CrosshairWidget->AddToPlayerScreen(10);
+		}
+	}
 }
 
 void ADefensePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (CrosshairWidget)
+	{
+		CrosshairWidget->RemoveFromParent();
+		CrosshairWidget = nullptr;
+	}
+
 	if (HUDWidget)
 	{
 		HUDWidget->RemoveFromParent();

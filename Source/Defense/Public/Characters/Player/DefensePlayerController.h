@@ -11,6 +11,7 @@
 class UEquipmentMenuWidget;
 class UInputMappingContext;
 class UUserWidget;
+class UWeaponCrosshairWidget;
 
 /**
  *  Basic PlayerController class for a third person game
@@ -77,7 +78,7 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerRPC_SubmitClientIdentity(const FString& ClientIdentity);
-	
+
 	// UI
 	UPROPERTY(EditDefaultsOnly, Category="UI")
 	TSubclassOf<UUserWidget> HUDWidgetClass;
@@ -87,6 +88,9 @@ protected:
 
 	bool bCinematicHUDHidden = false;
 	ESlateVisibility HUDVisibilityBeforeCinematic = ESlateVisibility::Visible;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UWeaponCrosshairWidget> CrosshairWidget;
 
 	UPROPERTY(EditDefaultsOnly, Category="UI")
 	TSubclassOf<class UESCUI> ESCUIClass;

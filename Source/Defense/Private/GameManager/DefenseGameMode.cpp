@@ -359,11 +359,10 @@ void ADefenseGameMode::GameEnd()
 		{
 			PC->ClientRPC_EnterGameEndState();
 
-			// TODO: 플레이어 게임 종료 모션 함수 구현 완료 후 이 위치에서 호출
-			// if (ADefenseCharacter* Character = Cast<ADefenseCharacter>(PC->GetPawn()))
-			// {
-			// 	Character->PlayGameEndMotion(bPendingGameClear);
-			// }
+			if (ADefenseCharacter* Character = Cast<ADefenseCharacter>(PC->GetPawn()))
+			{
+				Character->PlayGameEndMotion(bPendingGameClear);
+			}
 		}
 	}
 

@@ -18,6 +18,7 @@
 #include "Traps/BuildComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
+#include "Animation/AnimSequenceBase.h"
 #include "GameManager/DefenseGameMode.h"
 
 ADefenseCharacter::ADefenseCharacter ()
@@ -112,6 +113,7 @@ void ADefenseCharacter::Tick(float DeltaSeconds)
 	const bool bShouldFaceControlYaw =
 		StatusComp
 		&& StatusComp->IsAlive()
+		&& !bWeaponMovementLocked
 		&& (bHasMoveInput || bRecentlyAttacked);
 	
 	// 이동 및 공격 회전은 CharacterMovement가 담당
@@ -125,8 +127,8 @@ void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
 		
 		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ADefenseCharacter::DoJumpStart);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ADefenseCharacter::DoJumpEnd);
 
 		// Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ADefenseCharacter::Move);
@@ -135,11 +137,12 @@ void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ADefenseCharacter::Look);
 		
-		EnhancedInputComponent->BindAction(IA_LClick, ETriggerEvent::Started, this, &ADefenseCharacter::HandleLClick);
-		EnhancedInputComponent->BindAction(IA_LClick, ETriggerEvent::Triggered, this, &ADefenseCharacter::HandleLClickTriggered);
+		EnhancedInputComponent->BindAction(IA_LClick, ETriggerEvent::Started, this, &ADefenseCharacter::HandleFireStarted);
+		EnhancedInputComponent->BindAction(IA_LClick, ETriggerEvent::Triggered, this, &ADefenseCharacter::HandleFireTriggered);
 
-		EnhancedInputComponent->BindAction(IA_RClick, ETriggerEvent::Started, this, &ADefenseCharacter::HandleRClick);
-		EnhancedInputComponent->BindAction(IA_RClick, ETriggerEvent::Triggered, this, &ADefenseCharacter::HandleRClick);
+		EnhancedInputComponent->BindAction(IA_RClick, ETriggerEvent::Started, this, &ADefenseCharacter::HandleChargeStarted);
+		EnhancedInputComponent->BindAction(IA_RClick, ETriggerEvent::Completed, this, &ADefenseCharacter::HandleChargeCompleted);
+		EnhancedInputComponent->BindAction(IA_RClick, ETriggerEvent::Canceled, this, &ADefenseCharacter::HandleChargeCanceled);
 
 		EnhancedInputComponent->BindAction(IA_Sell, ETriggerEvent::Started, this, &ADefenseCharacter::SellTrap);
 		
@@ -153,6 +156,8 @@ void ADefenseCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 
 void ADefenseCharacter::Move(const FInputActionValue& Value)
 {
+	if (bWeaponMovementLocked) return;
+
 	// input is a Vector2D
 	FVector2D MovementVector = Value.Get<FVector2D>();
 
@@ -171,7 +176,7 @@ void ADefenseCharacter::Look(const FInputActionValue& Value)
 
 void ADefenseCharacter::SelectLoadoutIdx(const FInputActionValue& Value)
 {
-	if (!StatusComp->IsAlive()) return;
+	if (!StatusComp->IsAlive() || bWeaponMovementLocked) return;
 
 	const float RawInputValue = Value.Get<float>();
 	const int32 SlotNumber = FMath::RoundToInt(RawInputValue);
@@ -192,7 +197,7 @@ void ADefenseCharacter::SelectLoadoutIdx(const FInputActionValue& Value)
 
 void ADefenseCharacter::DoMove(float Right, float Forward)
 {
-	if (!StatusComp->IsAlive()) return;
+	if (!StatusComp->IsAlive() || bWeaponMovementLocked) return;
 
 	if (GetController() != nullptr)
 	{
@@ -226,7 +231,7 @@ void ADefenseCharacter::DoLook(float Yaw, float Pitch)
 
 void ADefenseCharacter::DoJumpStart()
 {
-	if (!StatusComp->IsAlive()) return;
+	if (!StatusComp->IsAlive() || bWeaponMovementLocked) return;
 
 	// signal the character to jump
 	Jump();
@@ -238,9 +243,9 @@ void ADefenseCharacter::DoJumpEnd()
 	StopJumping();
 }
 
-void ADefenseCharacter::HandleLClick()
+void ADefenseCharacter::HandleFireStarted()
 {
-	if (!StatusComp->IsAlive()) return;
+	if (!StatusComp->IsAlive() || bWeaponMovementLocked) return;
 
 	if (BuildComp && BuildComp->HasSelectedTrap())
 	{
@@ -248,40 +253,105 @@ void ADefenseCharacter::HandleLClick()
 		return;
 	}
 	
-	Attack();
-}
-
-void ADefenseCharacter::HandleLClickTriggered()
-{
-	if (BuildComp && BuildComp->HasSelectedTrap()) return;
-	Attack();
-}
-
-void ADefenseCharacter::HandleRClick()
-{
-	if (BuildComp && BuildComp->HasSelectedTrap()) return;
-
-	AltAttack();
-}
-
-void ADefenseCharacter::FireWeapon()
-{
-	Attack();
-}
-
-void ADefenseCharacter::Attack()
-{
-	if (!StatusComp->IsAlive()) return;
-
 	if (WeaponComp)
 	{
-		WeaponComp->Attack(EWeaponAttackType::Attack);
+		WeaponComp->RequestFire();
 	}
 }
 
-void ADefenseCharacter::NotifyFireWeapon()
+void ADefenseCharacter::HandleFireTriggered()
+{
+	if (bWeaponMovementLocked) return;
+	if (BuildComp && BuildComp->HasSelectedTrap()) return;
+
+	if (WeaponComp)
+	{
+		WeaponComp->RequestFire();
+	}
+}
+
+void ADefenseCharacter::HandleChargeStarted()
+{
+	if (!StatusComp->IsAlive() || bWeaponMovementLocked) return;
+	if (BuildComp && BuildComp->HasSelectedTrap()) return;
+
+	if (WeaponComp)
+	{
+		WeaponComp->BeginCharge();
+	}
+}
+
+void ADefenseCharacter::HandleChargeCompleted()
+{
+	if (WeaponComp)
+	{
+		WeaponComp->ReleaseCharge();
+	}
+}
+
+void ADefenseCharacter::HandleChargeCanceled()
+{
+	if (WeaponComp)
+	{
+		WeaponComp->CancelCharge();
+	}
+}
+
+void ADefenseCharacter::CancelWeaponCharge()
+{
+	if (WeaponComp)
+	{
+		WeaponComp->CancelCharge();
+	}
+}
+
+void ADefenseCharacter::NotifyWeaponFired()
 {
 	TimeSinceFiredWeapon = 0.f;
+}
+
+void ADefenseCharacter::PlayGameEndMotion(const bool bGameClear)
+{
+	if (!HasAuthority()) return;
+
+	MulticastRPC_PlayGameEndMotion(bGameClear);
+}
+
+void ADefenseCharacter::MulticastRPC_PlayGameEndMotion_Implementation(const bool bGameClear)
+{
+	if (IsRunningDedicatedServer()) return;
+
+	UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+	if (!AnimInstance) return;
+
+	if (bGameClear)
+	{
+		if (GameClearAnimation)
+		{
+			AnimInstance->PlaySlotAnimationAsDynamicMontage(GameClearAnimation, TEXT("DefaultSlot"));
+		}
+		return;
+	}
+
+	if (DeathMontage)
+	{
+		AnimInstance->Montage_Play(DeathMontage);
+	}
+}
+
+void ADefenseCharacter::SetWeaponMovementLocked(bool bLocked)
+{
+	if (bWeaponMovementLocked == bLocked) return;
+
+	bWeaponMovementLocked = bLocked;
+	if (bWeaponMovementLocked)
+	{
+		StopJumping();
+		if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+		{
+			MoveComp->StopMovementImmediately();
+		}
+	}
 }
 
 void ADefenseCharacter::SetCinematicVisualHidden(bool bShouldHide)
@@ -311,19 +381,9 @@ void ADefenseCharacter::SetCinematicVisualHidden(bool bShouldHide)
 	}
 }
 
-void ADefenseCharacter::AltAttack()
-{
-	if (!StatusComp->IsAlive()) return;
-
-	if (WeaponComp)
-	{
-		WeaponComp->Attack(EWeaponAttackType::AltAttack);
-	}
-}
-
 void ADefenseCharacter::SellTrap()
 {
-	if (!StatusComp->IsAlive()) return;
+	if (!StatusComp->IsAlive() || bWeaponMovementLocked) return;
 
 	if (BuildComp)
 	{
