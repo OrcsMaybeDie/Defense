@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "TimerManager.h"
 #include "BackgroundMusicActor.generated.h"
 
 class ADefenseGameState;
@@ -69,11 +70,15 @@ protected:
 	float ClearMusicVolume = 1.0f;
 
 private:
+	void TryBindGameState();
+
 	UFUNCTION()
 	void HandleGameClearChanged(bool bGameClear);
 
 	UPROPERTY()
 	TObjectPtr<ADefenseGameState> BoundGameState;
+
+	FTimerHandle BindGameStateTimerHandle;
 
 	bool bClearMusicPlayed = false;
 };
