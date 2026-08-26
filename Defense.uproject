@@ -50,6 +50,10 @@
 		{
 			"Name": "Effekseer",
 			"Enabled": true
+		},
+		{
+			"Name": "CascadeToNiagaraConverter",
+			"Enabled": true
 		}
 	]
 }

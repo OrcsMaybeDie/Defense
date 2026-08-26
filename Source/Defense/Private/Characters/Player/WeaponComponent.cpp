@@ -6,6 +6,7 @@
 #include "Defense.h"
 #include "Equipment/DefenseWeaponActor.h"
 #include "Equipment/LoadoutComponent.h"
+#include "Effects/StormTornadoVFXActor.h"
 #include "GameFramework/Controller.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
@@ -667,15 +668,16 @@ bool UWeaponComponent::TryExecuteServerFire(
 		return false;
 	}
 
+	EWeaponChargeStage ExecutedChargeStage = EWeaponChargeStage::None;
 	if (ActionType == EWeaponActionType::ChargedFire)
 	{
-		const EWeaponChargeStage ChargeStage = CalculateChargeStage(
+		ExecutedChargeStage = CalculateChargeStage(
 			WeaponData->ChargedFire,
 			ChargeRatio
 		);
 		if (const FWeaponChargeStageData* StageData = GetChargeStageData(
 			WeaponData->ChargedFire,
-			ChargeStage
+			ExecutedChargeStage
 		))
 		{
 			ApplyWeaponMovementLock(StageData->MovementLockDuration);
@@ -685,7 +687,11 @@ bool UWeaponComponent::TryExecuteServerFire(
 	CooldownMap.Add(WeaponData, CurrentTime + FMath::Max(0.f, ShotData.Cooldown));
 
 	MulticastRPC_PlayWeaponAction(ActionType, EWeaponActionPhase::Executed, ChargeRatio);
-	PerformHitscan(ShotData);
+	const FVector ShotTargetLocation = PerformHitscan(ShotData);
+	if (ExecutedChargeStage == EWeaponChargeStage::Stage3)
+	{
+		SpawnStage3StormTornado(ShotTargetLocation);
+	}
 	return true;
 }
 
@@ -987,14 +993,14 @@ void UWeaponComponent::HandleLifeStateChanged(EPlayerLifeState NewLifeState)
 	}
 }
 
-void UWeaponComponent::PerformHitscan(const FWeaponShotData& ShotData)
+FVector UWeaponComponent::PerformHitscan(const FWeaponShotData& ShotData)
 {
 	ADefenseCharacter* OwnerCharacter = GetOwnerCharacter();
-	if (!OwnerCharacter) return;
+	if (!OwnerCharacter) return FVector::ZeroVector;
 
 	AController* OwningController = OwnerCharacter->GetController();
 	UWorld* World = GetWorld();
-	if (!OwningController || !World) return;
+	if (!OwningController || !World) return OwnerCharacter->GetActorLocation();
 
 	FVector ViewLocation;
 	FRotator ViewRotation;
@@ -1020,10 +1026,11 @@ void UWeaponComponent::PerformHitscan(const FWeaponShotData& ShotData)
 		)
 		: World->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params);
 
-	if (!bHit) return;
+	const FVector ShotTargetLocation = bHit ? Hit.ImpactPoint : End;
+	if (!bHit) return ShotTargetLocation;
 
 	AActor* HitActor = Hit.GetActor();
-	if (!HitActor || Cast<ADefenseCharacter>(HitActor)) return;
+	if (!HitActor || Cast<ADefenseCharacter>(HitActor)) return ShotTargetLocation;
 
 	const float FinalDamage = FMath::Max(0.f, ShotData.Damage);
 	UGameplayStatics::ApplyDamage(
@@ -1032,5 +1039,45 @@ void UWeaponComponent::PerformHitscan(const FWeaponShotData& ShotData)
 		OwningController,
 		OwnerCharacter,
 		UDamageType::StaticClass()
+	);
+
+	return ShotTargetLocation;
+}
+
+void UWeaponComponent::SpawnStage3StormTornado(const FVector& ShotTargetLocation)
+{
+	UWorld* World = GetWorld();
+	ADefenseCharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!World || !OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	FVector SpawnLocation = ShotTargetLocation;
+	FHitResult GroundHit;
+	FCollisionQueryParams GroundParams(SCENE_QUERY_STAT(Stage3StormGround), false, OwnerCharacter);
+	GroundParams.AddIgnoredActor(OwnerCharacter);
+	const FVector GroundTraceStart = ShotTargetLocation + FVector(0.f, 0.f, 500.f);
+	const FVector GroundTraceEnd = ShotTargetLocation - FVector(0.f, 0.f, 2500.f);
+	if (World->LineTraceSingleByChannel(
+		GroundHit,
+		GroundTraceStart,
+		GroundTraceEnd,
+		ECC_Visibility,
+		GroundParams
+	))
+	{
+		SpawnLocation = GroundHit.ImpactPoint + GroundHit.ImpactNormal * 4.f;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = OwnerCharacter;
+	SpawnParams.Instigator = OwnerCharacter;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	World->SpawnActor<AStormTornadoVFXActor>(
+		AStormTornadoVFXActor::StaticClass(),
+		SpawnLocation,
+		FRotator::ZeroRotator,
+		SpawnParams
 	);
 }
