@@ -144,7 +144,8 @@ protected:
 	void PlayFireAnimation(ADefenseCharacter* OwnerCharacter, const FWeaponFireData& FireData);
 	void ApplyWeaponMovementLock(float Duration);
 	void ClearWeaponMovementLock();
-	void PerformHitscan(const FWeaponShotData& ShotData);
+	FVector PerformHitscan(const FWeaponShotData& ShotData);
+	void SpawnStage3StormTornado(const FVector& ShotTargetLocation);
 
 	UFUNCTION()
 	void HandleSelectedEquipmentChanged(int32 SelectedSlotIdx, UEquipmentData* SelectedEquipment);

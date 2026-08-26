@@ -1,11 +1,13 @@
 #include "UI/WeaponCrosshairWidget.h"
 
+#include "Brushes/SlateColorBrush.h"
 #include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Player/DefenseCharacter.h"
 #include "Characters/Player/WeaponComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInterface.h"
 #include "Rendering/DrawElements.h"
+#include "Traps/BuildComponent.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
@@ -187,14 +189,38 @@ int32 UWeaponCrosshairWidget::NativePaint(
 		bParentEnabled
 	);
 
-	// 트랩 선택 중이거나 무기가 없는 상태에서는 전투용 크로스헤어를 숨긴다.
-	if (!OwningCharacter || !WeaponComponent || !WeaponComponent->HasEquippedWeapon())
+	if (!OwningCharacter)
 	{
 		return BaseLayer;
 	}
 
 	const FVector2f LocalSize(AllottedGeometry.GetLocalSize());
 	const FVector2f Center = LocalSize * 0.5f;
+
+	// 무기 Crosshair 렌더는 아래의 기존 코드를 그대로 사용한다.
+	if (!WeaponComponent || !WeaponComponent->HasEquippedWeapon())
+	{
+		const UBuildComponent* CurrentBuildComponent = OwningCharacter->FindComponentByClass<UBuildComponent>();
+		if (CurrentBuildComponent && CurrentBuildComponent->HasSelectedTrap())
+		{
+			constexpr float TrapModeDotSize = 3.f;
+			const FVector2D DotSize(TrapModeDotSize, TrapModeDotSize);
+			const FVector2D DotPosition = FVector2D(Center.X, Center.Y) - DotSize * 0.5f;
+			const FSlateColorBrush DotBrush(IdleColor);
+			FSlateDrawElement::MakeBox(
+				OutDrawElements,
+				BaseLayer + 1,
+				AllottedGeometry.ToPaintGeometry(DotSize, FSlateLayoutTransform(DotPosition)),
+				&DotBrush,
+				ESlateDrawEffect::None,
+				FLinearColor::White
+			);
+			return BaseLayer + 1;
+		}
+
+		return BaseLayer;
+	}
+
 	const float FireAge = OwningCharacter->TimeSinceFiredWeapon;
 	const bool bAimFlash = AimFlashDuration > 0.f && FireAge < AimFlashDuration;
 	const bool bFireFeedback = FireFeedbackDuration > 0.f
