@@ -286,18 +286,31 @@ void ATrapBase::OnRep_RuntimeState()
 void ATrapBase::ApplyTrapCollision()
 {
 	SetActorEnableCollision(IsPlaced());
+	UMeshComponent* ActiveMesh = GetActiveTrapMeshComponent();
 
 	if (Mesh)
 	{
-		Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Mesh->SetCollisionObjectType(ECC_WorldDynamic);
 		Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 		Mesh->SetGenerateOverlapEvents(false);
+		Mesh->SetCollisionEnabled(
+			IsPlaced() && ActiveMesh == Mesh.Get()
+				? ECollisionEnabled::QueryOnly
+				: ECollisionEnabled::NoCollision
+		);
 	}
 	if (SkeletalMesh)
 	{
-		SkeletalMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		SkeletalMesh->SetCollisionObjectType(ECC_WorldDynamic);
 		SkeletalMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		SkeletalMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 		SkeletalMesh->SetGenerateOverlapEvents(false);
+		SkeletalMesh->SetCollisionEnabled(
+			IsPlaced() && ActiveMesh == SkeletalMesh.Get()
+				? ECollisionEnabled::QueryOnly
+				: ECollisionEnabled::NoCollision
+		);
 	}
 
 	if (DamageArea)
@@ -305,7 +318,6 @@ void ATrapBase::ApplyTrapCollision()
 		DamageArea->SetCollisionObjectType(ECC_WorldDynamic);
 		DamageArea->SetCollisionResponseToAllChannels(ECR_Ignore);
 		DamageArea->SetCollisionResponseToChannel(DefenseCollisionChannels::Enemy, ECR_Overlap);
-		DamageArea->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 		DamageArea->SetCollisionResponseToChannel(ECC_Pawn, ShouldBlockPawn() ? ECR_Block : ECR_Ignore);
 		DamageArea->SetGenerateOverlapEvents(IsPlaced());
 		DamageArea->SetCollisionEnabled(IsPlaced() ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);

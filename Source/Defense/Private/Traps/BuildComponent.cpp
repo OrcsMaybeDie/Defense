@@ -235,7 +235,7 @@ void UBuildComponent::BuildTrap()
 void UBuildComponent::SellTrap()
 {
 	FHitResult Hit;
-	ATrapBase* Trap = TraceBuildTarget(Hit) ? Cast<ATrapBase>(Hit.GetActor()) : nullptr;
+	ATrapBase* Trap = TraceSellTarget(Hit) ? Cast<ATrapBase>(Hit.GetActor()) : nullptr;
 	if (!Trap)
 	{
 		return;
@@ -278,11 +278,14 @@ bool UBuildComponent::TraceBuildTarget(FHitResult& OutHit) const
 	}
 
 	const FVector TraceEnd = ViewLocation + ViewRotation.Vector() * BuildTraceRange;
-	const bool bHit = World->LineTraceSingleByChannel(
+	FCollisionObjectQueryParams ObjectQueryParams;
+	ObjectQueryParams.AddObjectTypesToQuery(ECC_WorldStatic);
+
+	const bool bHit = World->LineTraceSingleByObjectType(
 		OutHit,
 		ViewLocation,
 		TraceEnd,
-		ECC_Visibility,
+		ObjectQueryParams,
 		Params
 	);
 
@@ -306,6 +309,37 @@ bool UBuildComponent::TraceBuildTarget(FHitResult& OutHit) const
 #endif
 
 	return bHit;
+}
+
+bool UBuildComponent::TraceSellTarget(FHitResult& OutHit) const
+{
+	APawn* OwnerPawn = GetOwnerPawn();
+	AController* OwningController = OwnerPawn ? OwnerPawn->GetController() : nullptr;
+	UWorld* World = GetWorld();
+	if (!OwnerPawn || !OwningController || !World)
+	{
+		return false;
+	}
+
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	OwningController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TrapSellTrace), true, OwnerPawn);
+	Params.AddIgnoredActor(OwnerPawn);
+	if (TrapPreviewActor)
+	{
+		Params.AddIgnoredActor(TrapPreviewActor);
+	}
+
+	const FVector TraceEnd = ViewLocation + ViewRotation.Vector() * BuildTraceRange;
+	return World->LineTraceSingleByChannel(
+		OutHit,
+		ViewLocation,
+		TraceEnd,
+		ECC_Visibility,
+		Params
+	);
 }
 
 AGridManager* UBuildComponent::FindGridManager()

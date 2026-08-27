@@ -62,6 +62,7 @@ protected:
 	APawn* GetOwnerPawn() const;
 
 	bool TraceBuildTarget(FHitResult& OutHit) const;
+	bool TraceSellTarget(FHitResult& OutHit) const;
 	AGridManager* FindGridManager();
 	void UpdateTrapPreview();
 	void DestroyTrapPreview();
