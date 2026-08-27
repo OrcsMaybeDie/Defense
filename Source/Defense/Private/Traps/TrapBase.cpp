@@ -287,12 +287,19 @@ void ATrapBase::ApplyTrapCollision()
 {
 	SetActorEnableCollision(IsPlaced());
 	UMeshComponent* ActiveMesh = GetActiveTrapMeshComponent();
+	const bool bUsesBarricadeCollision = UsesBarricadeCollision();
 
 	if (Mesh)
 	{
-		Mesh->SetCollisionObjectType(ECC_WorldDynamic);
+		Mesh->SetCollisionObjectType(
+			bUsesBarricadeCollision ? DefenseCollisionChannels::Barricade : ECC_WorldDynamic
+		);
 		Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 		Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		Mesh->SetCollisionResponseToChannel(
+			DefenseCollisionChannels::Enemy,
+			bUsesBarricadeCollision ? ECR_Block : ECR_Ignore
+		);
 		Mesh->SetGenerateOverlapEvents(false);
 		Mesh->SetCollisionEnabled(
 			IsPlaced() && ActiveMesh == Mesh.Get()
@@ -302,9 +309,15 @@ void ATrapBase::ApplyTrapCollision()
 	}
 	if (SkeletalMesh)
 	{
-		SkeletalMesh->SetCollisionObjectType(ECC_WorldDynamic);
+		SkeletalMesh->SetCollisionObjectType(
+			bUsesBarricadeCollision ? DefenseCollisionChannels::Barricade : ECC_WorldDynamic
+		);
 		SkeletalMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 		SkeletalMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		SkeletalMesh->SetCollisionResponseToChannel(
+			DefenseCollisionChannels::Enemy,
+			bUsesBarricadeCollision ? ECR_Block : ECR_Ignore
+		);
 		SkeletalMesh->SetGenerateOverlapEvents(false);
 		SkeletalMesh->SetCollisionEnabled(
 			IsPlaced() && ActiveMesh == SkeletalMesh.Get()
@@ -318,7 +331,10 @@ void ATrapBase::ApplyTrapCollision()
 		DamageArea->SetCollisionObjectType(ECC_WorldDynamic);
 		DamageArea->SetCollisionResponseToAllChannels(ECR_Ignore);
 		DamageArea->SetCollisionResponseToChannel(DefenseCollisionChannels::Enemy, ECR_Overlap);
-		DamageArea->SetCollisionResponseToChannel(ECC_Pawn, ShouldBlockPawn() ? ECR_Block : ECR_Ignore);
+		DamageArea->SetCollisionResponseToChannel(
+			ECC_Pawn,
+			bUsesBarricadeCollision ? ECR_Block : ECR_Ignore
+		);
 		DamageArea->SetGenerateOverlapEvents(IsPlaced());
 		DamageArea->SetCollisionEnabled(IsPlaced() ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
 	}

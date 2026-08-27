@@ -77,7 +77,7 @@ protected:
 	static const FName ManualDamageAreaTag;
 
 	bool IsPlaced() const { return RuntimeState == ETrapRuntimeState::Placed; }
-	virtual bool ShouldBlockPawn() const { return false; }
+	virtual bool UsesBarricadeCollision() const { return false; }
 	UMeshComponent* GetActiveTrapMeshComponent() const;
 	bool GetTrapMeshLocalBounds(FVector& OutBoundsCenter, FVector& OutBoundsExtent) const;
 	void RefreshTrapMeshComponents();
