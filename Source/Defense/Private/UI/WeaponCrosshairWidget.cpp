@@ -289,33 +289,19 @@ int32 UWeaponCrosshairWidget::NativePaint(
 			? DamageableTargetColor
 			: (bDamageableTarget ? DamageableTargetColor : IdleColor);
 
-		if (DrawFourWayMarker(
-			OutDrawElements,
-			AllottedGeometry,
-			DrawLayer + 1,
-			AimCrosshairBrush,
-			AimCrosshairRadius,
-			AimColor
-		))
-		{
-			DrawLayer++;
-		}
-		else
-		{
-			DrawCrosshairLine(OutDrawElements, AllottedGeometry, DrawLayer + 1,
-				Center + FVector2f(CenterGap, 0.f), Center + FVector2f(CenterGap + ArmLength, 0.f),
-				AimColor, LineThickness);
-			DrawCrosshairLine(OutDrawElements, AllottedGeometry, DrawLayer + 1,
-				Center - FVector2f(CenterGap, 0.f), Center - FVector2f(CenterGap + ArmLength, 0.f),
-				AimColor, LineThickness);
-			DrawCrosshairLine(OutDrawElements, AllottedGeometry, DrawLayer + 1,
-				Center + FVector2f(0.f, CenterGap), Center + FVector2f(0.f, CenterGap + ArmLength),
-				AimColor, LineThickness);
-			DrawCrosshairLine(OutDrawElements, AllottedGeometry, DrawLayer + 1,
-				Center - FVector2f(0.f, CenterGap), Center - FVector2f(0.f, CenterGap + ArmLength),
-				AimColor, LineThickness);
-			DrawLayer++;
-		}
+		DrawCrosshairLine(OutDrawElements, AllottedGeometry, DrawLayer + 1,
+			Center + FVector2f(CenterGap, 0.f), Center + FVector2f(CenterGap + ArmLength, 0.f),
+			AimColor, LineThickness);
+		DrawCrosshairLine(OutDrawElements, AllottedGeometry, DrawLayer + 1,
+			Center - FVector2f(CenterGap, 0.f), Center - FVector2f(CenterGap + ArmLength, 0.f),
+			AimColor, LineThickness);
+		DrawCrosshairLine(OutDrawElements, AllottedGeometry, DrawLayer + 1,
+			Center + FVector2f(0.f, CenterGap), Center + FVector2f(0.f, CenterGap + ArmLength),
+			AimColor, LineThickness);
+		DrawCrosshairLine(OutDrawElements, AllottedGeometry, DrawLayer + 1,
+			Center - FVector2f(0.f, CenterGap), Center - FVector2f(0.f, CenterGap + ArmLength),
+			AimColor, LineThickness);
+		DrawLayer++;
 	}
 
 	if (!WeaponComponent->IsCharging())

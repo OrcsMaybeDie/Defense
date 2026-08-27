@@ -106,6 +106,12 @@ void ADefensePlayerController::BeginPlay()
 		{
 			CrosshairWidget->ClearFlags(RF_Transactional);
 			CrosshairWidget->AddToPlayerScreen(10);
+
+			if (bCinematicHUDHidden)
+			{
+				CrosshairVisibilityBeforeCinematic = CrosshairWidget->GetVisibility();
+				CrosshairWidget->SetVisibility(ESlateVisibility::Collapsed);
+			}
 		}
 	}
 }
@@ -443,19 +449,53 @@ void ADefensePlayerController::SetCinematicHUDHidden(const bool bShouldHide)
 	}
 
 	bCinematicHUDHidden = bShouldHide;
-	if (!HUDWidget)
-	{
-		return;
-	}
-
 	if (bShouldHide)
 	{
-		HUDVisibilityBeforeCinematic = HUDWidget->GetVisibility();
-		HUDWidget->SetVisibility(ESlateVisibility::Collapsed);
+		if (HUDWidget)
+		{
+			HUDVisibilityBeforeCinematic = HUDWidget->GetVisibility();
+			HUDWidget->SetVisibility(ESlateVisibility::Collapsed);
+		}
+
+		if (CrosshairWidget)
+		{
+			CrosshairVisibilityBeforeCinematic = CrosshairWidget->GetVisibility();
+			CrosshairWidget->SetVisibility(ESlateVisibility::Collapsed);
+		}
 	}
 	else
 	{
-		HUDWidget->SetVisibility(HUDVisibilityBeforeCinematic);
+		if (HUDWidget)
+		{
+			HUDWidget->SetVisibility(HUDVisibilityBeforeCinematic);
+		}
+
+		if (CrosshairWidget)
+		{
+			CrosshairWidget->SetVisibility(CrosshairVisibilityBeforeCinematic);
+		}
+	}
+}
+
+void ADefensePlayerController::SetCinematicMode(
+	const bool bInCinematicMode,
+	const bool bHidePlayer,
+	const bool bAffectsHUD,
+	const bool bAffectsMovement,
+	const bool bAffectsTurning
+)
+{
+	Super::SetCinematicMode(
+		bInCinematicMode,
+		bHidePlayer,
+		bAffectsHUD,
+		bAffectsMovement,
+		bAffectsTurning
+	);
+
+	if (bAffectsHUD)
+	{
+		SetCinematicHUDHidden(bInCinematicMode);
 	}
 }
 
