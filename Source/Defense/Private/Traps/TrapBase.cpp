@@ -16,7 +16,6 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
 #include "NiagaraFunctionLibrary.h"
-#include "NiagaraSystem.h"
 #include "Traps/TrapData.h"
 #include "Traps/Grid/GridManager.h"
 
@@ -24,7 +23,6 @@ namespace
 {
 	constexpr float WallTraceRange = 1400.f;
 	constexpr float WallTraceStartOffset = 10.f;
-	constexpr float WallTraceDebugTime = 0.35f;
 	const FVector WallTraceBoxExtent(120.f, 140.f, 20.f);
 	constexpr float WallTraceLaneOffset = 120.f;
 	constexpr float WallEffectLaneOffset = 50.f;

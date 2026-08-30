@@ -411,7 +411,7 @@ void ADefenseCharacter::MulticastRPC_PlayGameEndMotion_Implementation(const bool
 	{
 		if (GameClearAnimation)
 		{
-			AnimInstance->PlaySlotAnimationAsDynamicMontage(GameClearAnimation, TEXT("DefaultSlot"));
+			AnimInstance->PlaySlotAnimationAsDynamicMontage(GameClearAnimation, TEXT("FullBodySlot"));
 		}
 		return;
 	}
