@@ -11,9 +11,11 @@
 #include "Components/BoxComponent.h"
 #include "Components/MeshComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Defense.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "NavigationSystem.h"
 #include "Net/UnrealNetwork.h"
 #include "UI/EnemyHPUI.h"
 
@@ -154,6 +156,7 @@ void ABarricadeTrap::BeginPlay()
 {
 	Super::BeginPlay();
 	ApplyDamageAreaExtent();
+	RefreshNavigationObstacle(); // 문 부수기
 
 	if (HasAuthority())
 	{
@@ -219,7 +222,30 @@ void ABarricadeTrap::InitializePlacedTrap(
 )
 {
 	Super::InitializePlacedTrap(TrapData, InInstalledByPlayerState, InOccupiedCells);
+	RefreshNavigationObstacle();
 	ScheduleSensorActivation();
+}
+
+void ABarricadeTrap::RefreshNavigationObstacle()
+{
+	if (!HasAuthority() || !IsPlaced() || !DamageArea)
+	{
+		return;
+	}
+
+	// Nav Octree 갱신
+	DamageArea->SetCanEverAffectNavigation(true);
+	DamageArea->bDynamicObstacle = true;
+	UNavigationSystemV1::UpdateComponentInNavOctree(*DamageArea);
+
+	// UE_LOG(
+	// 	LogDefense,
+	// 	Log,
+	// 	TEXT("[BarricadeNav] Obstacle refreshed. Actor=%s PawnBlock=%d NavRelevant=%d"),
+	// 	*GetNameSafe(this),
+	// 	DamageArea->GetCollisionResponseToChannel(ECC_Pawn) == ECR_Block,
+	// 	DamageArea->IsNavigationRelevant()
+	// );
 }
 
 void ABarricadeTrap::ScheduleSensorActivation()
