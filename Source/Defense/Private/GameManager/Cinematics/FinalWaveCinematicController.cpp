@@ -177,7 +177,7 @@ void AFinalWaveCinematicController::OnRep_CinematicState()
 		break;
 
 	case EFinalWaveCinematicState::Completed:
-		FinishLocalPlayback();
+		// Local playback finishes naturally. Its OnFinished callback restores local game state.
 		break;
 
 	default:
@@ -249,7 +249,6 @@ void AFinalWaveCinematicController::StartLocalPlayback()
 	}
 
 	LocalSequencePlayer->OnFinished.AddDynamic(this, &AFinalWaveCinematicController::HandleLocalSequenceFinished);
-	LocalSequencePlayer->OnStop.AddDynamic(this, &AFinalWaveCinematicController::HandleLocalSequenceStopped);
 
 	if (ElapsedTime > KINDA_SMALL_NUMBER)
 	{
@@ -292,13 +291,6 @@ void AFinalWaveCinematicController::FinishLocalPlayback(const bool bRestartBackg
 	if (LocalSequencePlayer)
 	{
 		LocalSequencePlayer->OnFinished.RemoveDynamic(this, &AFinalWaveCinematicController::HandleLocalSequenceFinished);
-		LocalSequencePlayer->OnStop.RemoveDynamic(this, &AFinalWaveCinematicController::HandleLocalSequenceStopped);
-		LocalSequencePlayer->Stop();
-	}
-
-	if (LocalSequenceActor)
-	{
-		LocalSequenceActor->Destroy();
 	}
 
 	LocalSequencePlayer = nullptr;
@@ -334,11 +326,6 @@ void AFinalWaveCinematicController::FinishLocalPlayback(const bool bRestartBackg
 }
 
 void AFinalWaveCinematicController::HandleLocalSequenceFinished()
-{
-	FinishLocalPlayback();
-}
-
-void AFinalWaveCinematicController::HandleLocalSequenceStopped()
 {
 	FinishLocalPlayback();
 }
