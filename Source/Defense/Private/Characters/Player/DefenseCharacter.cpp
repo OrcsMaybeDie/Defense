@@ -192,12 +192,18 @@ void ADefenseCharacter::Tick(float DeltaSeconds)
 
 	const bool bRecentlyAttacked =
 		TimeSinceFiredWeapon <= ViewFollowTime;
+	const bool bChargingWeapon = WeaponComp && WeaponComp->IsCharging();
+	if (bChargingWeapon)
+	{
+		// 애니메이션도 조준 상태를 유지
+		TimeSinceFiredWeapon = 0.f;
+	}
 
 	const bool bShouldFaceControlYaw =
 		StatusComp
 		&& StatusComp->IsAlive()
 		&& !bWeaponMovementLocked
-		&& (bHasMoveInput || bRecentlyAttacked);
+		&& (bHasMoveInput || bRecentlyAttacked || bChargingWeapon);
 	
 	// 이동 및 공격 회전은 CharacterMovement가 담당
 	MoveComp->bUseControllerDesiredRotation =

@@ -83,6 +83,27 @@ struct FWeaponChargeStageData
 	// 공격 실행 후 이동/점프/공격/차지/장비 변경/건설 입력을 막는 행동 경직 시간이다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Charge Stage|Recovery", meta=(ClampMin="0", Units="s"))
 	float MovementLockDuration = 0.f;
+
+	// FX Variety Pack의 원본 Blueprint를 총구에서 목표 지점까지 이동시킨다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Charge Stage|VFX")
+	TSubclassOf<AActor> ProjectileVFXActorClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Charge Stage|VFX")
+	TSubclassOf<AActor> ImpactVFXActorClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Charge Stage|VFX", meta=(ClampMin="1", Units="cm/s"))
+	float ProjectileVFXSpeed = 2400.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Charge Stage|VFX", meta=(ClampMin="0.01"))
+	float ProjectileVFXScale = 1.f;
+
+	// 목표 지점에 일정 시간 유지되는 Stage3 본체와 보조 효과다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Charge Stage|World VFX")
+	TSubclassOf<AActor> WorldVFXActorClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Charge Stage|World VFX")
+	TSubclassOf<AActor> RainVFXActorClass;
+
 };
 
 USTRUCT(BlueprintType)
@@ -112,6 +133,16 @@ struct FWeaponChargeData
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Charge")
 	FWeaponChargeStageData Stage3;
+
+	// 크로스헤어의 Stage1/2/3 확정 시점마다 총구에서 한 번 재생
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Charge|VFX")
+	TSubclassOf<AActor> StageReachedVFXActorClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Charge|VFX")
+	FName StageReachedVFXSocket = TEXT("Muzzle");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Charge|VFX", meta=(ClampMin="0.01"))
+	float StageReachedVFXScale = 1.f;
 };
 
 
