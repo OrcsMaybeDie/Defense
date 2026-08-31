@@ -167,6 +167,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void CancelWeaponCharge();
 
+	/** Cancels active weapon input and clears any post-fire movement lock. */
+	void StopWeaponAction();
+
 	UFUNCTION(BlueprintCallable, Category="Input")
 	void SellTrap();
 	

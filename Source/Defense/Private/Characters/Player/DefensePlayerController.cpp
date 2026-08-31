@@ -10,6 +10,7 @@
 #include "EnhancedInputComponent.h"
 
 #include "Characters/Enemy/EnemyBase.h"
+#include "Characters/Player/DefenseCharacter.h"
 #include "Characters/Player/DefensePlayerState.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/GameStateBase.h"
@@ -229,6 +230,11 @@ bool ADefensePlayerController::ShouldUseTouchControls() const
 
 void ADefensePlayerController::ClientRPC_EnterGameEndState_Implementation()
 {
+	if (ADefenseCharacter* DefenseCharacter = Cast<ADefenseCharacter>(GetPawn()))
+	{
+		DefenseCharacter->StopWeaponAction();
+	}
+
 	bShowMouseCursor = false;
 
 	FInputModeUIOnly InputMode;

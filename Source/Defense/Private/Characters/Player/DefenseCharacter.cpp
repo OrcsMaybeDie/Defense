@@ -388,6 +388,12 @@ void ADefenseCharacter::CancelWeaponCharge()
 	}
 }
 
+void ADefenseCharacter::StopWeaponAction()
+{
+	CancelWeaponCharge();
+	SetWeaponMovementLocked(false);
+}
+
 void ADefenseCharacter::NotifyWeaponFired()
 {
 	TimeSinceFiredWeapon = 0.f;
@@ -411,7 +417,14 @@ void ADefenseCharacter::MulticastRPC_PlayGameEndMotion_Implementation(const bool
 	{
 		if (GameClearAnimation)
 		{
-			AnimInstance->PlaySlotAnimationAsDynamicMontage(GameClearAnimation, TEXT("FullBodySlot"));
+			AnimInstance->PlaySlotAnimationAsDynamicMontage(
+				GameClearAnimation,
+				TEXT("FullBody"),
+				0.05f,  // Blend In
+				0.1f,   // Blend Out
+				1.0f,   // Play Rate
+				10000   // Loop Count: 포즈 유지
+			);
 		}
 		return;
 	}
