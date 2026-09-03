@@ -26,6 +26,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDestScoreChanged, int32, NewDestS
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCountdownChanged, int32, NewCountdownRemaining);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCurrentWaveChanged, int32, NewCurrentWave);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnReadyInputRequiredChanged, bool, bRequired);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameClearChanged, bool, bGameClear);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnDefensePlayerStateChanged, APlayerState*);
 
 UCLASS()
@@ -72,10 +73,18 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="Ready")
 	FOnReadyInputRequiredChanged OnReadyInputRequiredChanged;
 
+	UPROPERTY(BlueprintAssignable, Category="Game End")
+	FOnGameClearChanged OnGameClearChanged;
+
 	UFUNCTION(BlueprintPure, Category="Ready")
 	bool IsReadyInputRequired() const { return bReadyInputRequired; }
 
 	void SetReadyInputRequired(bool bRequired);
+
+	UFUNCTION(BlueprintPure, Category="Game End")
+	bool IsGameClear() const { return bGameClear; }
+
+	void SetGameClear(bool bNewGameClear);
 
 	UFUNCTION()
 	void OnRep_DestScore();
@@ -94,4 +103,10 @@ private:
 
 	UFUNCTION()
 	void OnRep_ReadyInputRequired();
+
+	UPROPERTY(ReplicatedUsing=OnRep_GameClear)
+	bool bGameClear = false;
+
+	UFUNCTION()
+	void OnRep_GameClear();
 };

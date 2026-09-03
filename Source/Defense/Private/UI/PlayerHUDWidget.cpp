@@ -9,7 +9,7 @@
 #include "GameManager/DefenseGameState.h"
 #include "TimerManager.h"
 #include "Characters/Player/DefensePlayerState.h"
-#include "UI/LoadoutBarWidget.h"
+#include "UI/EquipmentUI/QuickSlotBarWidget.h"
 #include "UI/NoticeWidget.h"
 #include "UI/PlayerStatusWidget.h"
 
@@ -23,9 +23,13 @@ void UPlayerHUDWidget::NativeConstruct()
 	{
 		AllyStatus->SetVisibility(ESlateVisibility::Collapsed);
 	}
+	if (AllyStatus2)
+	{
+		AllyStatus2->SetVisibility(ESlateVisibility::Collapsed);
+	}
 	if (AllyName)
 	{
-		AllyName->SetVisibility(ESlateVisibility::Collapsed); // 이후에 합칠것
+		AllyName->SetVisibility(ESlateVisibility::Collapsed);
 	}
 	
 	TryBindPlayer();
@@ -50,7 +54,7 @@ void UPlayerHUDWidget::TryBindPlayer()
 	if (!World || !OwningPC) return;
 	
 	bool bSelfBound = false;
-	bool bAllyBound = false;
+	int32 BoundAllyCount = 0;
 	
 	
 	// bind mine
@@ -62,9 +66,9 @@ void UPlayerHUDWidget::TryBindPlayer()
 			bSelfBound = true;
 		}
 		
-		if (LoadoutBar)
+		if (QuickSlotBar)
 		{
-			LoadoutBar->BindLoadoutComponent(SelfChar->GetLoadoutComponent());
+			QuickSlotBar->BindLoadoutComponent(SelfChar->GetLoadoutComponent());
 		}
 	}
 	
@@ -72,9 +76,9 @@ void UPlayerHUDWidget::TryBindPlayer()
 	APlayerState* LocalPlayerState = OwningPC->PlayerState;
 	ADefensePlayerState* DefensePlayerState = Cast<ADefensePlayerState>(LocalPlayerState);
 	
-	if (LoadoutBar && DefensePlayerState)
+	if (QuickSlotBar && DefensePlayerState)
 	{
-		LoadoutBar->BindPlayerState(DefensePlayerState);
+		QuickSlotBar->BindPlayerState(DefensePlayerState);
 	}
 
 	if (WBP_Notice)
@@ -85,51 +89,51 @@ void UPlayerHUDWidget::TryBindPlayer()
 		);
 	}
 	
-	if (GameState && LocalPlayerState && AllyStatus)
+	TArray<UPlayerStatusWidget*> AllyWidgets;
+	if (AllyStatus)
+	{
+		AllyWidgets.Add(AllyStatus);
+	}
+	if (AllyStatus2)
+	{
+		AllyWidgets.Add(AllyStatus2);
+	}
+
+	for (UPlayerStatusWidget* AllyWidget : AllyWidgets)
+	{
+		AllyWidget->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	if (GameState && LocalPlayerState)
 	{
 		for (APlayerState* PS : GameState->PlayerArray)
 		{
 			if (!PS || PS == LocalPlayerState) continue;
+
+			const ADefensePlayerState* AllyPlayerState = Cast<ADefensePlayerState>(PS);
+			if (AllyPlayerState && AllyPlayerState->GetGameRole() == EDefensePlayerRole::Spectator)
+			{
+				continue;
+			}
 			
-			// Ally 가 있으면 Visible
 			ADefenseCharacter* AllyChar = FindCharByPlayerState(PS);
 			if (!AllyChar) continue;
-				
-			AllyStatus->BindStatusComp(AllyChar->GetStatusComp());
-			AllyStatus->SetVisibility(ESlateVisibility::Visible);
-			
-			if (AllyName)
+			if (!AllyWidgets.IsValidIndex(BoundAllyCount))
 			{
-				AllyName->SetText(FText::FromString(PS->GetPlayerName()));
-				AllyName->SetVisibility(ESlateVisibility::Visible);
+				break;
 			}
 
-			bAllyBound = true;
-			break;
-		}
-	}
-	
-	if (!bAllyBound)
-	{
-		// 로비가 없는 데모에서는 동료 PlayerState/Character 복제 타이밍이 늦을 수 있음
-		// 이번 시도에서 동료를 못 찾았다면 이전에 보였던 동료 UI를 다시 숨김
-		// 로비 (2인 매칭 완료 후에만 게임에 진입) 구조로 변경 후 제거 고려
-		if (AllyStatus)
-		{
-			AllyStatus->SetVisibility(ESlateVisibility::Collapsed);
-		}
-
-		if (AllyName)
-		{
-			AllyName->SetVisibility(ESlateVisibility::Collapsed);
+			UPlayerStatusWidget* AllyWidget = AllyWidgets[BoundAllyCount++];
+			AllyWidget->BindStatusComp(AllyChar->GetStatusComp());
+			AllyWidget->SetVisibility(ESlateVisibility::Visible);
 		}
 	}
 	
 	constexpr float BindRetryIntervalSeconds = 0.2f;
 	const bool bWithinRetryWindow = BindRetryElapsedSeconds < MaxBindRetrySeconds;
-	const bool bExpectAlly = GameState && GameState->PlayerArray.Num() > 1;
+	const bool bAllConfiguredAlliesBound = BoundAllyCount >= AllyWidgets.Num();
 	
-	if (!bSelfBound || (bWithinRetryWindow && !bAllyBound) || (bExpectAlly && !bAllyBound))
+	if (!bSelfBound || (bWithinRetryWindow && !bAllConfiguredAlliesBound))
 	{
 		// 로비가 없는 데모에서는 PlayerArray가 1명에서 2명으로 늦게 늘어날 수 있으므로 잠깐 더 재시도
 		BindRetryElapsedSeconds += BindRetryIntervalSeconds;

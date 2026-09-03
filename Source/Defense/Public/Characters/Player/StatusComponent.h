@@ -42,7 +42,7 @@ public:
 	float Mana;
 	float MaxMana = 100.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Attribute")
-	float ManaRegenPerSec = 10.f;
+	float ManaRegenPerSec = 5.f;
 	
 	bool CanSpendMana(float Amount) const;
 	bool TrySpendMana(float Amount);

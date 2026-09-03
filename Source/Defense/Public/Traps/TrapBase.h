@@ -15,6 +15,7 @@ class UTrapData;
 class UBoxComponent;
 class ADefensePlayerState;
 class AEnemyBase;
+class UNiagaraSystem;
 
 UENUM(BlueprintType)
 enum class ETrapRuntimeState : uint8
@@ -42,7 +43,7 @@ protected:
 	TObjectPtr<UStaticMeshComponent> Mesh;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap|Components")
 	TObjectPtr<USkeletalMeshComponent> SkeletalMesh;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Trap|Components")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Trap|Components")
 	TObjectPtr<UBoxComponent> DamageArea;
 
 	UPROPERTY(ReplicatedUsing=OnRep_RuntimeState, VisibleInstanceOnly, BlueprintReadOnly, Category="Trap")
@@ -62,10 +63,18 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Trap")
 	float DamageInterval = 3.f;
 
+	// 임시: 함정별 파괴 VFX와 스폰 위치·회전·크기 지정
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Trap|VFX")
+	TObjectPtr<UNiagaraSystem> EnemyDestroyedVFX;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Trap|VFX")
+	FTransform EnemyDestroyedVFXTransform = FTransform::Identity;
+
 	FTimerHandle DamageTimerHandle;
 
 	bool bInitialized = false;
 	TSet<TWeakObjectPtr<AActor>> OverlappingEnemies;
+	static const FName ManualDamageAreaTag;
 
 	bool IsPlaced() const { return RuntimeState == ETrapRuntimeState::Placed; }
 	virtual bool ShouldBlockPawn() const { return false; }
@@ -78,11 +87,12 @@ protected:
 	void ApplyPreviewVisual();
 	void SyncDamageAreaToMesh();
 	void ResetAttackAnimation();
-	void StartDamageTimer();
-	void StopDamageTimer();
+	virtual void StartDamageTimer();
+	virtual void StopDamageTimer();
 	void ApplyPeriodicDamage();
 	bool ApplyWallBoxTraceDamage();
 	virtual bool ApplyWallHitEffect(AEnemyBase* Enemy, const FVector& EffectStart, const FVector& EffectEnd);
+	virtual void HandleEnemyEnteredDamageArea(AEnemyBase* Enemy) {}
 	void CacheCurrentOverlaps();
 
 	UFUNCTION()
@@ -115,9 +125,11 @@ protected:
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlayAttackAnimation();
 	
-	// VFX test
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlayDamageVFX(FVector_NetQuantize EffectLocation);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayEnemyDestroyedVFX();
 	
 	UFUNCTION(BlueprintImplementableEvent, Category="Trap|VFX")
 	void PlayDamageVFX(FVector EffectLocation);
@@ -140,6 +152,9 @@ public:
 	void InitializePreviewTrap(UTrapData* TrapData);
 
 	void InitializePlacedTrap(UTrapData* TrapData, ADefensePlayerState* InInstalledByPlayerState);
+
+	// 적 공격으로 파괴되는 경로
+	void DestroyByEnemy();
 	virtual void InitializePlacedTrap(
 		UTrapData* TrapData,
 		ADefensePlayerState* InInstalledByPlayerState,

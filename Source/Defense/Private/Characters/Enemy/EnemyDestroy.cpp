@@ -9,7 +9,8 @@
 #include "NiagaraComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/OverlapResult.h"
-#include "Traps/Barricade.h"
+#include "Traps/BarricadeTrap.h"
+#include "Traps/FractureDoor.h"
 #include "Traps/TrapBase.h"
 
 namespace
@@ -185,7 +186,9 @@ bool AEnemyDestroy::TryFindDestroyTarget()
 	for (const FOverlapResult& OverlapResult : OverlapResults)
 	{
 		AActor* FoundTrap = OverlapResult.GetActor();
-		if (!IsValid(FoundTrap) || (!FoundTrap->IsA<ATrapBase>() && !FoundTrap->IsA<ABarricade>()))
+		if (!IsValid(FoundTrap)
+			|| FoundTrap->IsA<AFractureDoor>()
+			|| (!FoundTrap->IsA<ATrapBase>() && !FoundTrap->IsA<ABarricadeTrap>()))
 		{
 			continue;
 		}
@@ -243,8 +246,10 @@ void AEnemyDestroy::DestroyTargetTrap()
 			continue;
 		}
 
-		// TrapBase 무력화 함수가 추가되면 여기에서 TargetTrap에 호출한다.
-		TargetTrap->Destroy();
+		if (ATrapBase* Trap = Cast<ATrapBase>(TargetTrap))
+		{
+			Trap->DestroyByEnemy();
+		}
 	}
 
 	TargetTraps.Empty();

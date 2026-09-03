@@ -40,6 +40,10 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wave")
 	FName SpawnerId;
+
+	/** Assign the placed cinematic controller only on the boss spawner that should trigger it. */
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category="Cinematic")
+	TObjectPtr<class AFinalWaveCinematicController> FinalWaveCinematicController;
 	
 	// 스폰할 적의 수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MyVar")
@@ -48,6 +52,10 @@ public:
 	// 비어 있으면 모든 웨이브에서 스폰. 값이 있으면 지정한 웨이브에서만 스폰.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Wave")
 	TArray<int32> SpawnWaves;
+
+	// 스폰 모드 시작 후 첫 적을 스폰하기까지의 대기 시간
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MyVar", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float InitialSpawnDelay = 0.f;
 
 	// 프리뷰 스폰시 시간 간격
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MyVar")
@@ -87,6 +95,7 @@ public:
 
 	void StartPreviewSpawn(int32 WaveNumber);
 	void StopPreviewSpawn();
+	void StopSpawning();
 	void ClearPreviewEnemies();
 	void StartCombatSpawn(int32 WaveNumber);
 	void EndWave();
@@ -96,6 +105,9 @@ public:
 	void SetWaveData(class UWaveData* InWaveData);
 	void RemoveActiveEnemy(class AEnemyBase* Enemy);
 	bool ShouldSpawnInWave(int32 WaveNumber) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="Cinematic")
+	void SetCombatSpawnPaused(bool bPaused);
 
 	void AssignRandomRouteToEnemy(class AEnemyBase* Enemy) const;
 	bool RestartEnemyLogic(class AEnemyBase* Enemy) const;
@@ -119,6 +131,7 @@ private:
 	int32 CombatInitializationFailedCount = 0;
 	int32 CombatInitializationRetryCount = 0;
 	int32 PreparedWaveNumber = INDEX_NONE;
+	bool bCombatSpawnPaused = false;
 	static constexpr int32 MaxCombatInitializationRetries = 3;
 	
 public:

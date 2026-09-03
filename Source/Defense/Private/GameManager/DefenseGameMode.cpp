@@ -21,6 +21,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Traps/TrapBase.h"
+#include "Mission/MissionRunTrackerComponent.h"
 
 namespace
 {
@@ -51,6 +52,10 @@ ADefenseGameMode::ADefenseGameMode()
 	PlayerStateClass = ADefensePlayerState::StaticClass();
 	GameStateClass = ADefenseGameState::StaticClass();
 	SpectatorPlayerControllerClass = ADefenseSpectatorController::StaticClass();
+
+	MissionRunTrackerComponent =
+		CreateDefaultSubobject<UMissionRunTrackerComponent>(
+			TEXT("MissionRunTrackerComponent"));
 }
 
 void ADefenseGameMode::ApplyDataAssets()
@@ -62,6 +67,11 @@ void ADefenseGameMode::ApplyDataAssets()
 			InitialDestScore = SelectedMapConfigData->InitialDestScore;
 			InitCoin = SelectedMapConfigData->InitCoin;
 			WaveData = SelectedMapConfigData->WaveData;
+
+			if (MissionRunTrackerComponent)
+			{
+				MissionRunTrackerComponent->InitializeMissions(SelectedMapConfigData->Missions);
+			}
 		}
 	}
 
@@ -324,37 +334,80 @@ void ADefenseGameMode::GameStart()
 
 void ADefenseGameMode::GameEnd()
 {
-	CleanupCurrentWave();
+	StopCurrentWaveSpawning();
+	GetWorldTimerManager().ClearTimer(GameEndUITimerHandle);
 
-	if (DefenseGameState)
+	if (!DefenseGameState)
 	{
-		DefenseGameState->CountdownRemaining = 0;
-		DefenseGameState->SetReadyInputRequired(false);
-		
+		return;
 	}
+
+	DefenseGameState->CountdownRemaining = 0;
+	DefenseGameState->SetReadyInputRequired(false);
 	
 	// 모든 플레이어 레디 초기화
 	ResetAllPlayersReady();
-	
-	bool bGameClear = false;
-	
-	if (!AreAllActivePlayersDead()
+
+	bPendingGameClear = !AreAllActivePlayersDead()
 		&& DefenseGameState->DestScore > 0
-		&& CurrentWave >= MaxWave)
-	{
-		bGameClear = true;
-	}
-	
-	// 모든 클라이언트에게 ShowGameEndUI 실행시키기
+		&& CurrentWave >= MaxWave;
+	DefenseGameState->SetGameClear(bPendingGameClear);
+
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		if (ADefensePlayerController* PC = Cast<ADefensePlayerController>(It->Get()))
 		{
-			PC->ClientRPC_ShowGameEndUI(bGameClear);
+			if (ADefenseCharacter* Character = Cast<ADefenseCharacter>(PC->GetPawn()))
+			{
+				Character->StopWeaponAction();
+				Character->PlayGameEndMotion(bPendingGameClear);
+			}
+
+			PC->ClientRPC_EnterGameEndState();
 		}
 	}
-	
-	
+
+	if (GameEndUIDelaySeconds <= 0.0f)
+	{
+		ShowGameEndUI();
+		return;
+	}
+
+	GetWorldTimerManager().SetTimer(
+		GameEndUITimerHandle,
+		this,
+		&ADefenseGameMode::ShowGameEndUI,
+		GameEndUIDelaySeconds,
+		false
+	);
+}
+
+void ADefenseGameMode::ShowGameEndUI()
+{
+	if (!HasAuthority() || !DefenseGameState || DefenseGameState->GamePhase != EGamePhase::GameEnded)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(GameEndUITimerHandle);
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (ADefensePlayerController* PC = Cast<ADefensePlayerController>(It->Get()))
+		{
+			ADefensePlayerState* PlayerState = PC->GetPlayerState<ADefensePlayerState>();
+			TArray<FMissionCompletionResult> Results;
+
+			if (MissionRunTrackerComponent && PlayerState)
+			{
+				Results = MissionRunTrackerComponent->CollectMissionResults(
+					PlayerState,
+					bPendingGameClear);
+			}
+
+			PC->ClientRPC_ShowGameEndUI(bPendingGameClear, Results);
+		}
+	}
 }
 
 void ADefenseGameMode::RetryGame()
@@ -438,7 +491,14 @@ void ADefenseGameMode::HandleReturnToIntroMapRequested(APlayerController* Reques
 	{
 		if (ADefensePlayerController* PC = Cast<ADefensePlayerController>(It->Get()))
 		{
-			PC->ClientRPC_ShowESCLoadingUI();
+			if (DefenseGameState && DefenseGameState->GamePhase == EGamePhase::GameEnded)
+			{
+				PC->ClientRPC_ShowEndLoadingUI();
+			}
+			else
+			{
+				PC->ClientRPC_ShowESCLoadingUI();
+			}
 		}
 	}
 
@@ -758,6 +818,12 @@ void ADefenseGameMode::WaveStart()
 		return;
 	}
 
+	if (CurrentWave == 1 && MissionRunTrackerComponent)
+	{
+		// 첫 웨이브 전투 시작 시 진행도와 플레이 시간을 초기화한다.
+		MissionRunTrackerComponent->BeginRun();
+	}
+
 	bIsWaveActive = true;
 	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
 	GetWorldTimerManager().ClearTimer(ReadyWaveCountdownTimerHandle);
@@ -881,6 +947,22 @@ void ADefenseGameMode::CleanupCurrentWave()
 	ParticipatingSpawners.Empty();
 	FinishedSpawners.Empty();
 	CurrentEnemyCount = 0;
+}
+
+void ADefenseGameMode::StopCurrentWaveSpawning()
+{
+	bIsWaveActive = false;
+	GetWorldTimerManager().ClearTimer(AutoWaveCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(ReadyWaveCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(EnemyCleanupTimerHandle);
+
+	for (AEnemySpawner* Spawner : EnemySpawners)
+	{
+		if (Spawner)
+		{
+			Spawner->StopSpawning();
+		}
+	}
 }
 
 // 적의 수 감소 -> Destination에 overlap했을 때, 적이 처치됐을 때 호출
@@ -1308,6 +1390,29 @@ void ADefenseGameMode::LogActiveWaveEnemies() const
 	}
 }
 
+ADefensePlayerState* ADefenseGameMode::ResolveEnemyKillOwner(AActor* DamageCauser, AController* EventInstigator) const
+{
+	if (const ATrapBase* Trap = Cast<ATrapBase>(DamageCauser))
+	{
+		return Trap->GetOwnerPS();
+	}
+
+	if (EventInstigator)
+	{
+		if (ADefensePlayerState* PlayerState = EventInstigator->GetPlayerState<ADefensePlayerState>())
+		{
+			return PlayerState;
+		}
+	}
+
+	if (const APawn* DamageCauserPawn = Cast<APawn>(DamageCauser))
+	{
+		return DamageCauserPawn->GetPlayerState<ADefensePlayerState>();
+	}
+
+	return nullptr;
+}
+
 int32 ADefenseGameMode::GetCurrentWave()
 {
 	return CurrentWave;
@@ -1317,31 +1422,57 @@ int32 ADefenseGameMode::GetMaxWave()
 {
 	return MaxWave;
 }
-	
-ADefensePlayerState* ADefenseGameMode::AwardEnemyKillCoin(class AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator)
+
+ADefensePlayerState* ADefenseGameMode::HandleEnemyKilled(AEnemyBase* Enemy, AActor* DamageCauser, AController* EventInstigator)
 {
-	if (!HasAuthority() || !Enemy) return nullptr;
-	
-	const int32 RewardCoin = Enemy->KillCoinReward;
-	if (RewardCoin <= 0) return nullptr;
-	
-	ADefensePlayerState* RewardTarget = nullptr;
-	
-	if (const ATrapBase* Trap = Cast<ATrapBase>(DamageCauser))
+	if (!HasAuthority() || !IsValid(Enemy))
 	{
-		RewardTarget = Trap->GetOwnerPS();
-	}
-	else if (EventInstigator)
-	{
-		RewardTarget = EventInstigator->GetPlayerState<ADefensePlayerState>();
-	}
-	else if (const APawn* DamageCauserPawn = Cast<APawn>(DamageCauser))
-	{
-		RewardTarget = DamageCauserPawn->GetPlayerState<ADefensePlayerState>();
+		return nullptr;
 	}
 
-	if (!RewardTarget) return nullptr;
+	ADefensePlayerState* KillerPlayerState = ResolveEnemyKillOwner(DamageCauser, EventInstigator);
 
-	RewardTarget->AddCoin(RewardCoin);
-	return RewardTarget;
+	if (!KillerPlayerState)
+	{
+		return nullptr;
+	}
+
+	// 임시 로그
+	/*
+	const bool bTrapKill = Cast<ATrapBase>(DamageCauser) != nullptr;
+	const bool bInstigatorKill =
+		!bTrapKill
+		&& EventInstigator
+		&& EventInstigator->GetPlayerState<ADefensePlayerState>()
+			== KillerPlayerState;
+
+	const TCHAR* KillSource = bTrapKill
+		? TEXT("Trap")
+		: bInstigatorKill
+			? TEXT("EventInstigator")
+			: TEXT("DamageCauserPawn");
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Mission][Kill] Player=%s PlayerState=%s Source=%s Causer=%s Enemy=%s Tags=%s"),
+		*KillerPlayerState->GetPlayerName(),
+		*GetNameSafe(KillerPlayerState),
+		KillSource,
+		*GetNameSafe(DamageCauser),
+		*GetNameSafe(Enemy),
+		*Enemy->GetEnemyTags().ToStringSimple());
+	*/
+
+	if (MissionRunTrackerComponent)
+	{
+		MissionRunTrackerComponent->RecordEnemyKill(KillerPlayerState, Enemy->GetEnemyTags());
+	}
+
+	if (Enemy->KillCoinReward > 0)
+	{
+		KillerPlayerState->AddCoin(Enemy->KillCoinReward);
+	}
+
+	return KillerPlayerState;
 }

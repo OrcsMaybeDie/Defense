@@ -11,12 +11,14 @@
 #include "Characters/Enemy/AI/EnemyController.h"
 #include "Characters/Enemy/Data/EnemyData.h"
 #include "Characters/Enemy/EnemyPoolSubsystem.h"
+#include "Characters/Enemy/EnemySpawner.h"
 #include "Characters/Player/DefenseCharacter.h"
 #include "Characters/Player/DefensePlayerController.h"
 #include "Characters/Player/DefensePlayerState.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/TextBlock.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Camera/PlayerCameraManager.h"
@@ -30,8 +32,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
-#include "Traps/Barricade.h"
 #include "Traps/BarricadeTrap.h"
+#include "Traps/LightningTrap.h"
 #include "UI/EnemyHPUI.h"
 #include "UI/RewardUI.h"
 #include "Blueprint/UserWidget.h"
@@ -113,6 +115,26 @@ AEnemyBase::AEnemyBase()
 	RewardComp->SetWidgetSpace(EWidgetSpace::Screen);
 	RewardComp->SetDrawAtDesiredSize(true);
 	RewardComp->SetVisibility(false);
+
+	Weapon = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Weapon"));
+	Weapon->SetupAttachment(GetMesh());
+	Weapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Weapon->SetCanEverAffectNavigation(false);
+	Weapon->SetHiddenInGame(true);
+}
+
+void AEnemyBase::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	if (Weapon && GetMesh())
+	{
+		Weapon->AttachToComponent(
+			GetMesh(),
+			FAttachmentTransformRules::KeepRelativeTransform,
+			WeaponSocketName
+		);
+	}
 }
 
 // Called when the game starts or when spawned
@@ -159,8 +181,11 @@ void AEnemyBase::ApplyEnemyCollisionPolicy()
 
 void AEnemyBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ClearDeathFailsafeTimer();
+	ClearPortalEntryFailsafeTimer();
 	ClearBurnTimers();
 	ClearDamageOutline();
+	ClearElectricHit();
 	SetBurnVisualActive(false);
 	RestoreDamageOverlay();
 
@@ -196,7 +221,7 @@ void AEnemyBase::SetTarget(AActor* NewTarget)
 	}
 
 	Target = NewTarget;
-	CurrentAttackDist = IsValid(Target) && (Target->IsA<ABarricade>() || Target->IsA<ABarricadeTrap>())
+	CurrentAttackDist = IsValid(Target) && (Target->IsA<ABarricadeTrap>())
 		? BarricadeAttackDist
 		: AttackDist;
 }
@@ -307,6 +332,7 @@ void AEnemyBase::EndStoneGameplay()
 
 void AEnemyBase::ResetStoneStateForPool()
 {
+	ClearDeathFailsafeTimer();
 	bDeathHandled = false;
 	bDeathTaskStarted = false;
 	PendingDeathType = EEnemyPendingDeathType::None;
@@ -431,6 +457,8 @@ void AEnemyBase::SetPreview()
 	ResetPortalEntryState();
 	ResetRewardPopup();
 	ClearDamageOutline();
+	ClearElectricHit();
+	Weapon->SetHiddenInGame(true);
 
 	if (HasAuthority())
 	{
@@ -469,8 +497,10 @@ void AEnemyBase::SetPreview()
 		{
 			if (PreviewMaterial)
 			{
-				EnemyMesh->SetMaterial(0, PreviewMaterial);
-				EnemyMesh->SetMaterial(1, PreviewMaterial);
+				for (int32 MaterialIndex = 0; MaterialIndex < EnemyMesh->GetNumMaterials(); ++MaterialIndex)
+				{
+					EnemyMesh->SetMaterial(MaterialIndex, PreviewMaterial);
+				}
 			}
 		}
 		// 틱 처리
@@ -514,6 +544,7 @@ void AEnemyBase::SetCombat()
 {
 	ResetPortalEntryState();
 	ResetStoneVisual();
+	Weapon->SetHiddenInGame(false);
 
 	if (!EnemyMesh)
 	{
@@ -538,10 +569,12 @@ void AEnemyBase::SetCombat()
 	{
 		if (EnemyMesh)
 		{
-			if (CombatMaterial)
+			for (int32 MaterialIndex = 0; MaterialIndex < EnemyMesh->GetNumMaterials(); ++MaterialIndex)
 			{
-				EnemyMesh->SetMaterial(0, CombatMaterial);
-				EnemyMesh->SetMaterial(1, CombatMaterial);
+				if (CombatMaterials.IsValidIndex(MaterialIndex) && CombatMaterials[MaterialIndex])
+				{
+					EnemyMesh->SetMaterial(MaterialIndex, CombatMaterials[MaterialIndex]);
+				}
 			}
 		}
 		bHpUIVisible = false;
@@ -573,9 +606,11 @@ void AEnemyBase::SetCombat()
 
 void AEnemyBase::SetInactive()
 {
+	ClearDeathFailsafeTimer();
 	ResetPortalEntryState();
 	ResetRewardPopup();
 	ClearDamageOutline();
+	ClearElectricHit();
 
 	if (HasAuthority())
 	{
@@ -667,6 +702,7 @@ bool AEnemyBase::TryBeginPortalEntry(
 	SetTarget(nullptr);
 	EndBurnEffect();
 	ClearDamageOutline();
+	ClearElectricHit();
 	ApplyPortalCollisionState();
 
 	if (HpComp)
@@ -708,6 +744,7 @@ bool AEnemyBase::TryBeginPortalEntry(
 		FMath::Max(PortalHalfWidth, 1.f),
 		FMath::Max(PortalHalfHeight, 1.f)
 	);
+	StartPortalEntryFailsafeTimer();
 
 	return true;
 }
@@ -721,6 +758,7 @@ bool AEnemyBase::FinishPortalEntry(const APortal* Portal)
 
 	bEnteringPortal = false;
 	EnteringPortal = nullptr;
+	ClearPortalEntryFailsafeTimer();
 	RestorePortalCollisionState();
 	return true;
 }
@@ -742,6 +780,7 @@ void AEnemyBase::MulticastRPC_BeginPortalClip_Implementation(
 	}
 
 	ClearDamageOutline();
+	ClearElectricHit();
 	SetBurnVisualActive(false);
 	if (HpComp)
 	{
@@ -867,10 +906,151 @@ void AEnemyBase::RestorePortalCollisionState()
 
 void AEnemyBase::ResetPortalEntryState()
 {
+	ClearPortalEntryFailsafeTimer();
 	bEnteringPortal = false;
 	EnteringPortal = nullptr;
 	RestorePortalCollisionState();
 	ResetPortalClipVisual();
+}
+
+void AEnemyBase::StartDeathFailsafeTimer()
+{
+	if (!HasAuthority() || DeathFailsafeTimeout <= 0.f)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(DeathFailsafeTimerHandle);
+	GetWorldTimerManager().SetTimer(
+		DeathFailsafeTimerHandle,
+		this,
+		&AEnemyBase::HandleDeathFailsafeTimeout,
+		DeathFailsafeTimeout,
+		false
+	);
+}
+
+void AEnemyBase::ClearDeathFailsafeTimer()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(DeathFailsafeTimerHandle);
+	}
+}
+
+void AEnemyBase::HandleDeathFailsafeTimeout()
+{
+	if (!HasAuthority() || !bDeathHandled || EnemyMode != EEnemyMode::Combat)
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Enemy death failsafe forced cleanup | Enemy=%s State=%s"),
+		*GetNameSafe(this),
+		LexToString(EnemyState));
+
+	ForceReturnToPoolFromFailsafe(false);
+}
+
+void AEnemyBase::StartPortalEntryFailsafeTimer()
+{
+	if (!HasAuthority() || PortalEntryFailsafeTimeout <= 0.f)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(PortalEntryFailsafeTimerHandle);
+	GetWorldTimerManager().SetTimer(
+		PortalEntryFailsafeTimerHandle,
+		this,
+		&AEnemyBase::HandlePortalEntryFailsafeTimeout,
+		PortalEntryFailsafeTimeout,
+		false
+	);
+}
+
+void AEnemyBase::ClearPortalEntryFailsafeTimer()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(PortalEntryFailsafeTimerHandle);
+	}
+}
+
+void AEnemyBase::HandlePortalEntryFailsafeTimeout()
+{
+	if (!HasAuthority()
+		|| !bEnteringPortal
+		|| (EnemyMode != EEnemyMode::Combat && EnemyMode != EEnemyMode::Preview))
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Enemy portal-entry failsafe forced cleanup | Enemy=%s Mode=%s Location=%s"),
+		*GetNameSafe(this),
+		LexToString(EnemyMode),
+		*GetActorLocation().ToString());
+
+	ResetPortalEntryState();
+	ForceReturnToPoolFromFailsafe(true);
+}
+
+void AEnemyBase::ForceReturnToPoolFromFailsafe(const bool bReachedDestination)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (!EnemyController)
+	{
+		EnemyController = Cast<AEnemyController>(GetController());
+	}
+	if (EnemyController)
+	{
+		EnemyController->StopMovement();
+	}
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->StopMovementImmediately();
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const bool bWasCombatEnemy = EnemyMode == EEnemyMode::Combat;
+	if (bWasCombatEnemy)
+	{
+		ADefenseGameMode* AuthGameMode = World->GetAuthGameMode<ADefenseGameMode>();
+		if (AuthGameMode)
+		{
+			GameMode = AuthGameMode;
+			AuthGameMode->NotifyEnemyRemoved(
+				this,
+				bReachedDestination ? EEnemyRemoveReason::ReachedDestination : EEnemyRemoveReason::Killed
+			);
+		}
+		else if (OwningSpawner)
+		{
+			OwningSpawner->RemoveActiveEnemy(this);
+		}
+	}
+	else if (OwningSpawner)
+	{
+		OwningSpawner->RemoveActiveEnemy(this);
+	}
+
+	if (UEnemyPoolSubsystem* EnemyPool = World->GetSubsystem<UEnemyPoolSubsystem>())
+	{
+		EnemyPool->ReturnToPool(this);
+	}
+	else
+	{
+		SetEnemyMode(EEnemyMode::Inactive);
+	}
 }
 
 // Gameplay Tag 이벤트 보내기
@@ -982,12 +1162,22 @@ void AEnemyBase::MulticastRPC_ShowDamageOutline_Implementation()
 	ShowDamageOutline();
 }
 
+void AEnemyBase::MulticastRPC_ShowElectricHit_Implementation()
+{
+	ShowElectricHit();
+}
+
 void AEnemyBase::MulticastRPC_DieMotion_Implementation()
 {
 	// 데디 서버에서는 리턴
 	if (IsRunningDedicatedServer())
 	{
 		return;
+	}
+
+	if (NormalDeathSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, NormalDeathSound, GetActorLocation());
 	}
 
 	PrepareForRegularAnimation();
@@ -1033,6 +1223,11 @@ void AEnemyBase::MulticastRPC_StoneDieVisual_Implementation()
 	if (IsRunningDedicatedServer())
 	{
 		return;
+	}
+
+	if (StoneDeathSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, StoneDeathSound, GetActorLocation());
 	}
 
 	bPendingLocomotionResume = false;
@@ -1139,6 +1334,13 @@ void AEnemyBase::PrepareForRegularAnimation()
 	}
 
 	ResetStoneVisual();
+}
+
+const FGameplayTagContainer& AEnemyBase::GetEnemyTags() const
+{
+	static const FGameplayTagContainer EmptyEnemyTags;
+
+	return EnemyData ? EnemyData->EnemyTags : EmptyEnemyTags;
 }
 
 void AEnemyBase::EnterStoneVisual()
@@ -1366,6 +1568,12 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	CurHP = FMath::Max(0.f, CurHP - ActualDamage);
 	const UClass* DamageTypeClass = DamageEvent.DamageTypeClass.Get();
 	const bool bIsBurnDamage = DamageTypeClass && DamageTypeClass->IsChildOf(UBurnDamageType::StaticClass());
+	const bool bIsLightningDamage = IsValid(DamageCauser) && DamageCauser->IsA<ALightningTrap>();
+
+	if (bIsLightningDamage)
+	{
+		MulticastRPC_ShowElectricHit();
+	}
 
 	/*ADefenseCharacter* AttackingCharacter = Cast<ADefenseCharacter>(DamageCauser);
 	if (!AttackingCharacter && EventInstigator)
@@ -1387,14 +1595,29 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 			? EEnemyPendingDeathType::Stone
 			: EEnemyPendingDeathType::Normal;
 		LastDeathRetryTime = -BIG_NUMBER;
+		if (!EnemyController)
+		{
+			EnemyController = Cast<AEnemyController>(GetController());
+		}
+		if (EnemyController)
+		{
+			EnemyController->StopMovement();
+		}
+		if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+		{
+			MovementComponent->StopMovementImmediately();
+		}
+		StartDeathFailsafeTimer();
 		if (GameMode)
 		{
-			if (ADefensePlayerState* RewardTarget = GameMode->AwardEnemyKillCoin(this, DamageCauser, EventInstigator))
+			if (ADefensePlayerState* KillerPlayerState = GameMode->HandleEnemyKilled(this, DamageCauser, EventInstigator))
 			{
-				if (ADefensePlayerController* RewardPlayerController =
-					Cast<ADefensePlayerController>(RewardTarget->GetPlayerController()))
+				if (KillCoinReward > 0)
 				{
-					RewardPlayerController->ClientRPC_ShowRewardPopup(this, KillCoinReward);
+					if (ADefensePlayerController* PlayerController = Cast<ADefensePlayerController>(KillerPlayerState->GetPlayerController()))
+					{
+						PlayerController->ClientRPC_ShowRewardPopup(this, KillCoinReward);
+					}
 				}
 			}
 		}
@@ -1418,7 +1641,8 @@ float AEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& Dama
 	}
 	else if (!bIsBurnDamage)
 	{
-		if (EnemyState != EEnemyState::Stone || bShowDamageOutlineWhileStone)
+		if (!bIsLightningDamage
+			&& (EnemyState != EEnemyState::Stone || bShowDamageOutlineWhileStone))
 		{
 			MulticastRPC_ShowDamageOutline();
 		}
@@ -1593,6 +1817,7 @@ void AEnemyBase::InitializeDamageOverlay()
 
 		DamageOverlayMID->SetScalarParameterValue(TEXT("BurnAmount"), bIsBurning ? 1.f : 0.f);
 		DamageOverlayMID->SetScalarParameterValue(TEXT("OutlineAmount"), 0.f);
+		DamageOverlayMID->SetScalarParameterValue(TEXT("ElectricAmount"), 0.f);
 		DamageOverlayMID->SetVectorParameterValue(TEXT("BurnColor"), BurnColor);
 		DamageOverlayMID->SetScalarParameterValue(TEXT("BurnSpeed"), BurnPulseSpeed);
 	}
@@ -1631,6 +1856,43 @@ void AEnemyBase::SetBurnVisualActive(const bool bActive)
 	if (AnimInst)
 	{
 		AnimInst->StopBurnReactionMotion();
+	}
+}
+
+void AEnemyBase::ShowElectricHit()
+{
+	if (IsRunningDedicatedServer())
+	{
+		return;
+	}
+
+	InitializeDamageOverlay();
+	UWorld* World = GetWorld();
+	if (!DamageOverlayMID || !World)
+	{
+		return;
+	}
+
+	DamageOverlayMID->SetScalarParameterValue(TEXT("ElectricAmount"), 1.f);
+	World->GetTimerManager().SetTimer(
+		ElectricHitTimerHandle,
+		this,
+		&AEnemyBase::ClearElectricHit,
+		FMath::Max(ElectricHitDuration, UE_KINDA_SMALL_NUMBER),
+		false
+	);
+}
+
+void AEnemyBase::ClearElectricHit()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ElectricHitTimerHandle);
+	}
+
+	if (DamageOverlayMID)
+	{
+		DamageOverlayMID->SetScalarParameterValue(TEXT("ElectricAmount"), 0.f);
 	}
 }
 

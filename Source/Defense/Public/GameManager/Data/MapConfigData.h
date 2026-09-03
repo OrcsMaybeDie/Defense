@@ -6,12 +6,18 @@
 #include "Engine/DataAsset.h"
 #include "MapConfigData.generated.h"
 
+class UMissionData;
+
 UCLASS()
 class DEFENSE_API UMapConfigData : public UDataAsset
 {
 	GENERATED_BODY()
 
 public:
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
+#endif
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Map")
 	FText DisplayName;
 
@@ -56,6 +62,9 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Economy")
 	int32 InitCoin = 3000;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
+	TArray<TObjectPtr<UMissionData>> Missions;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Enemy")
 	TObjectPtr<class UWaveData> WaveData;

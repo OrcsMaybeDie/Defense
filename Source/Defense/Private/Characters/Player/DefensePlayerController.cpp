@@ -10,7 +10,9 @@
 #include "EnhancedInputComponent.h"
 
 #include "Characters/Enemy/EnemyBase.h"
+#include "Characters/Player/DefenseCharacter.h"
 #include "Characters/Player/DefensePlayerState.h"
+#include "Engine/GameInstance.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameManager/DefenseGameMode.h"
 #include "GameManager/DefenseGameState.h"
@@ -18,8 +20,11 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Profile/ProfileSubsystem.h"
+#include "UI/EquipmentUI/EquipmentMenuWidget.h"
 #include "UI/GameEndUI.h"
 #include "UI/ESCUI.h"
+#include "UI/WeaponCrosshairWidget.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
 namespace
@@ -82,12 +87,44 @@ void ADefensePlayerController::BeginPlay()
 		{
 			HUDWidget->ClearFlags(RF_Transactional);
 			HUDWidget->AddToPlayerScreen();
+
+			if (bCinematicHUDHidden)
+			{
+				HUDVisibilityBeforeCinematic = HUDWidget->GetVisibility();
+				HUDWidget->SetVisibility(ESlateVisibility::Collapsed);
+			}
+		}
+	}
+
+	// Crosshair
+	if (IsLocalPlayerController())
+	{
+		CrosshairWidget = CreateWidget<UWeaponCrosshairWidget>(
+			this,
+			UWeaponCrosshairWidget::StaticClass()
+		);
+		if (CrosshairWidget)
+		{
+			CrosshairWidget->ClearFlags(RF_Transactional);
+			CrosshairWidget->AddToPlayerScreen(10);
+
+			if (bCinematicHUDHidden)
+			{
+				CrosshairVisibilityBeforeCinematic = CrosshairWidget->GetVisibility();
+				CrosshairWidget->SetVisibility(ESlateVisibility::Collapsed);
+			}
 		}
 	}
 }
 
 void ADefensePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (CrosshairWidget)
+	{
+		CrosshairWidget->RemoveFromParent();
+		CrosshairWidget = nullptr;
+	}
+
 	if (HUDWidget)
 	{
 		HUDWidget->RemoveFromParent();
@@ -104,6 +141,12 @@ void ADefensePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		ESCUI->RemoveFromParent();
 		ESCUI = nullptr;
+	}
+
+	if (EquipmentMenuWidget)
+	{
+		EquipmentMenuWidget->RemoveFromParent();
+		EquipmentMenuWidget = nullptr;
 	}
 
 	Super::EndPlay(EndPlayReason);
@@ -153,6 +196,16 @@ void ADefensePlayerController::SetupInputComponent()
 				&ADefensePlayerController::ToggleESCUI
 			);
 		}
+
+		if (IA_EquipmentMenu)
+		{
+			EnhancedInputComponent->BindAction(
+				IA_EquipmentMenu,
+				ETriggerEvent::Started,
+				this,
+				&ADefensePlayerController::ToggleEquipmentMenu
+			);
+		}
 	}
 }
 
@@ -175,13 +228,41 @@ bool ADefensePlayerController::ShouldUseTouchControls() const
 	return SVirtualJoystick::ShouldDisplayTouchInterface() || bForceTouchControls;
 }
 
-void ADefensePlayerController::ClientRPC_ShowGameEndUI_Implementation(bool bGameClear)
+void ADefensePlayerController::ClientRPC_EnterGameEndState_Implementation()
+{
+	if (ADefenseCharacter* DefenseCharacter = Cast<ADefenseCharacter>(GetPawn()))
+	{
+		DefenseCharacter->StopWeaponAction();
+	}
+
+	bShowMouseCursor = false;
+
+	FInputModeUIOnly InputMode;
+	SetInputMode(InputMode);
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+}
+
+void ADefensePlayerController::ClientRPC_ShowGameEndUI_Implementation(
+	bool bGameClear,
+	const TArray<FMissionCompletionResult>& Results)
 {
 	bShowMouseCursor = true;
 
 	FInputModeUIOnly InputMode;
 	// 또는 게임 입력도 살릴 거면 FInputModeGameAndUI
 	SetInputMode(InputMode);
+
+	TArray<FMissionCompletionResult> NewlyCompletedResults;
+
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UProfileSubsystem* ProfileSubsystem = GameInstance->GetSubsystem<UProfileSubsystem>())
+		{
+			// 이번에 실제로 새로 저장된 미션만 받음
+			ProfileSubsystem->ApplyMissionCompletions(Results, NewlyCompletedResults);
+		}
+	}
 
 	if (!GameEndUI && GameEndUIClass)
 	{
@@ -218,6 +299,8 @@ void ADefensePlayerController::ClientRPC_HideGameEndUI_Implementation()
 	FInputModeGameOnly InputMode;
 
 	SetInputMode(InputMode);
+	SetIgnoreMoveInput(false);
+	SetIgnoreLookInput(false);
 	
 }
 
@@ -276,7 +359,12 @@ void ADefensePlayerController::RequestReady()
 
 void ADefensePlayerController::RequestGameEndRetry()
 {
-	if (IsGameHostPlayer() && GameEndUI)
+	if (!IsGameHostPlayer())
+	{
+		return;
+	}
+
+	if (GameEndUI)
 	{
 		GameEndUI->ShowEndLoading();
 	}
@@ -286,7 +374,16 @@ void ADefensePlayerController::RequestGameEndRetry()
 
 void ADefensePlayerController::RequestReturnToIntroMap()
 {
-	if (IsGameHostPlayer() && ESCUI)
+	if (!IsGameHostPlayer())
+	{
+		return;
+	}
+
+	if (GameEndUI && GameEndUI->IsInViewport())
+	{
+		GameEndUI->ShowEndLoading();
+	}
+	else if (ESCUI)
 	{
 		ESCUI->ShowESCLoading();
 	}
@@ -348,6 +445,107 @@ void ADefensePlayerController::SubmitClientIdentity()
 	}
 
 	ServerRPC_SubmitClientIdentity(MakeLocalClientIdentity());
+}
+
+void ADefensePlayerController::SetCinematicHUDHidden(const bool bShouldHide)
+{
+	if (!IsLocalPlayerController() || bCinematicHUDHidden == bShouldHide)
+	{
+		return;
+	}
+
+	bCinematicHUDHidden = bShouldHide;
+	if (bShouldHide)
+	{
+		if (HUDWidget)
+		{
+			HUDVisibilityBeforeCinematic = HUDWidget->GetVisibility();
+			HUDWidget->SetVisibility(ESlateVisibility::Collapsed);
+		}
+
+		if (CrosshairWidget)
+		{
+			CrosshairVisibilityBeforeCinematic = CrosshairWidget->GetVisibility();
+			CrosshairWidget->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+	else
+	{
+		if (HUDWidget)
+		{
+			HUDWidget->SetVisibility(HUDVisibilityBeforeCinematic);
+		}
+
+		if (CrosshairWidget)
+		{
+			CrosshairWidget->SetVisibility(CrosshairVisibilityBeforeCinematic);
+		}
+	}
+}
+
+void ADefensePlayerController::SetCinematicMode(
+	const bool bInCinematicMode,
+	const bool bHidePlayer,
+	const bool bAffectsHUD,
+	const bool bAffectsMovement,
+	const bool bAffectsTurning
+)
+{
+	Super::SetCinematicMode(
+		bInCinematicMode,
+		bHidePlayer,
+		bAffectsHUD,
+		bAffectsMovement,
+		bAffectsTurning
+	);
+
+	if (bAffectsHUD)
+	{
+		SetCinematicHUDHidden(bInCinematicMode);
+	}
+}
+
+void ADefensePlayerController::ToggleEquipmentMenu()
+{
+	if (!IsLocalPlayerController() || !EquipmentMenuWidgetClass.Get())
+	{
+		return;
+	}
+
+	// 메뉴 닫기
+	if (EquipmentMenuWidget && EquipmentMenuWidget->IsInViewport())
+	{
+		EquipmentMenuWidget->RemoveFromParent();
+		bShowMouseCursor = false;
+
+		FInputModeGameOnly InputMode;
+		SetInputMode(InputMode);
+		return;
+	}
+
+	// ESC 메뉴가 열려 있으면 장비 메뉴를 열지 않음
+	if (ESCUI && ESCUI->IsInViewport())
+	{
+		return;
+	}
+
+	if (!EquipmentMenuWidget)
+	{
+		EquipmentMenuWidget = CreateWidget<UEquipmentMenuWidget>(this, EquipmentMenuWidgetClass);
+	}
+
+	if (!EquipmentMenuWidget)
+	{
+		return;
+	}
+
+	EquipmentMenuWidget->AddToViewport();
+	bShowMouseCursor = true;
+
+	FInputModeGameAndUI InputMode;
+	InputMode.SetWidgetToFocus(EquipmentMenuWidget->TakeWidget());
+	InputMode.SetHideCursorDuringCapture(false);
+	SetInputMode(InputMode);
 }
 
 bool ADefensePlayerController::IsGameHostPlayer() const

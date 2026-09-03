@@ -11,9 +11,11 @@
 #include "Components/BoxComponent.h"
 #include "Components/MeshComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Defense.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "NavigationSystem.h"
 #include "Net/UnrealNetwork.h"
 #include "UI/EnemyHPUI.h"
 
@@ -36,8 +38,6 @@ ABarricadeTrap::ABarricadeTrap()
 	Sensor->SetGenerateOverlapEvents(false);
 	Sensor->SetAutoActivate(false);
 	Sensor->SetCanEverAffectNavigation(false);
-
-	ApplyBoxExtents();
 }
 
 void ABarricadeTrap::Tick(const float DeltaTime)
@@ -97,13 +97,29 @@ float ABarricadeTrap::TakeDamage(
 	}
 
 	ForceNetUpdate();
+	HandleDamageApplied(AppliedDamage, DamageCauser);
 
 	if (HP <= 0.0f)
 	{
-		Destroy();
+		HandleHPDepleted(DamageCauser);
 	}
 
 	return AppliedDamage;
+}
+
+void ABarricadeTrap::HandleDamageApplied(const float, AActor*)
+{
+}
+
+void ABarricadeTrap::HandleHPDepleted(AActor* DamageCauser)
+{
+	if (DamageCauser && DamageCauser->IsA<AEnemyBase>())
+	{
+		DestroyByEnemy();
+		return;
+	}
+
+	Destroy();
 }
 
 float ABarricadeTrap::GetDistanceToSurface(const FVector& FromLocation) const
@@ -133,13 +149,14 @@ float ABarricadeTrap::GetDistanceToSurface(const FVector& FromLocation) const
 void ABarricadeTrap::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
-	ApplyBoxExtents();
+	ApplyDamageAreaExtent();
 }
 
 void ABarricadeTrap::BeginPlay()
 {
 	Super::BeginPlay();
-	ApplyBoxExtents();
+	ApplyDamageAreaExtent();
+	RefreshNavigationObstacle(); // 문 부수기
 
 	if (HasAuthority())
 	{
@@ -160,6 +177,14 @@ void ABarricadeTrap::BeginPlay()
 	{
 		Sensor->OnComponentBeginOverlap.AddUniqueDynamic(this, &ABarricadeTrap::OnSensorBeginOverlap);
 		Sensor->OnComponentEndOverlap.AddUniqueDynamic(this, &ABarricadeTrap::OnSensorEndOverlap);
+	}
+}
+
+void ABarricadeTrap::ApplyDamageAreaExtent()
+{
+	if (DamageArea)
+	{
+		DamageArea->SetBoxExtent(DamageAreaExtent);
 	}
 }
 
@@ -190,19 +215,6 @@ void ABarricadeTrap::RefreshHPUI()
 	}
 }
 
-void ABarricadeTrap::ApplyBoxExtents()
-{
-	if (DamageArea)
-	{
-		DamageArea->SetBoxExtent(FVector(100.0f, 100.0f, 100.0f));
-	}
-
-	if (Sensor)
-	{
-		Sensor->SetBoxExtent(FVector(52.f, 52.0f, 50.0f));
-	}
-}
-
 void ABarricadeTrap::InitializePlacedTrap(
 	UTrapData* TrapData,
 	ADefensePlayerState* InInstalledByPlayerState,
@@ -210,7 +222,30 @@ void ABarricadeTrap::InitializePlacedTrap(
 )
 {
 	Super::InitializePlacedTrap(TrapData, InInstalledByPlayerState, InOccupiedCells);
+	RefreshNavigationObstacle();
 	ScheduleSensorActivation();
+}
+
+void ABarricadeTrap::RefreshNavigationObstacle()
+{
+	if (!HasAuthority() || !IsPlaced() || !DamageArea)
+	{
+		return;
+	}
+
+	// Nav Octree 갱신
+	DamageArea->SetCanEverAffectNavigation(true);
+	DamageArea->bDynamicObstacle = true;
+	UNavigationSystemV1::UpdateComponentInNavOctree(*DamageArea);
+
+	// UE_LOG(
+	// 	LogDefense,
+	// 	Log,
+	// 	TEXT("[BarricadeNav] Obstacle refreshed. Actor=%s PawnBlock=%d NavRelevant=%d"),
+	// 	*GetNameSafe(this),
+	// 	DamageArea->GetCollisionResponseToChannel(ECC_Pawn) == ECR_Block,
+	// 	DamageArea->IsNavigationRelevant()
+	// );
 }
 
 void ABarricadeTrap::ScheduleSensorActivation()

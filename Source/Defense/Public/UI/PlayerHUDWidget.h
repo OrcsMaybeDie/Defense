@@ -6,7 +6,7 @@
 #include "PlayerHUDWidget.generated.h"
 
 
-class ULoadoutBarWidget;
+class UQuickSlotBarWidget;
 class UNoticeWidget;
 class UPlayerStatusWidget;
 class UTextBlock;
@@ -28,12 +28,16 @@ protected:
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UPlayerStatusWidget> AllyStatus;
+
+	// 3인 시연용 두 번째 아군 상태. 에디터에서 추가하기 전에도 빌드 가능하다.
+	UPROPERTY(meta=(BindWidgetOptional))
+	TObjectPtr<UPlayerStatusWidget> AllyStatus2;
 	
 	UPROPERTY(meta=(BindWidgetOptional))
 	TObjectPtr<UTextBlock> AllyName;
 	
 	UPROPERTY(meta=(BindWidget))
-	TObjectPtr<ULoadoutBarWidget> LoadoutBar;
+	TObjectPtr<UQuickSlotBarWidget> QuickSlotBar;
 
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UNoticeWidget> WBP_Notice;

@@ -7,6 +7,7 @@
 #include "TimerManager.h"
 #include "EnemyBase.generated.h"
 
+struct FGameplayTagContainer;
 enum class EEnemyType : uint8;
 
 UENUM(BlueprintType)
@@ -73,6 +74,8 @@ public:
 	AEnemyBase();
 
 protected:
+	virtual void OnConstruction(const FTransform& Transform) override;
+
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -97,6 +100,12 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
 	TObjectPtr<class UWidgetComponent> RewardComp;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	TObjectPtr<class UStaticMeshComponent> Weapon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Weapon")
+	FName WeaponSocketName = NAME_None;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Data")
 	TObjectPtr<class UEnemyData> EnemyData;
@@ -143,11 +152,11 @@ public:
 	UPROPERTY()
 	TObjectPtr<class UMeshComponent> EnemyMesh;
 	
-	UPROPERTY(editAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Materials")
 	TObjectPtr<class UMaterialInterface> PreviewMaterial;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UMaterialInterface> CombatMaterial;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Materials")
+	TArray<TObjectPtr<class UMaterialInterface>> CombatMaterials;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy|Stone")
 	TObjectPtr<class UMaterialInterface> StoneMaterial;
@@ -161,6 +170,12 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Stone|Fracture")
 	TSubclassOf<class AStoneFractureActor> StoneFractureActorClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Audio")
+	TObjectPtr<class USoundBase> NormalDeathSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Audio")
+	TObjectPtr<class USoundBase> StoneDeathSound;
 	
 	UPROPERTY()
 	TObjectPtr<class UEnemyAnim> AnimInst;
@@ -171,6 +186,10 @@ public:
 
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category="Enemy|Portal")
 	bool bEnteringPortal = false;
+
+	/** Maximum time an enemy may remain in portal transit before server-side forced cleanup. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Failsafe", meta=(ClampMin="0.1", Units="s"))
+	float PortalEntryFailsafeTimeout = 5.f;
 
 	bool TryBeginPortalEntry(
 		class APortal* Portal,
@@ -233,6 +252,10 @@ public:
 	bool bDeathHandled = false;
 	bool bDeathTaskStarted = false;
 	EEnemyPendingDeathType PendingDeathType = EEnemyPendingDeathType::None;
+
+	/** Allows the normal death task to finish, then removes enemies whose death transition is stuck. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Failsafe", meta=(ClampMin="0.1", Units="s"))
+	float DeathFailsafeTimeout = 8.f;
 	
 	// 플레이어가 한 공격 받기
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
@@ -250,6 +273,9 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Damage|Visual", meta=(ClampMin="0.01", Units="s"))
 	float DamageOutlineDuration = 0.15f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Damage|Visual|Electric", meta=(ClampMin="0.01", Units="s"))
+	float ElectricHitDuration = 0.5f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Enemy|Damage|Visual|Burn")
 	FLinearColor BurnColor = FLinearColor(1.f, 0.02f, 0.01f, 1.f);
@@ -305,6 +331,8 @@ public:
 	virtual void ApplyEnemyData();
 	void PrepareForRegularAnimation();
 	
+	const FGameplayTagContainer& GetEnemyTags() const; // for mission
+
 	//--------------석화------------------
 
 private:
@@ -335,6 +363,8 @@ private:
 	ECollisionEnabled::Type MeshCollisionEnabledBeforePortal = ECollisionEnabled::NoCollision;
 	float LastDeathRetryTime = -BIG_NUMBER;
 	static constexpr float DeathRetryInterval = 0.25f;
+	FTimerHandle DeathFailsafeTimerHandle;
+	FTimerHandle PortalEntryFailsafeTimerHandle;
 
 	void EnterStoneVisual();
 	void ExitStoneVisual(bool bResumeMontage, bool bWaitForMovement);
@@ -352,6 +382,13 @@ private:
 	void ApplyPortalCollisionState();
 	void RestorePortalCollisionState();
 	void ResetPortalEntryState();
+	void StartDeathFailsafeTimer();
+	void ClearDeathFailsafeTimer();
+	void HandleDeathFailsafeTimeout();
+	void StartPortalEntryFailsafeTimer();
+	void ClearPortalEntryFailsafeTimer();
+	void HandlePortalEntryFailsafeTimeout();
+	void ForceReturnToPoolFromFailsafe(bool bReachedDestination);
 	void ApplyEnemyCollisionPolicy();
 	void UpdateRewardPopup(float DeltaTime);
 	void ResetRewardPopup();
@@ -365,10 +402,15 @@ private:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastRPC_ShowDamageOutline();
 
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastRPC_ShowElectricHit();
+
 	void ApplyBurnDamageTick();
 	void EndBurnEffect();
 	void InitializeDamageOverlay();
 	void SetBurnVisualActive(bool bActive);
+	void ShowElectricHit();
+	void ClearElectricHit();
 	void ShowDamageOutline();
 	void ClearDamageOutline();
 	void UpdateDamageOverlayForStoneState();
@@ -378,6 +420,7 @@ private:
 	FTimerHandle BurnDamageTimerHandle;
 	FTimerHandle BurnEndTimerHandle;
 	FTimerHandle DamageOutlineTimerHandle;
+	FTimerHandle ElectricHitTimerHandle;
 	float BurnDamagePerTick = 0.f;
 	float BurnEndTime = 0.f;
 

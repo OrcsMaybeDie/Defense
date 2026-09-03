@@ -28,6 +28,9 @@ public:
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<class UWidgetSwitcher> SwitcherIntroLoading;
+
+	UPROPERTY(meta=(BindWidgetOptional))
+	TObjectPtr<class UWidget> WBP_EquipEntryButton;
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<class UScrollBox> ScrollBoxMaps;

@@ -134,6 +134,14 @@ void APortal::OnEntrySensorBeginOverlap(
 	{
 		return;
 	}
+
+	if (Enemy->EnemyMode == EEnemyMode::Combat)
+	{
+		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
+		{
+			GameMode->ApplyDestinationDamage(1);
+		}
+	}
 }
 
 void APortal::OnEntrySensorEndOverlap(
@@ -208,7 +216,6 @@ void APortal::OnReturnPoolSensorBeginOverlap(
 		if (ADefenseGameMode* GameMode = GetWorld()->GetAuthGameMode<ADefenseGameMode>())
 		{
 			GameMode->NotifyEnemyRemoved(Enemy, EEnemyRemoveReason::ReachedDestination);
-			GameMode->ApplyDestinationDamage(1);
 		}
 	}
 

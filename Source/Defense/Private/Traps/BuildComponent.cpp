@@ -1,19 +1,50 @@
 #include "Traps/BuildComponent.h"
 
+#include "Animation/AnimInstance.h"
 #include "Characters/Player/DefensePlayerState.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "EngineUtils.h"
+#include "Equipment/EquipmentData.h"
 #include "Equipment/LoadoutComponent.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
 #include "Traps/Grid/GridManager.h"
 #include "Traps/TrapBase.h"
 #include "Traps/TrapData.h"
+#include "TimerManager.h"
+#include "UObject/UnrealType.h"
+
+namespace
+{
+	const FName TrapUpperBodyWeightPropertyName(TEXT("HipFireUpperBodyOverrideWeight"));
+}
 
 UBuildComponent::UBuildComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	SetIsReplicatedByDefault(true);
+}
+
+void UBuildComponent::BeginPlay()
+{
+	Super::BeginPlay();
+
+	APawn* OwnerPawn = GetOwnerPawn();
+	ULoadoutComponent* LoadoutComponent = OwnerPawn
+		? OwnerPawn->FindComponentByClass<ULoadoutComponent>()
+		: nullptr;
+	if (!LoadoutComponent || GetNetMode() == NM_DedicatedServer) return;
+
+	LoadoutComponent->OnSelectedEquipChanged.AddUniqueDynamic(
+		this,
+		&UBuildComponent::HandleSelectedEquipmentChanged
+	);
+	HandleSelectedEquipmentChanged(
+		LoadoutComponent->GetSelectedSlotIdx(),
+		LoadoutComponent->GetCurEquipment()
+	);
 }
 
 void UBuildComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -33,9 +64,140 @@ void UBuildComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 
 void UBuildComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(TrapBuildAnimationRefreshTimer);
+	}
+
 	DestroyTrapPreview();
+	ApplyTrapBuildAnimation(false);
+
+	if (APawn* OwnerPawn = GetOwnerPawn())
+	{
+		if (ULoadoutComponent* LoadoutComponent = OwnerPawn->FindComponentByClass<ULoadoutComponent>())
+		{
+			LoadoutComponent->OnSelectedEquipChanged.RemoveDynamic(
+				this,
+				&UBuildComponent::HandleSelectedEquipmentChanged
+			);
+		}
+	}
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void UBuildComponent::HandleSelectedEquipmentChanged(int32, UEquipmentData* SelectedEquipment)
+{
+	const bool bSelectedTrap = SelectedEquipment && SelectedEquipment->IsA<UTrapData>();
+	if (!bSelectedTrap)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().ClearTimer(TrapBuildAnimationRefreshTimer);
+		}
+
+		ApplyTrapBuildAnimation(false);
+		return;
+	}
+
+	// 같은 장비 선택 이벤트에서 무기 Anim Layer가 먼저 정리된 뒤 함정 모션 적용
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(TrapBuildAnimationRefreshTimer);
+		TrapBuildAnimationRefreshTimer = World->GetTimerManager().SetTimerForNextTick(
+			this,
+			&UBuildComponent::RefreshTrapBuildAnimation
+		);
+	}
+}
+
+void UBuildComponent::RefreshTrapBuildAnimation()
+{
+	ApplyTrapBuildAnimation(HasSelectedTrap());
+}
+
+void UBuildComponent::ApplyTrapBuildAnimation(const bool bEnable)
+{
+	if (bTrapBuildAnimationApplied == bEnable) return;
+
+	const ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+	UAnimInstance* AnimInstance = OwnerCharacter && OwnerCharacter->GetMesh()
+		? OwnerCharacter->GetMesh()->GetAnimInstance()
+		: nullptr;
+	if (!AnimInstance) return;
+
+	if (bEnable)
+	{
+		if (!TrapBuildAnimation || TrapBuildAnimationSlot.IsNone()) return;
+
+		ApplyTrapUpperBodyWeight(true);
+		ActiveTrapBuildMontage = AnimInstance->PlaySlotAnimationAsDynamicMontage(
+			TrapBuildAnimation,
+			TrapBuildAnimationSlot,
+			0.2f,
+			0.2f,
+			1.f,
+			MAX_int32
+		);
+		bTrapBuildAnimationApplied = ActiveTrapBuildMontage != nullptr;
+		if (!bTrapBuildAnimationApplied)
+		{
+			ApplyTrapUpperBodyWeight(false);
+		}
+	}
+	else
+	{
+		if (ActiveTrapBuildMontage)
+		{
+			AnimInstance->Montage_Stop(0.2f, ActiveTrapBuildMontage);
+		}
+
+		ActiveTrapBuildMontage = nullptr;
+		bTrapBuildAnimationApplied = false;
+		ApplyTrapUpperBodyWeight(false);
+	}
+}
+
+void UBuildComponent::ApplyTrapUpperBodyWeight(const bool bEnable)
+{
+	const ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+	const USkeletalMeshComponent* CharacterMesh = OwnerCharacter ? OwnerCharacter->GetMesh() : nullptr;
+	if (!CharacterMesh) return;
+
+	if (bEnable)
+	{
+		TrapUpperBodyWeightOverrides.Reset();
+
+		for (UAnimInstance* LinkedAnimInstance : CharacterMesh->GetLinkedAnimInstances())
+		{
+			FFloatProperty* WeightProperty = LinkedAnimInstance
+				? FindFProperty<FFloatProperty>(LinkedAnimInstance->GetClass(), TrapUpperBodyWeightPropertyName)
+				: nullptr;
+			if (!WeightProperty) continue;
+
+			TrapUpperBodyWeightOverrides.Add(
+				LinkedAnimInstance,
+				WeightProperty->GetPropertyValue_InContainer(LinkedAnimInstance)
+			);
+			WeightProperty->SetPropertyValue_InContainer(LinkedAnimInstance, 1.f);
+		}
+
+		return;
+	}
+
+	for (const TPair<TWeakObjectPtr<UAnimInstance>, float>& Override : TrapUpperBodyWeightOverrides)
+	{
+		UAnimInstance* LinkedAnimInstance = Override.Key.Get();
+		FFloatProperty* WeightProperty = LinkedAnimInstance
+			? FindFProperty<FFloatProperty>(LinkedAnimInstance->GetClass(), TrapUpperBodyWeightPropertyName)
+			: nullptr;
+		if (WeightProperty)
+		{
+			WeightProperty->SetPropertyValue_InContainer(LinkedAnimInstance, Override.Value);
+		}
+	}
+
+	TrapUpperBodyWeightOverrides.Reset();
 }
 
 void UBuildComponent::BuildTrap()
@@ -73,7 +235,7 @@ void UBuildComponent::BuildTrap()
 void UBuildComponent::SellTrap()
 {
 	FHitResult Hit;
-	ATrapBase* Trap = TraceBuildTarget(Hit) ? Cast<ATrapBase>(Hit.GetActor()) : nullptr;
+	ATrapBase* Trap = TraceSellTarget(Hit) ? Cast<ATrapBase>(Hit.GetActor()) : nullptr;
 	if (!Trap)
 	{
 		return;
@@ -116,11 +278,14 @@ bool UBuildComponent::TraceBuildTarget(FHitResult& OutHit) const
 	}
 
 	const FVector TraceEnd = ViewLocation + ViewRotation.Vector() * BuildTraceRange;
-	const bool bHit = World->LineTraceSingleByChannel(
+	FCollisionObjectQueryParams ObjectQueryParams;
+	ObjectQueryParams.AddObjectTypesToQuery(ECC_WorldStatic);
+
+	const bool bHit = World->LineTraceSingleByObjectType(
 		OutHit,
 		ViewLocation,
 		TraceEnd,
-		ECC_Visibility,
+		ObjectQueryParams,
 		Params
 	);
 
@@ -144,6 +309,37 @@ bool UBuildComponent::TraceBuildTarget(FHitResult& OutHit) const
 #endif
 
 	return bHit;
+}
+
+bool UBuildComponent::TraceSellTarget(FHitResult& OutHit) const
+{
+	APawn* OwnerPawn = GetOwnerPawn();
+	AController* OwningController = OwnerPawn ? OwnerPawn->GetController() : nullptr;
+	UWorld* World = GetWorld();
+	if (!OwnerPawn || !OwningController || !World)
+	{
+		return false;
+	}
+
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	OwningController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TrapSellTrace), true, OwnerPawn);
+	Params.AddIgnoredActor(OwnerPawn);
+	if (TrapPreviewActor)
+	{
+		Params.AddIgnoredActor(TrapPreviewActor);
+	}
+
+	const FVector TraceEnd = ViewLocation + ViewRotation.Vector() * BuildTraceRange;
+	return World->LineTraceSingleByChannel(
+		OutHit,
+		ViewLocation,
+		TraceEnd,
+		ECC_Visibility,
+		Params
+	);
 }
 
 AGridManager* UBuildComponent::FindGridManager()
