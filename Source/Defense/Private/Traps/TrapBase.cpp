@@ -16,7 +16,6 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
 #include "NiagaraFunctionLibrary.h"
-#include "NiagaraSystem.h"
 #include "Traps/TrapData.h"
 #include "Traps/Grid/GridManager.h"
 
@@ -24,7 +23,6 @@ namespace
 {
 	constexpr float WallTraceRange = 1400.f;
 	constexpr float WallTraceStartOffset = 10.f;
-	constexpr float WallTraceDebugTime = 0.35f;
 	const FVector WallTraceBoxExtent(120.f, 140.f, 20.f);
 	constexpr float WallTraceLaneOffset = 120.f;
 	constexpr float WallEffectLaneOffset = 50.f;
@@ -286,18 +284,32 @@ void ATrapBase::OnRep_RuntimeState()
 void ATrapBase::ApplyTrapCollision()
 {
 	SetActorEnableCollision(IsPlaced());
+	UMeshComponent* ActiveMesh = GetActiveTrapMeshComponent();
 
+	// Trap 유형 2개
 	if (Mesh)
 	{
-		Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Mesh->SetCanEverAffectNavigation(false); // Mesh Nav에서 제외 (판매용)
+		Mesh->SetCollisionObjectType(ECC_WorldDynamic);
 		Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 		Mesh->SetGenerateOverlapEvents(false);
+		Mesh->SetCollisionEnabled(IsPlaced() && ActiveMesh == Mesh.Get()
+				? ECollisionEnabled::QueryOnly
+				: ECollisionEnabled::NoCollision
+		);
 	}
 	if (SkeletalMesh)
 	{
-		SkeletalMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		SkeletalMesh->SetCanEverAffectNavigation(false); // Mesh Nav에서 제외 (판매용)
+		SkeletalMesh->SetCollisionObjectType(ECC_WorldDynamic);
 		SkeletalMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		SkeletalMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 		SkeletalMesh->SetGenerateOverlapEvents(false);
+		SkeletalMesh->SetCollisionEnabled(IsPlaced() && ActiveMesh == SkeletalMesh.Get()
+				? ECollisionEnabled::QueryOnly
+				: ECollisionEnabled::NoCollision
+		);
 	}
 
 	if (DamageArea)
@@ -305,7 +317,6 @@ void ATrapBase::ApplyTrapCollision()
 		DamageArea->SetCollisionObjectType(ECC_WorldDynamic);
 		DamageArea->SetCollisionResponseToAllChannels(ECR_Ignore);
 		DamageArea->SetCollisionResponseToChannel(DefenseCollisionChannels::Enemy, ECR_Overlap);
-		DamageArea->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 		DamageArea->SetCollisionResponseToChannel(ECC_Pawn, ShouldBlockPawn() ? ECR_Block : ECR_Ignore);
 		DamageArea->SetGenerateOverlapEvents(IsPlaced());
 		DamageArea->SetCollisionEnabled(IsPlaced() ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);

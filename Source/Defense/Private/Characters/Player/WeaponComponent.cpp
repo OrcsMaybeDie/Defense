@@ -1,15 +1,24 @@
 #include "Characters/Player/WeaponComponent.h"
 
 #include "Animation/AnimInstance.h"
+#include "Characters/Enemy/EnemyBase.h"
 #include "Characters/Player/DefenseCharacter.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/MeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Defense.h"
 #include "Equipment/DefenseWeaponActor.h"
 #include "Equipment/LoadoutComponent.h"
 #include "Effects/StormTornadoVFXActor.h"
+#include "Effects/WeaponProjectileVFXActor.h"
 #include "GameFramework/Controller.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
+
+namespace
+{
+	constexpr float Stage3MinimumMana = 90.f;
+}
 
 UWeaponComponent::UWeaponComponent()
 {
@@ -86,6 +95,17 @@ void UWeaponComponent::TickComponent(
 
 	if (bChargeInputHeld)
 	{
+		const EWeaponChargeStage CurrentStage = GetChargeStage();
+		const int32 PreviousStageIndex = static_cast<int32>(LastLocalChargeStage);
+		const int32 CurrentStageIndex = static_cast<int32>(CurrentStage);
+		if (CurrentStageIndex > PreviousStageIndex && LocalChargeWeaponData)
+		{
+			for (int32 StageIndex = PreviousStageIndex + 1; StageIndex <= CurrentStageIndex; ++StageIndex)
+			{
+				PlayChargeStageReachedVFX(LocalChargeWeaponData->ChargedFire);
+			}
+		}
+		LastLocalChargeStage = CurrentStage;
 		BroadcastChargePreview();
 	}
 }
@@ -157,34 +177,22 @@ void UWeaponComponent::BeginCharge()
 
 	if (!OwnerCharacter || !WeaponData || !World)
 	{
-		UE_LOG(LogDefense, Warning, TEXT("Charge start rejected: missing owner, weapon data, or world."));
 		return;
 	}
 	if (!OwnerCharacter->IsLocallyControlled() && !OwnerCharacter->HasAuthority())
 	{
-		UE_LOG(LogDefense, Warning, TEXT("Charge start rejected: character is neither locally controlled nor authoritative. Character=%s"),
-			*GetNameSafe(OwnerCharacter));
 		return;
 	}
 	if (bChargeInputHeld || bServerChargeActive)
 	{
-		UE_LOG(LogDefense, Warning, TEXT("Charge start rejected: another charge is already active. Character=%s"),
-			*GetNameSafe(OwnerCharacter));
 		return;
 	}
 	if (!WeaponData->ChargedFire.bEnabled)
 	{
-		UE_LOG(LogDefense, Warning, TEXT("Charge start rejected: Charged Fire is disabled. Weapon=%s"),
-			*GetNameSafe(WeaponData));
 		return;
 	}
 	if (!CanLocallyBeginCharge(WeaponData->ChargedFire))
 	{
-		const UStatusComponent* StatusComp = OwnerCharacter->FindComponentByClass<UStatusComponent>();
-		UE_LOG(LogDefense, Warning, TEXT("Charge start rejected: invalid state or insufficient Stage1 mana. Character=%s Cost=%.1f Mana=%.1f"),
-			*GetNameSafe(OwnerCharacter),
-			WeaponData->ChargedFire.Stage1.ManaCost,
-			StatusComp ? StatusComp->Mana : -1.f);
 		return;
 	}
 
@@ -192,9 +200,6 @@ void UWeaponComponent::BeginCharge()
 	{
 		if (World->GetTimeSeconds() < *NextReadyTime)
 		{
-			UE_LOG(LogDefense, Warning, TEXT("Charge start rejected: charged fire cooldown has %.2f seconds remaining. Weapon=%s"),
-				*NextReadyTime - World->GetTimeSeconds(),
-				*GetNameSafe(WeaponData));
 			return;
 		}
 	}
@@ -204,13 +209,9 @@ void UWeaponComponent::BeginCharge()
 		bChargeInputHeld = true;
 		LocalChargeStartTime = World->GetTimeSeconds();
 		LocalChargeWeaponData = WeaponData;
+		LastLocalChargeStage = EWeaponChargeStage::None;
 		SetComponentTickEnabled(true);
 		BroadcastChargePreview();
-		PlayWeaponActionCosmetics(
-			EWeaponActionType::ChargedFire,
-			EWeaponActionPhase::Started,
-			0.f
-		);
 	}
 
 	ServerRPC_BeginCharge();
@@ -222,7 +223,6 @@ void UWeaponComponent::ReleaseCharge()
 	UWeaponData* WeaponData = LocalChargeWeaponData.Get();
 	if (!bChargeInputHeld || !World || !WeaponData)
 	{
-		UE_LOG(LogDefense, Warning, TEXT("Charge release ignored: no local charge is active."));
 		return;
 	}
 
@@ -231,24 +231,23 @@ void UWeaponComponent::ReleaseCharge()
 	const UStatusComponent* StatusComp = GetOwnerCharacter()
 		? GetOwnerCharacter()->FindComponentByClass<UStatusComponent>()
 		: nullptr;
+	const float UnclampedChargeRatio = CalculateChargeRatio(ChargeData, HeldTime);
+	const bool bRequestedStage3 = CalculateChargeStage(ChargeData, UnclampedChargeRatio) == EWeaponChargeStage::Stage3;
+	const bool bHasStage3Mana = StatusComp && StatusComp->Mana >= Stage3MinimumMana;
 	const float ChargeRatio = ClampChargeRatioToAvailableMana(
 		ChargeData,
-		CalculateChargeRatio(ChargeData, HeldTime),
+		UnclampedChargeRatio,
 		StatusComp ? StatusComp->Mana : 0.f
 	);
 	const EWeaponChargeStage ChargeStage = CalculateChargeStage(ChargeData, ChargeRatio);
 	const FWeaponChargeStageData* StageData = GetChargeStageData(ChargeData, ChargeStage);
 	ResetLocalChargeState();
 
-	if (!ChargeData.bEnabled || !StageData || WeaponData != GetCurWeaponData())
+	if (!ChargeData.bEnabled
+		|| !StageData
+		|| WeaponData != GetCurWeaponData()
+		|| (bRequestedStage3 && !bHasStage3Mana))
 	{
-		if (!StageData)
-		{
-			UE_LOG(LogDefense, Warning, TEXT("Charge release cancelled before Stage1. Held=%.2f Max=%.2f Ratio=%.2f"),
-				HeldTime,
-				ChargeData.MaxChargeTime,
-				ChargeRatio);
-		}
 		PlayWeaponActionCosmetics(
 			EWeaponActionType::ChargedFire,
 			EWeaponActionPhase::Cancelled,
@@ -379,7 +378,6 @@ void UWeaponComponent::ServerRPC_RequestFire_Implementation()
 
 	if (bServerChargeActive)
 	{
-		UE_LOG(LogDefense, Verbose, TEXT("Fire rejected while charge is active. Character=%s"), *GetNameSafe(OwnerActor));
 		return;
 	}
 
@@ -417,15 +415,6 @@ void UWeaponComponent::ServerRPC_BeginCharge_Implementation()
 		|| bOnCooldown
 		|| !StatusComp->CanSpendMana(Stage1Data->ManaCost))
 	{
-		UE_LOG(LogDefense, Warning, TEXT("Server charge start rejected. Character=%s Active=%d Alive=%d Enabled=%d Stage1=%d Cooldown=%d Cost=%.1f Mana=%.1f"),
-			*GetNameSafe(OwnerActor),
-			bServerChargeActive ? 1 : 0,
-			StatusComp->IsAlive() ? 1 : 0,
-			ChargeData.bEnabled ? 1 : 0,
-			Stage1Data ? 1 : 0,
-			bOnCooldown ? 1 : 0,
-			Stage1Data ? Stage1Data->ManaCost : -1.f,
-			StatusComp->Mana);
 		ClientRPC_RejectCharge();
 		return;
 	}
@@ -434,11 +423,6 @@ void UWeaponComponent::ServerRPC_BeginCharge_Implementation()
 	ServerChargeStartTime = CurrentTime;
 	ServerChargeWeaponData = WeaponData;
 
-	MulticastRPC_PlayWeaponAction(
-		EWeaponActionType::ChargedFire,
-		EWeaponActionPhase::Started,
-		0.f
-	);
 }
 
 void UWeaponComponent::ServerRPC_ReleaseCharge_Implementation()
@@ -454,10 +438,16 @@ void UWeaponComponent::ServerRPC_ReleaseCharge_Implementation()
 	UWeaponData* WeaponData = ServerChargeWeaponData.Get();
 	UStatusComponent* StatusComp = OwnerActor->FindComponentByClass<UStatusComponent>();
 	const float HeldTime = FMath::Max(0.f, World->GetTimeSeconds() - ServerChargeStartTime);
+	const float UnclampedChargeRatio = WeaponData
+		? CalculateChargeRatio(WeaponData->ChargedFire, HeldTime)
+		: 0.f;
+	const bool bRequestedStage3 = WeaponData
+		&& CalculateChargeStage(WeaponData->ChargedFire, UnclampedChargeRatio) == EWeaponChargeStage::Stage3;
+	const bool bHasStage3Mana = StatusComp && StatusComp->Mana >= Stage3MinimumMana;
 	const float ChargeRatio = WeaponData
 		? ClampChargeRatioToAvailableMana(
 			WeaponData->ChargedFire,
-			CalculateChargeRatio(WeaponData->ChargedFire, HeldTime),
+			UnclampedChargeRatio,
 			StatusComp ? StatusComp->Mana : 0.f
 		)
 		: 0.f;
@@ -470,7 +460,8 @@ void UWeaponComponent::ServerRPC_ReleaseCharge_Implementation()
 	if (!WeaponData
 		|| WeaponData != GetCurWeaponData()
 		|| !WeaponData->ChargedFire.bEnabled
-		|| !StageData)
+		|| !StageData
+		|| (bRequestedStage3 && !bHasStage3Mana))
 	{
 		RejectServerCharge();
 		return;
@@ -529,6 +520,19 @@ void UWeaponComponent::MulticastRPC_PlayWeaponAction_Implementation(
 	if (!OwnerCharacter || OwnerCharacter->IsLocallyControlled()) return;
 
 	PlayWeaponActionCosmetics(ActionType, Phase, ChargeRatio);
+}
+
+void UWeaponComponent::MulticastRPC_PlayChargedFireVFX_Implementation(
+	EWeaponChargeStage ChargeStage,
+	FVector_NetQuantize ShotTargetLocation
+)
+{
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	PlayChargedFireVFX(ChargeStage, ShotTargetLocation);
 }
 
 ADefenseCharacter* UWeaponComponent::GetOwnerCharacter() const
@@ -651,21 +655,8 @@ bool UWeaponComponent::TryExecuteServerFire(
 	{
 		if (CurrentTime < *NextReadyTime)
 		{
-			UE_LOG(LogDefense, Verbose, TEXT("Weapon fire rejected by cooldown. Character=%s Action=%d Remaining=%.2f"),
-				*GetNameSafe(OwnerActor),
-				static_cast<int32>(ActionType),
-				*NextReadyTime - CurrentTime);
 			return false;
 		}
-	}
-
-	if (ActionType == EWeaponActionType::ChargedFire && !StatusComp->TrySpendMana(ManaCost))
-	{
-		UE_LOG(LogDefense, Verbose, TEXT("Weapon fire rejected by mana. Character=%s Cost=%.1f Mana=%.1f"),
-			*GetNameSafe(OwnerActor),
-			ManaCost,
-			StatusComp->Mana);
-		return false;
 	}
 
 	EWeaponChargeStage ExecutedChargeStage = EWeaponChargeStage::None;
@@ -675,6 +666,35 @@ bool UWeaponComponent::TryExecuteServerFire(
 			WeaponData->ChargedFire,
 			ChargeRatio
 		);
+	}
+
+	FHitResult ShotHit;
+	const bool bIsStage3 = ExecutedChargeStage == EWeaponChargeStage::Stage3;
+	const FVector ShotTargetLocation = PerformHitscan(ShotData, &ShotHit, !bIsStage3);
+	AEnemyBase* HitEnemy = bIsStage3 ? Cast<AEnemyBase>(ShotHit.GetActor()) : nullptr;
+	if (HitEnemy
+		&& (HitEnemy->EnemyMode != EEnemyMode::Combat
+			|| HitEnemy->EnemyState == EEnemyState::Die
+			|| HitEnemy->EnemyState == EEnemyState::StoneDie))
+	{
+		HitEnemy = nullptr;
+	}
+	const float ActualManaCost = bIsStage3
+		? (HitEnemy ? StatusComp->Mana : StatusComp->MaxMana * 0.5f)
+		: ManaCost;
+	if (ActionType == EWeaponActionType::ChargedFire && !StatusComp->TrySpendMana(ActualManaCost))
+	{
+		return false;
+	}
+
+	// Stage 3은 적을 직접 맞힌 경우에만 공격으로 성립한다. 실패 시 마나 절반을
+	// 패널티로 소비하고 VFX, 피해, 쿨다운, 발사 표현은 실행하지 않는다.
+	if (bIsStage3 && !HitEnemy)
+	{
+		return false;
+	}
+	if (ActionType == EWeaponActionType::ChargedFire)
+	{
 		if (const FWeaponChargeStageData* StageData = GetChargeStageData(
 			WeaponData->ChargedFire,
 			ExecutedChargeStage
@@ -687,10 +707,13 @@ bool UWeaponComponent::TryExecuteServerFire(
 	CooldownMap.Add(WeaponData, CurrentTime + FMath::Max(0.f, ShotData.Cooldown));
 
 	MulticastRPC_PlayWeaponAction(ActionType, EWeaponActionPhase::Executed, ChargeRatio);
-	const FVector ShotTargetLocation = PerformHitscan(ShotData);
 	if (ExecutedChargeStage == EWeaponChargeStage::Stage3)
 	{
-		SpawnStage3StormTornado(ShotTargetLocation);
+		SpawnStage3StormTornado(HitEnemy);
+	}
+	else if (ExecutedChargeStage != EWeaponChargeStage::None)
+	{
+		MulticastRPC_PlayChargedFireVFX(ExecutedChargeStage, ShotTargetLocation);
 	}
 	return true;
 }
@@ -805,6 +828,7 @@ void UWeaponComponent::ResetLocalChargeState()
 	bChargeInputHeld = false;
 	LocalChargeStartTime = 0.f;
 	LocalChargeWeaponData = nullptr;
+	LastLocalChargeStage = EWeaponChargeStage::None;
 
 	if (bHadLocalCharge)
 	{
@@ -993,8 +1017,16 @@ void UWeaponComponent::HandleLifeStateChanged(EPlayerLifeState NewLifeState)
 	}
 }
 
-FVector UWeaponComponent::PerformHitscan(const FWeaponShotData& ShotData)
+FVector UWeaponComponent::PerformHitscan(
+	const FWeaponShotData& ShotData,
+	FHitResult* OutHitResult,
+	bool bApplyDirectDamage
+)
 {
+	if (OutHitResult)
+	{
+		*OutHitResult = FHitResult();
+	}
 	ADefenseCharacter* OwnerCharacter = GetOwnerCharacter();
 	if (!OwnerCharacter) return FVector::ZeroVector;
 
@@ -1028,9 +1060,13 @@ FVector UWeaponComponent::PerformHitscan(const FWeaponShotData& ShotData)
 
 	const FVector ShotTargetLocation = bHit ? Hit.ImpactPoint : End;
 	if (!bHit) return ShotTargetLocation;
+	if (OutHitResult)
+	{
+		*OutHitResult = Hit;
+	}
 
 	AActor* HitActor = Hit.GetActor();
-	if (!HitActor || Cast<ADefenseCharacter>(HitActor)) return ShotTargetLocation;
+	if (!bApplyDirectDamage || !HitActor || Cast<ADefenseCharacter>(HitActor)) return ShotTargetLocation;
 
 	const float FinalDamage = FMath::Max(0.f, ShotData.Damage);
 	UGameplayStatics::ApplyDamage(
@@ -1044,40 +1080,185 @@ FVector UWeaponComponent::PerformHitscan(const FWeaponShotData& ShotData)
 	return ShotTargetLocation;
 }
 
-void UWeaponComponent::SpawnStage3StormTornado(const FVector& ShotTargetLocation)
+FTransform UWeaponComponent::GetWeaponMuzzleTransform(FName SocketName) const
 {
-	UWorld* World = GetWorld();
-	ADefenseCharacter* OwnerCharacter = GetOwnerCharacter();
-	if (!World || !OwnerCharacter || !OwnerCharacter->HasAuthority())
+	if (EquippedWeaponActor)
+	{
+		if (UMeshComponent* ActiveMesh = EquippedWeaponActor->GetActiveWeaponMesh())
+		{
+			if (ActiveMesh->DoesSocketExist(SocketName))
+			{
+				return ActiveMesh->GetSocketTransform(SocketName, RTS_World);
+			}
+			return ActiveMesh->GetComponentTransform();
+		}
+		return EquippedWeaponActor->GetActorTransform();
+	}
+
+	if (const ADefenseCharacter* OwnerCharacter = GetOwnerCharacter())
+	{
+		return FTransform(OwnerCharacter->GetControlRotation(), OwnerCharacter->GetActorLocation());
+	}
+
+	return FTransform::Identity;
+}
+
+void UWeaponComponent::PlayChargeStageReachedVFX(const FWeaponChargeData& ChargeData)
+{
+	if (!ChargeData.StageReachedVFXActorClass || !EquippedWeaponActor || !GetWorld())
 	{
 		return;
 	}
 
-	FVector SpawnLocation = ShotTargetLocation;
+	UMeshComponent* ActiveMesh = EquippedWeaponActor->GetActiveWeaponMesh();
+	if (!ActiveMesh)
+	{
+		return;
+	}
+
+	const FName SocketName = ChargeData.StageReachedVFXSocket;
+	const bool bHasSocket = ActiveMesh->DoesSocketExist(SocketName);
+	const FTransform SpawnTransform = bHasSocket
+		? ActiveMesh->GetSocketTransform(SocketName, RTS_World)
+		: ActiveMesh->GetComponentTransform();
+
+	FActorSpawnParameters SpawnParameters;
+	SpawnParameters.Owner = GetOwner();
+	SpawnParameters.Instigator = GetOwnerCharacter();
+	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	AActor* StageEffectActor = GetWorld()->SpawnActor<AActor>(
+		ChargeData.StageReachedVFXActorClass,
+		SpawnTransform.GetLocation(),
+		SpawnTransform.Rotator(),
+		SpawnParameters
+	);
+	if (!StageEffectActor)
+	{
+		return;
+	}
+
+	StageEffectActor->SetActorScale3D(FVector(
+		FMath::Max(0.01f, ChargeData.StageReachedVFXScale * 0.35f)
+	));
+	StageEffectActor->AttachToComponent(
+		ActiveMesh,
+		FAttachmentTransformRules::KeepWorldTransform,
+		bHasSocket ? SocketName : NAME_None
+	);
+	if (StageEffectActor->GetLifeSpan() <= 0.f)
+	{
+		StageEffectActor->SetLifeSpan(3.f);
+	}
+}
+
+void UWeaponComponent::PlayChargedFireVFX(
+	EWeaponChargeStage ChargeStage,
+	const FVector& ShotTargetLocation
+)
+{
+	const UWeaponData* WeaponData = GetCurWeaponData();
+	if (!WeaponData)
+	{
+		return;
+	}
+
+	const FWeaponChargeStageData* StageData = GetChargeStageData(
+		WeaponData->ChargedFire,
+		ChargeStage
+	);
+	if (!StageData)
+	{
+		return;
+	}
+
+	if (ChargeStage == EWeaponChargeStage::Stage2)
+	{
+		SpawnStage2ProjectileVFX(ShotTargetLocation, *StageData);
+	}
+}
+
+void UWeaponComponent::SpawnStage2ProjectileVFX(
+	const FVector& ShotTargetLocation,
+	const FWeaponChargeStageData& StageData
+)
+{
+	UWorld* World = GetWorld();
+	ADefenseCharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!World || !OwnerCharacter || !StageData.ProjectileVFXActorClass)
+	{
+		return;
+	}
+
+	const FTransform MuzzleTransform = GetWeaponMuzzleTransform();
+	AWeaponProjectileVFXActor* Projectile = World->SpawnActorDeferred<AWeaponProjectileVFXActor>(
+		AWeaponProjectileVFXActor::StaticClass(),
+		MuzzleTransform,
+		OwnerCharacter,
+		OwnerCharacter,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn
+	);
+	if (!Projectile)
+	{
+		return;
+	}
+
+	Projectile->Configure(
+		ShotTargetLocation,
+		StageData.ProjectileVFXActorClass,
+		StageData.ImpactVFXActorClass,
+		StageData.ProjectileVFXSpeed,
+		StageData.ProjectileVFXScale
+	);
+	UGameplayStatics::FinishSpawningActor(Projectile, MuzzleTransform);
+}
+
+void UWeaponComponent::SpawnStage3StormTornado(AActor* HitEnemy)
+{
+	UWorld* World = GetWorld();
+	ADefenseCharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!World || !OwnerCharacter || !OwnerCharacter->HasAuthority() || !IsValid(HitEnemy))
+	{
+		return;
+	}
+
+	FVector SpawnLocation = HitEnemy->GetActorLocation();
+	if (const UCapsuleComponent* EnemyCapsule = HitEnemy->FindComponentByClass<UCapsuleComponent>())
+	{
+		// 바닥 충돌이 없는 맵에서도 적 캡슐의 바닥 높이에서 생성되도록 보정한다.
+		SpawnLocation.Z -= EnemyCapsule->GetScaledCapsuleHalfHeight();
+	}
 	FHitResult GroundHit;
 	FCollisionQueryParams GroundParams(SCENE_QUERY_STAT(Stage3StormGround), false, OwnerCharacter);
 	GroundParams.AddIgnoredActor(OwnerCharacter);
-	const FVector GroundTraceStart = ShotTargetLocation + FVector(0.f, 0.f, 500.f);
-	const FVector GroundTraceEnd = ShotTargetLocation - FVector(0.f, 0.f, 2500.f);
-	if (World->LineTraceSingleByChannel(
+	GroundParams.AddIgnoredActor(HitEnemy);
+	FCollisionObjectQueryParams GroundObjectParams;
+	GroundObjectParams.AddObjectTypesToQuery(ECC_WorldStatic);
+	GroundObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);
+	const FVector GroundTraceStart = SpawnLocation + FVector(0.f, 0.f, 300.f);
+	const FVector GroundTraceEnd = SpawnLocation - FVector(0.f, 0.f, 2500.f);
+	if (World->LineTraceSingleByObjectType(
 		GroundHit,
 		GroundTraceStart,
 		GroundTraceEnd,
-		ECC_Visibility,
+		GroundObjectParams,
 		GroundParams
 	))
 	{
 		SpawnLocation = GroundHit.ImpactPoint + GroundHit.ImpactNormal * 4.f;
 	}
 
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.Owner = OwnerCharacter;
-	SpawnParams.Instigator = OwnerCharacter;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	World->SpawnActor<AStormTornadoVFXActor>(
+	const FTransform SpawnTransform(FRotator::ZeroRotator, SpawnLocation);
+	AStormTornadoVFXActor* StormActor = World->SpawnActorDeferred<AStormTornadoVFXActor>(
 		AStormTornadoVFXActor::StaticClass(),
-		SpawnLocation,
-		FRotator::ZeroRotator,
-		SpawnParams
+		SpawnTransform,
+		OwnerCharacter,
+		OwnerCharacter,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn
 	);
+	if (!StormActor)
+	{
+		return;
+	}
+
+	UGameplayStatics::FinishSpawningActor(StormActor, SpawnTransform);
 }

@@ -88,6 +88,7 @@ protected:
 
 	bool bCinematicHUDHidden = false;
 	ESlateVisibility HUDVisibilityBeforeCinematic = ESlateVisibility::Visible;
+	ESlateVisibility CrosshairVisibilityBeforeCinematic = ESlateVisibility::Visible;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UWeaponCrosshairWidget> CrosshairWidget;
@@ -113,6 +114,13 @@ public:
 	void ToggleESCUI();
 	void SubmitClientIdentity();
 	void SetCinematicHUDHidden(bool bShouldHide);
+	virtual void SetCinematicMode(
+		bool bInCinematicMode,
+		bool bHidePlayer,
+		bool bAffectsHUD,
+		bool bAffectsMovement,
+		bool bAffectsTurning
+	) override;
 
 	void ToggleEquipmentMenu(); // 장비창
 

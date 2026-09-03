@@ -82,6 +82,7 @@ protected:
 	void ReleaseAllEnemies();
 	void NotifyNearbyWaitingRunEnemies();
 	void ApplyDamageAreaExtent();
+	void RefreshNavigationObstacle(); // Nav 갱신
 	void RefreshHPUI();
 
 	UFUNCTION()

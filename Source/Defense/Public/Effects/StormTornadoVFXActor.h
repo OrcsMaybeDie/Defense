@@ -4,16 +4,17 @@
 #include "GameFramework/Actor.h"
 #include "StormTornadoVFXActor.generated.h"
 
+class UInstancedStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
-class UInstancedStaticMeshComponent;
+class UParticleSystem;
+class UParticleSystemComponent;
 class USceneComponent;
 class UStaticMesh;
-class UStaticMeshComponent;
 
 /**
- * Unity StormTornado 원본의 메시/파티클 레이어를 Unreal 컴포넌트로 재구성한 월드 VFX다.
- * 게임플레이 판정은 담당하지 않으며, 서버가 Stage3 명중 지점에 한 번 스폰한다.
+ * FX Variety Pack의 Aqua Storm을 본체로 사용하고 상단 구름과 간헐적인 비를 보강한다.
+ * 서버에서는 4초 동안 주변의 가까운 적 최대 5명에게 초당 20 피해를 준다.
  */
 UCLASS(NotBlueprintable)
 class DEFENSE_API AStormTornadoVFXActor : public AActor
@@ -25,114 +26,62 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 
 private:
-	struct FMaterialState
+	struct FCloudSprite
 	{
-		TWeakObjectPtr<UMaterialInstanceDynamic> Material;
-		float BaseOpacity = 1.f;
-	};
-
-	struct FOrbitingSprite
-	{
-		TWeakObjectPtr<UInstancedStaticMeshComponent> Component;
 		int32 InstanceIndex = INDEX_NONE;
 		float StartAngle = 0.f;
 		float Radius = 100.f;
-		float MinHeight = 0.f;
-		float HeightRange = 100.f;
 		float HeightPhase = 0.f;
+		float HeightRange = 100.f;
 		float RiseSpeed = 100.f;
 		float AngularSpeed = 1.f;
 		float BaseScale = 1.f;
 		float PulsePhase = 0.f;
 	};
 
-	struct FPulsingLightning
-	{
-		TWeakObjectPtr<UStaticMeshComponent> Component;
-		TWeakObjectPtr<UMaterialInstanceDynamic> Material;
-		float Phase = 0.f;
-		float Period = 0.8f;
-		float VisibleDuration = 0.12f;
-		float BaseOpacity = 0.3f;
-	};
-
-	UStaticMeshComponent* CreateLayerComponent(
-		FName ComponentName,
-		UStaticMesh* Mesh,
-		UMaterialInterface* Material,
-		float BaseOpacity,
-		int32 SortPriority,
-		UMaterialInstanceDynamic*& OutDynamicMaterial
-	);
-	UInstancedStaticMeshComponent* CreateInstancedLayerComponent(
-		FName ComponentName,
-		UStaticMesh* Mesh,
-		UMaterialInterface* Material,
-		float BaseOpacity,
-		int32 SortPriority,
-		UMaterialInstanceDynamic*& OutDynamicMaterial
-	);
-	void CreateTornadoMeshes();
-	void CreateCloudLayers();
-	void CreateLightningLayers();
-	void CreateGroundSparks();
-	void UpdateMaterialFade(float Fade);
-	void UpdateTornadoMeshes(float DeltaSeconds);
-	void UpdateOrbitingSprites(const FVector& CameraLocation);
-	void UpdateLightning(float Fade);
+	void CreateCloudLayer();
+	void UpdateCloudLayer(float Fade);
+	void SpawnRainDrop();
+	void UpdateRainDrops();
+	void ApplyAreaDamage();
 	FVector GetCameraLocation() const;
+
+	struct FActiveRainDrop
+	{
+		TWeakObjectPtr<UParticleSystemComponent> Component;
+		float SpawnTime = 0.f;
+	};
 
 	UPROPERTY(VisibleAnywhere, Category="Storm Tornado")
 	TObjectPtr<USceneComponent> SceneRoot;
 
-	UPROPERTY(Transient)
-	TObjectPtr<UStaticMesh> TornadoMesh;
+	UPROPERTY(VisibleAnywhere, Category="Storm Tornado")
+	TObjectPtr<UParticleSystemComponent> TornadoParticleComponent;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UStaticMesh> LongSlideMesh;
+	TObjectPtr<UParticleSystem> RainParticleSystem;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMesh> PlaneMesh;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UMaterialInterface> CoreMaterial;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UMaterialInterface> OuterWindMaterial;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UMaterialInterface> OuterLightningMaterial;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UMaterialInterface> LightningMaterial;
-
-	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInterface> SmokeMaterial;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UMaterialInterface> ParticleMaterial;
+	TObjectPtr<UInstancedStaticMeshComponent> CloudInstances;
 
 	UPROPERTY(Transient)
-	TArray<TObjectPtr<UStaticMeshComponent>> SpawnedComponents;
+	TObjectPtr<UMaterialInstanceDynamic> CloudDynamicMaterial;
 
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UInstancedStaticMeshComponent>> SpawnedInstanceComponents;
-
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UMaterialInstanceDynamic>> DynamicMaterials;
-
-	TArray<FMaterialState> MaterialStates;
-	TArray<FOrbitingSprite> OrbitingSprites;
-	TArray<FPulsingLightning> PulsingLightning;
-
-	TWeakObjectPtr<UStaticMeshComponent> CoreComponent;
-	TWeakObjectPtr<UStaticMeshComponent> OuterWindComponent;
-	TWeakObjectPtr<UStaticMeshComponent> OuterLightningComponent;
-	TWeakObjectPtr<UInstancedStaticMeshComponent> GroundSparkInstances;
-
+	TArray<FCloudSprite> CloudSprites;
+	TArray<FActiveRainDrop> ActiveRainDrops;
+	FRandomStream RandomStream;
 	float ElapsedTime = 0.f;
-	float VisualDuration = 8.f;
+	float NextRainTime = 0.f;
+	float NextDamageTime = 1.f;
+	float VisualDuration = 4.f;
 };

@@ -357,12 +357,13 @@ void ADefenseGameMode::GameEnd()
 	{
 		if (ADefensePlayerController* PC = Cast<ADefensePlayerController>(It->Get()))
 		{
-			PC->ClientRPC_EnterGameEndState();
-
 			if (ADefenseCharacter* Character = Cast<ADefenseCharacter>(PC->GetPawn()))
 			{
+				Character->StopWeaponAction();
 				Character->PlayGameEndMotion(bPendingGameClear);
 			}
+
+			PC->ClientRPC_EnterGameEndState();
 		}
 	}
 

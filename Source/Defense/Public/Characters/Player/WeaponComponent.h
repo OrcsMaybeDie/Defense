@@ -101,6 +101,12 @@ protected:
 		float ChargeRatio
 	);
 
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastRPC_PlayChargedFireVFX(
+		EWeaponChargeStage ChargeStage,
+		FVector_NetQuantize ShotTargetLocation
+	);
+
 	ADefenseCharacter* GetOwnerCharacter() const;
 	UWeaponData* GetCurWeaponData() const;
 	const FWeaponShotData* GetShotData(
@@ -144,8 +150,19 @@ protected:
 	void PlayFireAnimation(ADefenseCharacter* OwnerCharacter, const FWeaponFireData& FireData);
 	void ApplyWeaponMovementLock(float Duration);
 	void ClearWeaponMovementLock();
-	FVector PerformHitscan(const FWeaponShotData& ShotData);
-	void SpawnStage3StormTornado(const FVector& ShotTargetLocation);
+	FVector PerformHitscan(
+		const FWeaponShotData& ShotData,
+		FHitResult* OutHitResult = nullptr,
+		bool bApplyDirectDamage = true
+	);
+	FTransform GetWeaponMuzzleTransform(FName SocketName = TEXT("Muzzle")) const;
+	void PlayChargeStageReachedVFX(const FWeaponChargeData& ChargeData);
+	void PlayChargedFireVFX(EWeaponChargeStage ChargeStage, const FVector& ShotTargetLocation);
+	void SpawnStage2ProjectileVFX(
+		const FVector& ShotTargetLocation,
+		const FWeaponChargeStageData& StageData
+	);
+	void SpawnStage3StormTornado(AActor* HitEnemy);
 
 	UFUNCTION()
 	void HandleSelectedEquipmentChanged(int32 SelectedSlotIdx, UEquipmentData* SelectedEquipment);
@@ -160,6 +177,7 @@ protected:
 
 	bool bChargeInputHeld = false;
 	float LocalChargeStartTime = 0.f;
+	EWeaponChargeStage LastLocalChargeStage = EWeaponChargeStage::None;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UWeaponData> LocalChargeWeaponData;

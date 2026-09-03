@@ -105,9 +105,6 @@ private:
 	UFUNCTION()
 	void HandleLocalSequenceFinished();
 
-	UFUNCTION()
-	void HandleLocalSequenceStopped();
-
 	void StartLocalPlayback();
 	void FinishLocalPlayback(bool bRestartBackgroundMusic = true);
 	void RefreshHiddenPlayerVisuals();

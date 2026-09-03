@@ -192,12 +192,18 @@ void ADefenseCharacter::Tick(float DeltaSeconds)
 
 	const bool bRecentlyAttacked =
 		TimeSinceFiredWeapon <= ViewFollowTime;
+	const bool bChargingWeapon = WeaponComp && WeaponComp->IsCharging();
+	if (bChargingWeapon)
+	{
+		// 애니메이션도 조준 상태를 유지
+		TimeSinceFiredWeapon = 0.f;
+	}
 
 	const bool bShouldFaceControlYaw =
 		StatusComp
 		&& StatusComp->IsAlive()
 		&& !bWeaponMovementLocked
-		&& (bHasMoveInput || bRecentlyAttacked);
+		&& (bHasMoveInput || bRecentlyAttacked || bChargingWeapon);
 	
 	// 이동 및 공격 회전은 CharacterMovement가 담당
 	MoveComp->bUseControllerDesiredRotation =
@@ -388,6 +394,12 @@ void ADefenseCharacter::CancelWeaponCharge()
 	}
 }
 
+void ADefenseCharacter::StopWeaponAction()
+{
+	CancelWeaponCharge();
+	SetWeaponMovementLocked(false);
+}
+
 void ADefenseCharacter::NotifyWeaponFired()
 {
 	TimeSinceFiredWeapon = 0.f;
@@ -411,7 +423,14 @@ void ADefenseCharacter::MulticastRPC_PlayGameEndMotion_Implementation(const bool
 	{
 		if (GameClearAnimation)
 		{
-			AnimInstance->PlaySlotAnimationAsDynamicMontage(GameClearAnimation, TEXT("DefaultSlot"));
+			AnimInstance->PlaySlotAnimationAsDynamicMontage(
+				GameClearAnimation,
+				TEXT("FullBody"),
+				0.05f,  // Blend In
+				0.1f,   // Blend Out
+				1.0f,   // Play Rate
+				10000   // Loop Count: 포즈 유지
+			);
 		}
 		return;
 	}
